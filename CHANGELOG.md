@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.3.0...v0.4.0) (2026-09-22)
+
+
+### Features
+
+* add fair client/server/load benches ([#5](https://github.com/Emerging-Patterns/ezhttp/issues/5)) ([5528439](https://github.com/Emerging-Patterns/ezhttp/commit/5528439a6788e2f491b2dca3dd8a3e5ac3ae51f8))
+
 ## [0.3.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
