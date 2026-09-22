@@ -21,7 +21,8 @@ RUST = os.environ.get("EZHTTP_BENCH_RUST", "${rustBin}")
 HEY = os.environ.get("EZHTTP_BENCH_HEY", "${heyBin}")
 WORK = os.environ.get("EZHTTP_BENCH_WORK", os.path.join(os.environ.get("TMPDIR", "/tmp"), "ezhttp-bench-work"))
 MODE = os.environ.get("EZHTTP_BENCH_MODE", "correctness")
-LOAD_N = int(os.environ.get("EZHTTP_BENCH_LOAD_N", "40"))
+# 200 requests so hey 0.1.4 prints a real 99% line (n=40 collapses it to 0%).
+LOAD_N = int(os.environ.get("EZHTTP_BENCH_LOAD_N", "200"))
 LOAD_C = int(os.environ.get("EZHTTP_BENCH_LOAD_C", "4"))
 os.makedirs(WORK, exist_ok=True)
 
