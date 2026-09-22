@@ -126,10 +126,11 @@ def server.exchange(~handle: Http.Request -> Http.Reply, sock: Socket)
   IO.bind(Socket & Http.Request, Unit, server.read(sock),
     pair => server.exchange.un(handle, pair))
 
-# continue after accept: exchange, then call `again` with the listener
+# continue after accept: exchange, then call `again` with the listener.
+# `again` is a runtime closure so it can carry the fuel still left.
 def server.loop.cont(
   ~handle: Http.Request -> Http.Reply,
-  ~again: Listener -> IO(Unit),
+  again: Listener -> IO(Unit),
   pair: Listener & Socket
 ) -> IO(Unit):
   (lst, sock) = pair

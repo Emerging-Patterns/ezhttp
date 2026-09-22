@@ -167,7 +167,7 @@ def start_server(kind, port, limit, paths):
     err_path = os.path.join(WORK, f"srv-{kind}-{port}.err")
     logf = open(err_path, "w", encoding="utf-8")
     if kind == "ez":
-        cmd = [DRV, "serve", str(port), str(limit), paths["text"], paths["bytes"], paths["small"], paths["medium"]]
+        cmd = [DRV, "serve", str(port), str(limit)]
     else:
         cmd = [RUST, "serve", str(port), paths["text"], paths["bytes"], paths["small"], paths["medium"]]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf)
@@ -279,7 +279,7 @@ def correct_serve_once(paths, bodies):
     err_path = os.path.join(WORK, f"once-{port}.err")
     logf = open(err_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
-        [DRV, "serve-once", str(port), paths["text"], paths["bytes"], paths["small"], paths["medium"]],
+        [DRV, "serve-once", str(port)],
         stdout=subprocess.DEVNULL, stderr=logf)
     ok_port = wait_port(port, proc, err_path, 30)
     dst = os.path.join(WORK, "once-get.out")

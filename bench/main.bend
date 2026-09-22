@@ -8,6 +8,7 @@ import ../ezhttp/body.bend as Body
 import ../ezhttp/client.bend as Client
 import ../ezhttp/json.bend as Json
 import 0xce326a73bca73cdb726972cee5bd76d4/value.bend as V
+import ./fix.bend as Fix
 
 # unwrap a parsed U32, or zero when parse fails
 def u32.arg.go(m: Maybe<&2, U32>) -> U32:
@@ -74,21 +75,37 @@ def read.text(path: String) -> IO(String):
 def die.msg(msg: String) -> IO(Unit):
   IO.die(Unit, 1, msg)
 
-# the nth argv word, "" when the list is shorter
-def arg.nth.step(here: Bool, h: String, t: List<String>, i: Nat) -> String:
-  match here:
-    case True{}:
-      h
-    case False{}:
-      arg.nth(t, Nat.sub(i, 1n))
-
-# walk argv to the index
-def arg.nth(xs: List<String>, i: Nat) -> String:
+# command plus three words; further words are ignored
+def argv.3(a: String, b: String, c: String, xs: List<String>) -> String & String & String & String:
   match xs:
     case Nil{}:
-      ""
-    case h <> t:
-      arg.nth.step(Nat.is_eq(i, 0n), h, t, i)
+      (a, b, c, "")
+    case d <> t:
+      (a, b, c, d)
+
+# third word
+def argv.2(a: String, b: String, xs: List<String>) -> String & String & String & String:
+  match xs:
+    case Nil{}:
+      (a, b, "", "")
+    case c <> t:
+      argv.3(a, b, c, t)
+
+# second word
+def argv.1(a: String, xs: List<String>) -> String & String & String & String:
+  match xs:
+    case Nil{}:
+      (a, "", "", "")
+    case b <> t:
+      argv.2(a, b, t)
+
+# split argv in one walk (the list is affine)
+def argv.0(xs: List<String>) -> String & String & String & String:
+  match xs:
+    case Nil{}:
+      ("", "", "", "")
+    case a <> t:
+      argv.1(a, t)
 
 # plain text content type
 def ctype.plain() -> String:
@@ -147,10 +164,6 @@ def json.out(m: Maybe<&2, V.Json>) -> String:
     case Some{j}:
       Body.body.payload(Json.json.body(j))
 
-# print length of a parsed body, so the timed parse is used
-def json.touch(body: String) -> U32:
-  json.touch.of(Json.json.parse(body))
-
 # 1 when parse fails, otherwise the printed length plus one
 def json.touch.of(m: Maybe<&2, V.Json>) -> U32:
   match m:
@@ -158,6 +171,10 @@ def json.touch.of(m: Maybe<&2, V.Json>) -> U32:
       1
     case Some{j}:
       (U32.from_nat(String.length(json.out(Some{j}))) + 1 : U32)
+
+# print length of a parsed body, so the timed parse is used
+def json.touch(body: String) -> U32:
+  json.touch.of(Json.json.parse(body))
 
 # fold a response into the checksum
 def step.sum(+sum: U32, r: Client.Response) -> U32:
@@ -222,23 +239,23 @@ def loop.get.json(+url: String, n: Nat, +sum: U32) -> IO(U32):
         loop.get.json(url, p, step.json(sum, r))
 
 # send one reprinted JSON body, then continue
-def loop.post.json.send(+url: String, +s: String, n: Nat, +sum: U32, +body: String) -> IO(U32):
+def loop.post.json.send(url: String, sum: U32, +body: String, rest: U32 -> IO(U32)) -> IO(U32):
   do IO<U32>:
     r : Client.Response <- Http.http.post_with(url, [hdr.json()],
       Body.body.text(body))
-    loop.post.json(url, s, n, step.sent(sum, r, body))
+    rest(step.sent(sum, r, body))
 
 # parse failed: count it and continue
-def loop.post.json.bad(+url: String, +s: String, n: Nat, +sum: U32) -> IO(U32):
-  loop.post.json(url, s, n, (sum + 1 : U32))
+def loop.post.json.bad(sum: U32, rest: U32 -> IO(U32)) -> IO(U32):
+  rest((sum + 1 : U32))
 
 # one JSON POST step after parse
-def loop.post.json.step(+url: String, +s: String, n: Nat, +sum: U32, m: Maybe<&2, V.Json>) -> IO(U32):
+def loop.post.json.step(url: String, sum: U32, m: Maybe<&2, V.Json>, rest: U32 -> IO(U32)) -> IO(U32):
   match m:
     case None{}:
-      loop.post.json.bad(url, s, n, sum)
+      loop.post.json.bad(sum, rest)
     case Some{j}:
-      loop.post.json.send(url, s, n, sum, json.out(Some{j}))
+      loop.post.json.send(url, sum, json.out(Some{j}), rest)
 
 # repeat JSON parse, print, and POST
 def loop.post.json(+url: String, +s: String, n: Nat, +sum: U32) -> IO(U32):
@@ -246,7 +263,8 @@ def loop.post.json(+url: String, +s: String, n: Nat, +sum: U32) -> IO(U32):
     case 0n:
       IO.pure(U32, sum)
     case 1n+p:
-      loop.post.json.step(url, s, p, sum, Json.json.parse(s))
+      loop.post.json.step(url, sum, Json.json.parse(s),
+        next => loop.post.json(url, s, p, next))
 
 # print the timing line
 def bench.show(t0: Nat, t1: Nat, +sum: U32, +bytes: U32, +n: U32) -> IO(Unit):
@@ -261,14 +279,28 @@ def bench.get(+url: String, +n: U32) -> IO(Unit):
     t1 : Nat <- IO.now()
     bench.show(t0, t1, sum, 0, n)
 
+# time the POSTs once the body is loaded
+def bench.post.go(+url: String, +s: String, k: Nat, +n: U32) -> IO(Unit):
+  +bytes = U32.from_nat(String.length(s))
+  do IO<Unit>:
+    t0 : Nat <- IO.now()
+    sum : U32 <- loop.post(url, s, k, 0)
+    t1 : Nat <- IO.now()
+    bench.show(t0, t1, sum, bytes, n)
+
 # time N text POSTs; the file is read before IO.now
 def bench.post(+url: String, path: String, +n: U32) -> IO(Unit):
   +k = U32.to_nat(n)
   do IO<Unit>:
     s : String <- read.text(path)
-    +bytes = U32.from_nat(String.length(s))
+    bench.post.go(url, s, k, n)
+
+# time the octet POSTs once the body is loaded
+def bench.bytes.go(+url: String, +s: String, k: Nat, +n: U32) -> IO(Unit):
+  +bytes = U32.from_nat(String.length(s))
+  do IO<Unit>:
     t0 : Nat <- IO.now()
-    sum : U32 <- loop.post(url, s, k, 0)
+    sum : U32 <- loop.bytes(url, s, k, 0)
     t1 : Nat <- IO.now()
     bench.show(t0, t1, sum, bytes, n)
 
@@ -277,11 +309,7 @@ def bench.bytes(+url: String, path: String, +n: U32) -> IO(Unit):
   +k = U32.to_nat(n)
   do IO<Unit>:
     s : String <- read.text(path)
-    +bytes = U32.from_nat(String.length(s))
-    t0 : Nat <- IO.now()
-    sum : U32 <- loop.bytes(url, s, k, 0)
-    t1 : Nat <- IO.now()
-    bench.show(t0, t1, sum, bytes, n)
+    bench.bytes.go(url, s, k, n)
 
 # time N JSON GETs (parse and print the response)
 def bench.get.json(+url: String, +n: U32) -> IO(Unit):
@@ -292,16 +320,21 @@ def bench.get.json(+url: String, +n: U32) -> IO(Unit):
     t1 : Nat <- IO.now()
     bench.show(t0, t1, sum, 0, n)
 
+# time the JSON POSTs once the file text is loaded
+def bench.post.json.go(+url: String, +s: String, k: Nat, +n: U32) -> IO(Unit):
+  +bytes = U32.from_nat(String.length(s))
+  do IO<Unit>:
+    t0 : Nat <- IO.now()
+    sum : U32 <- loop.post.json(url, s, k, 0)
+    t1 : Nat <- IO.now()
+    bench.show(t0, t1, sum, bytes, n)
+
 # time N JSON POSTs; the file is read before IO.now
 def bench.post.json(+url: String, path: String, +n: U32) -> IO(Unit):
   +k = U32.to_nat(n)
   do IO<Unit>:
     s : String <- read.text(path)
-    +bytes = U32.from_nat(String.length(s))
-    t0 : Nat <- IO.now()
-    sum : U32 <- loop.post.json(url, s, k, 0)
-    t1 : Nat <- IO.now()
-    bench.show(t0, t1, sum, bytes, n)
+    bench.post.json.go(url, s, k, n)
 
 # one GET, write status and body
 def cmd.get(url: String, dst: String) -> IO(Unit):
@@ -388,95 +421,91 @@ def reply.json(body: String) -> Msg.Reply:
 def route.miss() -> Msg.Reply:
   Msg.Reply{404, [], "missing"}
 
+# pick a reply after the comparison is bound
+def on.reply(z: Bool, yes: Unit -> Msg.Reply, no: Unit -> Msg.Reply) -> Msg.Reply:
+  match z:
+    case True{}:
+      yes(Unit{})
+    case False{}:
+      no(Unit{})
+
+# pick an IO action after the comparison is bound
+def on.io(z: Bool, yes: Unit -> IO(Unit), no: Unit -> IO(Unit)) -> IO(Unit):
+  match z:
+    case True{}:
+      yes(Unit{})
+    case False{}:
+      no(Unit{})
+
 # GET /json/medium or 404
 def route.get.medium(target: String, medium: String) -> Msg.Reply:
-  match String.eq(target, "/json/medium"):
-    case True{}:
-      reply.ok(ctype.json(), medium)
-    case False{}:
-      route.miss()
+  on.reply(String.eq(target, "/json/medium"),
+    _u => reply.ok(ctype.json(), medium),
+    _u => route.miss())
 
 # GET /json/small, else medium
-def route.get.small(target: String, small: String, medium: String) -> Msg.Reply:
-  match String.eq(target, "/json/small"):
-    case True{}:
-      reply.ok(ctype.json(), small)
-    case False{}:
-      route.get.medium(target, medium)
+def route.get.small(+target: String, small: String, medium: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/json/small"),
+    _u => reply.ok(ctype.json(), small),
+    _u => route.get.medium(target, medium))
 
 # GET /bytes, else JSON
-def route.get.bytes(target: String, raw: String, small: String, medium: String) -> Msg.Reply:
-  match String.eq(target, "/bytes"):
-    case True{}:
-      reply.ok(ctype.bytes(), raw)
-    case False{}:
-      route.get.small(target, small, medium)
+def route.get.bytes(+target: String, raw: String, small: String, medium: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/bytes"),
+    _u => reply.ok(ctype.bytes(), raw),
+    _u => route.get.small(target, small, medium))
 
 # GET fixed fixtures
-def route.get(target: String, text: String, raw: String, small: String, medium: String) -> Msg.Reply:
-  match String.eq(target, "/text"):
-    case True{}:
-      reply.ok(ctype.plain(), text)
-    case False{}:
-      route.get.bytes(target, raw, small, medium)
+def route.get(+target: String, text: String, raw: String, small: String, medium: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/text"),
+    _u => reply.ok(ctype.plain(), text),
+    _u => route.get.bytes(target, raw, small, medium))
 
 # POST /json/medium parses; anything else is 404
 def route.post.medium(target: String, body: String) -> Msg.Reply:
-  match String.eq(target, "/json/medium"):
-    case True{}:
-      reply.json(body)
-    case False{}:
-      route.miss()
+  on.reply(String.eq(target, "/json/medium"),
+    _u => reply.json(body),
+    _u => route.miss())
 
 # POST /json/small parses; else medium
-def route.post.small(target: String, body: String) -> Msg.Reply:
-  match String.eq(target, "/json/small"):
-    case True{}:
-      reply.json(body)
-    case False{}:
-      route.post.medium(target, body)
+def route.post.small(+target: String, +body: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/json/small"),
+    _u => reply.json(body),
+    _u => route.post.medium(target, body))
 
 # POST /bytes echoes the body
-def route.post.bytes(target: String, body: String) -> Msg.Reply:
-  match String.eq(target, "/bytes"):
-    case True{}:
-      reply.echo(ctype.bytes(), body)
-    case False{}:
-      route.post.small(target, body)
+def route.post.bytes(+target: String, +body: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/bytes"),
+    _u => reply.echo(ctype.bytes(), body),
+    _u => route.post.small(target, body))
 
 # POST /text echoes; JSON routes parse
-def route.post(target: String, body: String) -> Msg.Reply:
-  match String.eq(target, "/text"):
-    case True{}:
-      reply.echo(ctype.plain(), body)
-    case False{}:
-      route.post.bytes(target, body)
+def route.post(+target: String, +body: String) -> Msg.Reply:
+  on.reply(String.eq(target, "/text"),
+    _u => reply.echo(ctype.plain(), body),
+    _u => route.post.bytes(target, body))
 
 # POST or 405
 def handle.post(method: String, target: String, body: String) -> Msg.Reply:
-  match String.eq(method, "POST"):
-    case True{}:
-      route.post(target, body)
-    case False{}:
-      Msg.Reply{405, [], "method"}
+  on.reply(String.eq(method, "POST"),
+    _u => route.post(target, body),
+    _u => Msg.Reply{405, [], "method"})
 
 # GET fixed responses, POST echo or JSON print
 def handle.method(
-  method: String,
-  target: String,
+  +method: String,
+  +target: String,
   body: String,
   text: String,
   raw: String,
   small: String,
   medium: String
 ) -> Msg.Reply:
-  match String.eq(method, "GET"):
-    case True{}:
-      route.get(target, text, raw, small, medium)
-    case False{}:
-      handle.post(method, target, body)
+  on.reply(String.eq(method, "GET"),
+    _u => route.get(target, text, raw, small, medium),
+    _u => handle.post(method, target, body))
 
-# handler closed over the fixtures loaded before listen
+# route one request using fixture strings passed in
 def handle.req(req: Msg.Request, text: String, raw: String, small: String, medium: String) -> Msg.Reply:
   match req:
     case Msg.Bad{why}:
@@ -484,143 +513,104 @@ def handle.req(req: Msg.Request, text: String, raw: String, small: String, mediu
     case Msg.Request{method, target, headers, body}:
       handle.method(method, target, body, text, raw, small, medium)
 
-# listen with the loaded fixtures
-def serve.go(port: U32, limit: U32, text: String, raw: String, small: String, medium: String) -> IO(Unit):
-  Http.http.serve(req => handle.req(req, text, raw, small, medium), port, limit)
+# pure handler: fixtures are closed literals, not captured runtime values
+def handle(req: Msg.Request) -> Msg.Reply:
+  handle.req(req, Fix.fix.text(), Fix.fix.bytes(), Fix.fix.small(), Fix.fix.medium())
 
-# read fixtures, then serve up to limit connections
-def serve.load(port: U32, limit: U32, tp: String, bp: String, sp: String, mp: String) -> IO(Unit):
-  do IO<Unit>:
-    text : String <- read.text(tp)
-    raw : String <- read.text(bp)
-    small : String <- read.text(sp)
-    medium : String <- read.text(mp)
-    serve.go(port, limit, text, raw, small, medium)
+# listen; the handler is closed, so fixtures stay in the binary
+def serve.go(port: U32, limit: U32) -> IO(Unit):
+  Http.http.serve(handle, port, limit)
 
 # one connection, then stop
-def once.go(port: U32, text: String, raw: String, small: String, medium: String) -> IO(Unit):
-  Http.http.serve_once(req => handle.req(req, text, raw, small, medium), port)
+def once.go(port: U32) -> IO(Unit):
+  Http.http.serve_once(handle, port)
 
-# read fixtures, then serve_once
-def once.load(port: U32, tp: String, bp: String, sp: String, mp: String) -> IO(Unit):
-  do IO<Unit>:
-    text : String <- read.text(tp)
-    raw : String <- read.text(bp)
-    small : String <- read.text(sp)
-    medium : String <- read.text(mp)
-    once.go(port, text, raw, small, medium)
+# serve port limit
+def run.serve(+cmd: String, a1: String, a2: String) -> IO(Unit):
+  on.io(String.eq(cmd, "serve"),
+    _u => serve.go(u32.arg(a1), u32.arg(a2)),
+    _u => die.msg("unknown command " ++ cmd))
 
-# ping
-def run.ping(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "ping"):
-    case True{}:
-      IO.print("pong")
-    case False{}:
-      run.json(cmd, args)
-
-# json-ok src dst
-def run.json(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "json-ok"):
-    case True{}:
-      cmd.json.ok(arg.nth(args, 1n), arg.nth(args, 2n))
-    case False{}:
-      run.get(cmd, args)
-
-# get url dst
-def run.get(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "get"):
-    case True{}:
-      cmd.get(arg.nth(args, 1n), arg.nth(args, 2n))
-    case False{}:
-      run.bytes(cmd, args)
-
-# post-bytes url src dst
-def run.bytes(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "post-bytes"):
-    case True{}:
-      cmd.bytes(arg.nth(args, 1n), arg.nth(args, 2n), arg.nth(args, 3n))
-    case False{}:
-      run.pjson(cmd, args)
-
-# post-json url src dst
-def run.pjson(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "post-json"):
-    case True{}:
-      cmd.post.json(arg.nth(args, 1n), arg.nth(args, 2n), arg.nth(args, 3n))
-    case False{}:
-      run.post(cmd, args)
-
-# post url src dst
-def run.post(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "post"):
-    case True{}:
-      cmd.post(arg.nth(args, 1n), arg.nth(args, 2n), arg.nth(args, 3n))
-    case False{}:
-      run.bgetj(cmd, args)
-
-# bench-get-json url n
-def run.bgetj(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "bench-get-json"):
-    case True{}:
-      bench.get.json(arg.nth(args, 1n), u32.arg(arg.nth(args, 2n)))
-    case False{}:
-      run.bget(cmd, args)
-
-# bench-get url n
-def run.bget(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "bench-get"):
-    case True{}:
-      bench.get(arg.nth(args, 1n), u32.arg(arg.nth(args, 2n)))
-    case False{}:
-      run.bbytes(cmd, args)
-
-# bench-post-bytes url src n
-def run.bbytes(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "bench-post-bytes"):
-    case True{}:
-      bench.bytes(arg.nth(args, 1n), arg.nth(args, 2n), u32.arg(arg.nth(args, 3n)))
-    case False{}:
-      run.bpjson(cmd, args)
-
-# bench-post-json url src n
-def run.bpjson(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "bench-post-json"):
-    case True{}:
-      bench.post.json(arg.nth(args, 1n), arg.nth(args, 2n),
-        u32.arg(arg.nth(args, 3n)))
-    case False{}:
-      run.bpost(cmd, args)
+# serve-once port
+def run.once(+cmd: String, +a1: String, a2: String) -> IO(Unit):
+  on.io(String.eq(cmd, "serve-once"),
+    _u => once.go(u32.arg(a1)),
+    _u => run.serve(cmd, a1, a2))
 
 # bench-post url src n
-def run.bpost(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "bench-post"):
-    case True{}:
-      bench.post(arg.nth(args, 1n), arg.nth(args, 2n), u32.arg(arg.nth(args, 3n)))
-    case False{}:
-      run.once(cmd, args)
+def run.bpost(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "bench-post"),
+    _u => bench.post(a1, a2, u32.arg(a3)),
+    _u => run.once(cmd, a1, a2))
 
-# serve-once port text bytes small medium
-def run.once(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "serve-once"):
-    case True{}:
-      once.load(u32.arg(arg.nth(args, 1n)), arg.nth(args, 2n), arg.nth(args, 3n),
-        arg.nth(args, 4n), arg.nth(args, 5n))
-    case False{}:
-      run.serve(cmd, args)
+# bench-post-json url src n
+def run.bpjson(+cmd: String, +a1: String, +a2: String, +a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "bench-post-json"),
+    _u => bench.post.json(a1, a2, u32.arg(a3)),
+    _u => run.bpost(cmd, a1, a2, a3))
 
-# serve port limit text bytes small medium
-def run.serve(cmd: String, args: List<String>) -> IO(Unit):
-  match String.eq(cmd, "serve"):
-    case True{}:
-      serve.load(u32.arg(arg.nth(args, 1n)), u32.arg(arg.nth(args, 2n)),
-        arg.nth(args, 3n), arg.nth(args, 4n), arg.nth(args, 5n),
-        arg.nth(args, 6n))
-    case False{}:
-      die.msg("unknown command " ++ cmd)
+# bench-post-bytes url src n
+def run.bbytes(+cmd: String, +a1: String, +a2: String, +a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "bench-post-bytes"),
+    _u => bench.bytes(a1, a2, u32.arg(a3)),
+    _u => run.bpjson(cmd, a1, a2, a3))
+
+# bench-get url n
+def run.bget(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "bench-get"),
+    _u => bench.get(a1, u32.arg(a2)),
+    _u => run.bbytes(cmd, a1, a2, a3))
+
+# bench-get-json url n
+def run.bgetj(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "bench-get-json"),
+    _u => bench.get.json(a1, u32.arg(a2)),
+    _u => run.bget(cmd, a1, a2, a3))
+
+# post url src dst
+def run.post(+cmd: String, +a1: String, +a2: String, +a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "post"),
+    _u => cmd.post(a1, a2, a3),
+    _u => run.bgetj(cmd, a1, a2, a3))
+
+# post-json url src dst
+def run.pjson(+cmd: String, +a1: String, +a2: String, +a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "post-json"),
+    _u => cmd.post.json(a1, a2, a3),
+    _u => run.post(cmd, a1, a2, a3))
+
+# post-bytes url src dst
+def run.bytes(+cmd: String, +a1: String, +a2: String, +a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "post-bytes"),
+    _u => cmd.bytes(a1, a2, a3),
+    _u => run.pjson(cmd, a1, a2, a3))
+
+# get url dst
+def run.get(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "get"),
+    _u => cmd.get(a1, a2),
+    _u => run.bytes(cmd, a1, a2, a3))
+
+# json-ok src dst
+def run.json(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "json-ok"),
+    _u => cmd.json.ok(a1, a2),
+    _u => run.get(cmd, a1, a2, a3))
+
+# ping
+def run.ping(+cmd: String, a1: String, a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "ping"),
+    _u => IO.print("pong"),
+    _u => run.json(cmd, a1, a2, a3))
+
+# run once the four words are a parameter
+def main.go.un(quad: String & String & String & String) -> IO(Unit):
+  (cmd, a1, a2, a3) = quad
+  run.ping(cmd, a1, a2, a3)
 
 # unpack argv and run the named command
 def main.go(args: List<String>) -> IO(Unit):
-  run.ping(arg.nth(args, 0n), args)
+  main.go.un(argv.0(args))
 
 # CLI entry
 def main() -> IO(Unit):
