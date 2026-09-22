@@ -191,17 +191,32 @@ def err_tail(path):
         return ""
     return data[-300:].replace("\n", " ")
 
+def port_listening(port):
+    want = f"{port:04X}"
+    for name in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            lines = open(name, encoding="utf-8", errors="replace").read().splitlines()
+        except OSError:
+            continue
+        for line in lines[1:]:
+            parts = line.split()
+            if len(parts) < 4 or parts[3] != "0A":
+                continue
+            _ip, _, port_hex = parts[1].rpartition(":")
+            if port_hex.upper() == want:
+                return True
+    return False
+
 def wait_port(port, proc, err_path, timeout=30):
+    # A connect would be an accepted request. serve_once has only one, and
+    # serve's limit is the measured N, so readiness is the LISTEN row.
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc.poll() is not None:
             return False
-        try:
-            sock = socket.create_connection(("127.0.0.1", port), 0.2)
-            sock.close()
+        if port_listening(port):
             return True
-        except OSError:
-            time.sleep(0.05)
+        time.sleep(0.05)
     return False
 
 def url_for(port, path):
