@@ -173,7 +173,7 @@ def cors.preflight.headers(acao: String, methods: List<&2, String>,
 # 400 when the method is not allowed
 def cors.preflight.method(acao: String, methods: List<&2, String>,
   +headers: List<&2, String>, credentials: Bool, max_age: String,
-  +req_headers: String, method: String, ok: Bool) -> Http.Reply:
+  +req_headers: String, _method: String, ok: Bool) -> Http.Reply:
   match ok:
     case False{}:
       Http.Reply{400, [], ""}
