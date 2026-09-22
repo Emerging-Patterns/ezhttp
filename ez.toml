@@ -1,3 +1,12 @@
 [package]
 name = "ezhttp"
 entry = "ezhttp/main.bend"
+
+[deps.ezjson]
+hash = "0xce326a73bca73cdb726972cee5bd76d4"
+git = "https://github.com/Emerging-Patterns/ezjson"
+rev = "48a1a2c6bd9212d9772dc38c0accae901aa9cd23"
+tag = "v0.2.0"
+root = "ezjson"
+narHash = "sha256-qe6Zibwulzpc4qxk9GudmiJNcBD90DMdyHH3U0HdJ50="
+entry = "ezjson/main.bend"

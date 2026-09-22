@@ -496,3 +496,545 @@ def Laws.encode_is_body_encode(_s):
 
 def Laws.decode_is_body_decode(_s):
   {==}
+
+def Laws.url_empty_path():
+  {==}
+
+def Laws.url_ipv4_host():
+  {==}
+
+def Laws.url_ipv4_port():
+  {==}
+
+def Laws.url_userinfo_stripped():
+  {==}
+
+def Laws.url_query_drops_fragment():
+  {==}
+
+def Laws.url_query_on_empty_path():
+  {==}
+
+def Laws.url_scheme_lowercased():
+  {==}
+
+def Laws.url_https_default_port():
+  {==}
+
+def Laws.url_https_explicit_port():
+  {==}
+
+def Laws.wire_https_is_tls():
+  {==}
+
+def Laws.wire_http_is_tcp():
+  {==}
+
+def Laws.request_frames_host_and_close(_method, _host, _path, _hs, _body):
+  {==}
+
+def Laws.respond_writes_reason_and_close(_status, _hs, _body):
+  {==}
+
+def Laws.put_req_names_path(host, path, hs, body):
+  +payload = Body.body.payload(body)
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(Http.utf8.len(payload),
+        Nat.is_eq(Http.utf8.len(payload), 0n))
+      ++ "\r\n" ++ payload)
+
+def Laws.delete_req_names_path(host, path, hs, body):
+  +payload = Body.body.payload(body)
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(Http.utf8.len(payload),
+        Nat.is_eq(Http.utf8.len(payload), 0n))
+      ++ "\r\n" ++ payload)
+
+def Laws.options_req_names_path(host, path, hs):
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(0n, True{}) ++ "\r\n")
+
+def Laws.method_tokens_are_case_sensitive():
+  {==}
+
+def Laws.method_safe_get():
+  {==}
+
+def Laws.method_safe_get_lower():
+  {==}
+
+def Laws.method_safe_post():
+  {==}
+
+def Laws.method_idempotent_put():
+  {==}
+
+def Laws.method_idempotent_delete():
+  {==}
+
+def Laws.method_idempotent_options():
+  {==}
+
+def Laws.method_idempotent_post():
+  {==}
+
+def Laws.reason_400():
+  {==}
+
+def Laws.reason_404():
+  {==}
+
+def Laws.reason_500():
+  {==}
+
+def Laws.head_reply_drops_body():
+  {==}
+
+def Laws.get_reply_keeps_body():
+  {==}
+
+def Laws.head_line_trims():
+  {==}
+
+def Laws.head_line_rejects_obs_fold():
+  {==}
+
+def Laws.head_line_rejects_continuation():
+  {==}
+
+def Laws.ask_rejects_relative_target():
+  {==}
+
+def Laws.ask_origin_form_keeps_query():
+  {==}
+
+def Laws.parse_rejects_cl_and_te():
+  {==}
+
+def Laws.ask_rejects_disagreeing_cl():
+  {==}
+
+def Laws.parse_rejects_non_hex_chunk():
+  {==}
+
+def Laws.dechunk_two_chunks():
+  {==}
+
+def Laws.dechunk_wiki():
+  {==}
+
+def Laws.parse_clen_takes_prefix():
+  {==}
+
+def Laws.parse_chunked_body():
+  {==}
+
+def Laws.token_ok_plain():
+  {==}
+
+def Laws.token_ok_space():
+  {==}
+
+def Laws.token_ok_tab():
+  {==}
+
+def Laws.b64_empty():
+  {==}
+
+def Laws.b64_f():
+  {==}
+
+def Laws.b64_fo():
+  {==}
+
+def Laws.b64_foo():
+  {==}
+
+def Laws.basic_user_pass():
+  {==}
+
+def Laws.basic_is_client_basic(_user, _password):
+  {==}
+
+def Laws.cookie_line_attributes():
+  {==}
+
+def Laws.cookie_parse_round_trip():
+  {==}
+
+def Laws.cookie_rejects_empty_name():
+  {==}
+
+def Laws.cookie_request_joins():
+  {==}
+
+def Laws.cookie_default_path_dir():
+  {==}
+
+def Laws.cookie_default_path_root():
+  {==}
+
+def Laws.cookie_default_path_trailing():
+  {==}
+
+def Laws.cookie_receive_host_only():
+  {==}
+
+def Laws.cookie_domain_suffix():
+  {==}
+
+def Laws.cookie_domain_not_suffix():
+  {==}
+
+def Laws.cookie_domain_ip_suffix():
+  {==}
+
+def Laws.cookie_domain_ip_exact():
+  {==}
+
+def Laws.cookie_path_prefix():
+  {==}
+
+def Laws.cookie_path_not_prefix():
+  {==}
+
+def Laws.cookie_secure_needs_tls():
+  {==}
+
+def Laws.cookie_secure_on_tls():
+  {==}
+
+def Laws.cookie_max_age_zero():
+  {==}
+
+def Laws.cookie_max_age_open():
+  {==}
+
+def Laws.cookie_session_alive():
+  {==}
+
+def Laws.set_cookie_is_cookie_set(_c):
+  {==}
+
+def Laws.parse_cookie_is_parse(_line):
+  {==}
+
+def Laws.cookie_header_is_request(_cs):
+  {==}
+
+def Laws.cache_directive_case():
+  {==}
+
+def Laws.cache_directives():
+  {==}
+
+def Laws.fresh_max_age_zero():
+  {==}
+
+def Laws.fresh_max_age_open():
+  {==}
+
+def Laws.fresh_max_age_limit():
+  {==}
+
+def Laws.fresh_no_cache():
+  {==}
+
+def Laws.fresh_no_store():
+  {==}
+
+def Laws.fresh_public_only():
+  {==}
+
+def Laws.cache_note_expires():
+  {==}
+
+def Laws.fresh_max_age_overrides_expires():
+  {==}
+
+def Laws.cache_max_age_present():
+  {==}
+
+def Laws.cache_control_is_parse(_value):
+  {==}
+
+def Laws.fresh_is_cache_fresh(_value, _age):
+  {==}
+
+def Laws.cors_credentials_reflect_origin():
+  {==}
+
+def Laws.cors_star_without_credentials():
+  {==}
+
+def Laws.cors_explicit_origin():
+  {==}
+
+def Laws.cors_refused_origin():
+  {==}
+
+def Laws.cors_vary_specific():
+  {==}
+
+def Laws.cors_vary_star():
+  {==}
+
+def Laws.cors_vary_empty():
+  {==}
+
+def Laws.cors_preflight_allowed():
+  {==}
+
+def Laws.cors_preflight_method_denied():
+  {==}
+
+def Laws.cors_simple_reflects():
+  {==}
+
+def Laws.cors_simple_star():
+  {==}
+
+def Laws.cors_simple_refused():
+  {==}
+
+def Laws.cors_on_preflight():
+  {==}
+
+def Laws.cors_origin_header():
+  {==}
+
+def Laws.cors_request_method_header():
+  {==}
+
+def Laws.cors_request_headers_header():
+  {==}
+
+def Laws.cors_reply_is_on(_cfg, _req, _reply):
+  {==}
+def Laws.url_http_default_port():
+  {==}
+
+def Laws.url_query_keeps_question():
+  {==}
+
+def Laws.url_fragment_hides_query():
+  {==}
+
+def Laws.url_userinfo_last_at():
+  {==}
+
+def Laws.url_trailing_slash():
+  {==}
+
+def Laws.url_bad_port_uses_default():
+  {==}
+
+def Laws.post_writes_content_length():
+  {==}
+
+def Laws.get_omits_content_length():
+  {==}
+
+def Laws.reason_201():
+  {==}
+
+def Laws.reason_204():
+  {==}
+
+def Laws.reason_405():
+  {==}
+
+def Laws.reason_unknown_empty():
+  {==}
+
+def Laws.respond_204_drops_body():
+  {==}
+
+def Laws.respond_304_drops_body():
+  {==}
+
+def Laws.respond_200_keeps_body():
+  {==}
+
+def Laws.method_safe_head():
+  {==}
+
+def Laws.method_safe_options():
+  {==}
+
+def Laws.method_safe_put():
+  {==}
+
+def Laws.method_safe_delete():
+  {==}
+
+def Laws.method_idempotent_get():
+  {==}
+
+def Laws.method_idempotent_head():
+  {==}
+
+def Laws.method_idempotent_patch():
+  {==}
+
+def Laws.headers_find_ignores_case():
+  {==}
+
+def Laws.headers_find_missing():
+  {==}
+
+def Laws.headers_find_first():
+  {==}
+
+def Laws.ask_keeps_field_name_spelling():
+  {==}
+
+def Laws.parse_equal_content_lengths():
+  {==}
+
+def Laws.ask_rejects_cl_and_te():
+  {==}
+
+def Laws.parse_rejects_disagreeing_cl():
+  {==}
+
+def Laws.ask_equal_content_lengths():
+  {==}
+
+def Laws.parse_chunked_ignores_case():
+  {==}
+
+def Laws.dechunk_ignores_extension():
+  {==}
+
+def Laws.dechunk_stops_at_zero():
+  {==}
+
+def Laws.dechunk_only_last():
+  {==}
+
+def Laws.hexlen_extension_and_case():
+  {==}
+
+def Laws.hexlen_alpha():
+  {==}
+
+def Laws.digits_read_decimal():
+  {==}
+
+def Laws.digits_read_rejects_junk():
+  {==}
+
+def Laws.ask_options_asterisk():
+  {==}
+
+def Laws.ask_get_asterisk_rejected():
+  {==}
+
+def Laws.ask_rejects_absolute_form():
+  {==}
+
+def Laws.b64_user_pass():
+  {==}
+
+def Laws.token_ok_newline():
+  {==}
+
+def Laws.cookie_samesite_strict():
+  {==}
+
+def Laws.cookie_samesite_none():
+  {==}
+
+def Laws.cookie_samesite_unknown():
+  {==}
+
+def Laws.cookie_max_age_ignores_junk():
+  {==}
+
+def Laws.cookie_domain_lowercased():
+  {==}
+
+def Laws.cookie_path_identical():
+  {==}
+
+def Laws.cookie_path_root():
+  {==}
+
+def Laws.cookie_path_longer_cookie():
+  {==}
+
+def Laws.cookie_path_slash_prefix():
+  {==}
+
+def Laws.cookie_default_path_one_slash():
+  {==}
+
+def Laws.cookie_ipv4_literal():
+  {==}
+
+def Laws.cookie_ipv4_name():
+  {==}
+
+def Laws.cookie_send_host_only():
+  {==}
+
+def Laws.cookie_send_other_host():
+  {==}
+
+def Laws.cookie_send_unset_domain():
+  {==}
+
+def Laws.cookie_insecure_on_tcp():
+  {==}
+
+def Laws.cookie_max_age_one():
+  {==}
+
+def Laws.cache_ignores_s_maxage():
+  {==}
+
+def Laws.cache_max_age_ignores_junk():
+  {==}
+
+def Laws.cache_no_cache_alone():
+  {==}
+
+def Laws.cache_private_alone():
+  {==}
+
+def Laws.fresh_max_age_one():
+  {==}
+
+def Laws.cors_preflight_header_case():
+  {==}
+
+def Laws.cors_preflight_origin_denied():
+  {==}
+
+def Laws.cors_preflight_header_denied():
+  {==}
+
+def Laws.cors_credentials_explicit_origin():
+  {==}
+
+def Laws.cors_get_is_not_preflight():
+  {==}
+
+def Laws.json_string_is_text_body():
+  {==}
+
+def Laws.json_parse_string():
+  {==}
+
+def Laws.json_parse_rejects():
+  {==}
+
+def Laws.cors_preflight_star():
+  {==}

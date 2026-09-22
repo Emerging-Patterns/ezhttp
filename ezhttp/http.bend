@@ -97,6 +97,32 @@ def hex.go(s: String, +acc: Nat) -> Nat:
 def hexlen(s: String) -> Nat:
   hex.go(String.trim(first(String.split(s, ';'))), 0n)
 
+# whether a character is a hex digit
+def hex.digit(c: Char) -> Bool:
+  U32.is_lt(hex.val(c), 16)
+
+# the rest of a hex token once the first digit is known
+def hex.rest(token: String, good: Bool) -> Bool:
+  match token good:
+    case _ False{}:
+      False{}
+    case SNil{} True{}:
+      True{}
+    case SCon{h, t} True{}:
+      hex.rest(t, hex.digit(h))
+
+# a chunk-size token is one or more hex digits (RFC 9112 §7.1)
+def hex.well(token: String) -> Bool:
+  match token:
+    case SNil{}:
+      False{}
+    case SCon{h, t}:
+      hex.rest(t, hex.digit(h))
+
+# the chunk-size token, extensions after `;` removed
+def chunks.token(before: String) -> String:
+  String.trim(first(String.split(before, ';')))
+
 # bytes one code point takes in UTF-8. Content-Length counts octets
 # (RFC 9110 §8.6); a Bend String counts code points.
 def utf8.width(+u: U32) -> Nat:
@@ -147,6 +173,107 @@ def utf8.drop(s: String, +n: Nat) -> String:
       +w = utf8.width(Char.to_u32(h))
       utf8.drop.step(Nat.is_lt(n, w), h, t, _u => utf8.drop(t, Nat.sub(n, w)))
 
+# a decimal digit's value, or 10 when the character is not a digit
+def digits.val.of(+u: U32) -> U32:
+  Bool.pick(U32, Bool.and(U32.is_ge(u, 48), U32.is_le(u, 57)), U32.sub(u, 48), 10)
+
+# a decimal digit's value, or 10 when the character is not a digit
+def digits.val(c: Char) -> U32:
+  digits.val.of(Char.to_u32(c))
+
+# accept one digit and keep reading, or stop when it is not a digit
+def digits.step(ok: Bool, next: Unit -> Maybe<&2, Nat>) -> Maybe<&2, Nat>:
+  match ok:
+    case False{}:
+      None{}
+    case True{}:
+      next(Unit{})
+
+# read a decimal token without building Base's Nat.read ceiling
+def digits.go(s: String, +acc: Nat, left: Nat) -> Maybe<&2, Nat>:
+  match s left:
+    case _ 0n:
+      None{}
+    case SNil{} 1n+k:
+      Some{acc}
+    case SCon{+h, t} 1n+k:
+      +d = digits.val(h)
+      digits.step(U32.is_lt(d, 10),
+        _u => digits.go(t, Nat.add(Nat.mul(acc, 10n), U32.to_nat(d)), k))
+
+# a short decimal (Content-Length, max-age). Empty is none. At most 9 digits.
+def digits.read(s: String) -> Maybe<&2, Nat>:
+  match s:
+    case SNil{}:
+      None{}
+    case SCon{h, t}:
+      digits.go(SCon{h, t}, 0n, 9n)
+
+# a non-zero chunk has its data and the following CRLF
+def chunks.ready(+after: String, +n: Nat) -> Bool:
+  Bool.and(Bool.not(Nat.is_lt(utf8.len(after), Nat.add(n, 2n))),
+    String.starts_with(utf8.drop(after, n), "\r\n"))
+
+# the next scan step, or why this chunk header is not usable
+type Next is Data:
+  Stop{}
+  Go{cut: Cut}
+  Reject{why: String}
+
+# one chunk header: reject non-hex sizes, stop on the 0 chunk, else continue
+def chunks.next.of(zero: Bool, ready: Bool, +after: String, +n: Nat) -> Next:
+  match zero ready:
+    case True{} _:
+      Stop{}
+    case False{} False{}:
+      Reject{"the chunked body stopped short"}
+    case False{} True{}:
+      Go{divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n")}
+
+# hex check, then the length
+def chunks.next.hex(+before: String, +after: String, ok: Bool) -> Next:
+  match ok:
+    case False{}:
+      Reject{"chunk size is not hexadecimal"}
+    case True{}:
+      +n = hexlen(before)
+      chunks.next.of(Nat.is_eq(n, 0n), chunks.ready(after, n), after, n)
+
+# classify one chunk header (RFC 9112 §7.1)
+def chunks.next(+before: String, +after: String) -> Next:
+  chunks.next.hex(before, after, hex.well(chunks.token(before)))
+
+# apply one scan step
+def chunks.scan.step(step: Next, rest: Cut -> Maybe<&2, String>)
+  -> Maybe<&2, String>:
+  match step:
+    case Stop{}:
+      None{}
+    case Reject{why}:
+      Some{why}
+    case Go{cut}:
+      rest(cut)
+
+# None when every chunk size is hex and the 0 chunk is reached
+def chunks.scan(fuel: Nat, c: Cut) -> Maybe<&2, String>:
+  match fuel c:
+    case 0n _:
+      Some{"the chunked body is truncated"}
+    case 1n+f NoCut{}:
+      None{}
+    case 1n+f Cut{before, +after}:
+      chunks.scan.step(chunks.next(before, after), cut => chunks.scan(f, cut))
+
+# a zero chunk ends the body; anything after it is a trailer (RFC 9112 §7.1)
+def chunks.more(+n: Nat, +after: String, rest: Unit -> String, zero: Bool)
+  -> String:
+  match zero:
+    case True{}:
+      ""
+    case False{}:
+      utf8.take(after, n)
+        ++ rest(Unit{})
+
 # a chunked body put back together (RFC 9112 §7.1)
 def chunks(fuel: Nat, c: Cut) -> String:
   match fuel c:
@@ -156,8 +283,9 @@ def chunks(fuel: Nat, c: Cut) -> String:
       ""
     case 1n+f Cut{before, +after}:
       +n = hexlen(before)
-      utf8.take(after, n)
-        ++ chunks(f, divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n"))
+      chunks.more(n, after,
+        _u => chunks(f, divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n")),
+        Nat.is_eq(n, 0n))
 
 # a Transfer-Encoding: chunked body as the octets it stands for
 def dechunk(+s: String) -> String:
@@ -184,13 +312,52 @@ def head.go(ls: List<&2, String>, +name: String) -> String:
     case +h <> t:
       head.pick(head.hit(h, name), h, name, head.go(t, name))
 
+# this line's trimmed field value
+def head.value(h: String, name: String) -> String:
+  String.trim(String.drop(h, Nat.add(String.length(name), 1n)))
+
+# cons a value when the line is the header asked for
+def head.values.cons(hit: Bool, value: String, rest: Unit -> List<&2, String>)
+  -> List<&2, String>:
+  match hit:
+    case False{}:
+      rest(Unit{})
+    case True{}:
+      value <> rest(Unit{})
+
+# every value a head gave a header, in order (RFC 9112 §6.3 lists Content-Length)
+def head.values(ls: List<&2, String>, +name: String) -> List<&2, String>:
+  match ls:
+    case []:
+      []
+    case +h <> t:
+      head.values.cons(head.hit(h, name), head.value(h, name),
+        _u => head.values(t, name))
+
+# a field value still holding a line break is obs-fold, which we refuse
+def field.folded(+value: String) -> Bool:
+  Bool.or(String.contains(value, "\n"), String.contains(value, "\r"))
+
+# a trimmed field value, or none when it still contains obs-fold
+def field.keep(name: String, +value: String, folded: Bool) -> Maybe<&2, Header>:
+  match folded:
+    case True{}:
+      None{}
+    case False{}:
+      Some{H{name, value}}
+
+# name and trimmed value from a cut at the first colon
+def head.from_kept(before: String, +after: String) -> Maybe<&2, Header>:
+  +value = String.trim(after)
+  field.keep(before, value, field.folded(value))
+
 # one header line as a Header, or none when it has no colon
 def head.from_cut(c: Cut) -> Maybe<&2, Header>:
   match c:
     case NoCut{}:
       None{}
     case Cut{before, after}:
-      Some{H{before, String.trim(after)}}
+      head.from_kept(before, after)
 
 # one header line as a Header, or none when it has no colon
 def head.line(h: String) -> Maybe<&2, Header>:
@@ -217,6 +384,27 @@ def header.line(h: Header) -> String:
   match h:
     case H{name, value}:
       name ++ ": " ++ value ++ "\r\n"
+
+# the value when this field is the one asked for
+def headers.find.pick(value: String, hit: Bool, rest: Unit -> String) -> String:
+  match hit:
+    case True{}:
+      value
+    case False{}:
+      rest(Unit{})
+
+# case-insensitive field lookup (RFC 9110 §5.1)
+def headers.find.go(hs: List<&2, Header>, +name: String) -> String:
+  match hs:
+    case []:
+      ""
+    case H{n, v} <> t:
+      headers.find.pick(v, String.eq(String.to_lower(n), name),
+        _u => headers.find.go(t, name))
+
+# the value of a field, "" when it is absent
+def headers.find(hs: List<&2, Header>, +name: String) -> String:
+  headers.find.go(hs, String.to_lower(name))
 
 # extra headers rendered in order
 def headers.lines(hs: List<&2, Header>) -> String:
@@ -263,6 +451,66 @@ def post_req(host: String, path: String, headers: List<&2, Header>,
   body: Body.Body) -> String:
   request("POST", host, path, headers, Body.body.payload(body))
 
+# PUT with body and optional headers (RFC 9110 §9.3.4)
+def put_req(host: String, path: String, headers: List<&2, Header>,
+  body: Body.Body) -> String:
+  request("PUT", host, path, headers, Body.body.payload(body))
+
+# DELETE with body and optional headers (RFC 9110 §9.3.5)
+def delete_req(host: String, path: String, headers: List<&2, Header>,
+  body: Body.Body) -> String:
+  request("DELETE", host, path, headers, Body.body.payload(body))
+
+# OPTIONS with optional headers (RFC 9110 §9.3.7). No request body.
+def options_req(host: String, path: String, headers: List<&2, Header>) -> String:
+  request("OPTIONS", host, path, headers, "")
+
+# GET, HEAD, and OPTIONS are safe (RFC 9110 §9.2.1). Tokens are case-sensitive.
+def method.safe(+method: String) -> Bool:
+  Bool.or(String.eq(method, "GET"),
+    Bool.or(String.eq(method, "HEAD"), String.eq(method, "OPTIONS")))
+
+# safe methods, plus PUT and DELETE, are idempotent (RFC 9110 §9.2.2)
+def method.idempotent(+method: String) -> Bool:
+  Bool.or(method.safe(method),
+    Bool.or(String.eq(method, "PUT"), String.eq(method, "DELETE")))
+
+# the rest of a token once this character is known
+def token.ok.step(space: Bool, rest: Unit -> Bool) -> Bool:
+  match space:
+    case True{}:
+      False{}
+    case False{}:
+      rest(Unit{})
+
+# a bearer token has no whitespace (RFC 6750 §2.1)
+def token.ok(s: String) -> Bool:
+  match s:
+    case SNil{}:
+      True{}
+    case SCon{h, t}:
+      token.ok.step(Char.is_space(h), _u => token.ok(t))
+
+# origin-form request-target: absolute-path, optional query (RFC 9112 §3.2.1)
+def target.origin(path: String) -> Bool:
+  String.starts_with(path, "/")
+
+# asterisk-form is only `*` and only for OPTIONS (RFC 9112 §3.2.4)
+def target.asterisk(method: String, star: Bool) -> Bool:
+  match star:
+    case False{}:
+      False{}
+    case True{}:
+      String.eq(method, "OPTIONS")
+
+# origin-form, or OPTIONS asterisk-form
+def target.form(method: String, path: String, absolute: Bool) -> Bool:
+  match absolute:
+    case True{}:
+      True{}
+    case False{}:
+      target.asterisk(method, String.eq(path, "*"))
+
 # a body against the length its head promised
 def parse.short(status: U32, headers: List<&2, Header>, n: Nat, body: String,
   short: Bool) -> Reply:
@@ -286,20 +534,84 @@ def parse.len(status: U32, headers: List<&2, Header>, m: Maybe<&2, Nat>,
     case Some{n}:
       parse.clen(status, headers, n, body)
 
-# framing from Transfer-Encoding vs Content-Length (RFC 9112 §6.3)
-def parse.pick(status: U32, headers: List<&2, Header>, chunked: Bool,
-  len: String, body: String) -> Reply:
-  match chunked:
-    case True{}:
-      Reply{status, headers, dechunk(body)}
+# every Content-Length text equals the first
+def clen.agree.step(same: Bool, rest: Unit -> Bool) -> Bool:
+  match same:
     case False{}:
-      parse.len(status, headers, Nat.read(len), body)
+      False{}
+    case True{}:
+      rest(Unit{})
 
-# the two headers that decide the framing
+# the tail of a Content-Length list against the first value
+def clen.agree.go(rest: List<&2, String>, +h: String) -> Bool:
+  match rest:
+    case []:
+      True{}
+    case x <> r:
+      clen.agree.step(String.eq(x, h), _u => clen.agree.go(r, h))
+
+# duplicate Content-Length fields must be the same digits (RFC 9112 §6.3)
+def clen.agree(vs: List<&2, String>) -> Bool:
+  match vs:
+    case []:
+      True{}
+    case h <> t:
+      clen.agree.go(t, h)
+
+# whether any Content-Length field was present
+def clen.any(vs: List<&2, String>) -> Bool:
+  match vs:
+    case []:
+      False{}
+    case h <> t:
+      True{}
+
+# a chunked body, or why the chunk framing was rejected
+def parse.chunked(status: U32, headers: List<&2, Header>, body: String,
+  bad: Maybe<&2, String>) -> Reply:
+  match bad:
+    case None{}:
+      Reply{status, headers, dechunk(body)}
+    case Some{why}:
+      Torn{why}
+
+# scan chunk sizes, then decode when they are hex and closed by 0
+def parse.chunks(status: U32, headers: List<&2, Header>, +body: String) -> Reply:
+  parse.chunked(status, headers, body,
+    chunks.scan(String.length(body), divide(body, "\r\n")))
+
+# Transfer-Encoding together with Content-Length is a bad message
+def parse.te.clash(status: U32, headers: List<&2, Header>, body: String,
+  present: Bool) -> Reply:
+  match present:
+    case True{}:
+      Torn{"Content-Length and Transfer-Encoding conflict"}
+    case False{}:
+      parse.chunks(status, headers, body)
+
+# chunked framing, or Content-Length, or the rest of the connection
+def parse.te(status: U32, headers: List<&2, Header>, +lens: List<&2, String>,
+  +body: String, chunked: Bool) -> Reply:
+  match chunked:
+    case False{}:
+      parse.len(status, headers, digits.read(first(lens)), body)
+    case True{}:
+      parse.te.clash(status, headers, body, clen.any(lens))
+
+# disagreeing Content-Length values are torn before framing
+def parse.agree(status: U32, headers: List<&2, Header>, te: String,
+  +lens: List<&2, String>, body: String, ok: Bool) -> Reply:
+  match ok:
+    case False{}:
+      Torn{"Content-Length values disagree"}
+    case True{}:
+      parse.te(status, headers, lens, body,
+        String.contains(String.to_lower(te), "chunked"))
+
+# the headers that decide the framing (RFC 9112 §6.3)
 def parse.frame(status: U32, headers: List<&2, Header>, te: String,
-  len: String, body: String) -> Reply:
-  parse.pick(status, headers,
-    String.contains(String.to_lower(te), "chunked"), len, body)
+  +lens: List<&2, String>, body: String) -> Reply:
+  parse.agree(status, headers, te, lens, body, clen.agree(lens))
 
 # a head whose status line has been read (RFC 9112 §4)
 def parse.status(m: Maybe<&2, U32>, +ls: List<&2, String>, body: String)
@@ -310,7 +622,7 @@ def parse.status(m: Maybe<&2, U32>, +ls: List<&2, String>, body: String)
     case Some{n}:
       +hs = head.list(ls)
       parse.frame(n, hs, head.go(ls, "transfer-encoding"),
-        head.go(ls, "content-length"), body)
+        head.values(ls, "content-length"), body)
 
 # the head's lines, with the status line read off the first
 def parse.head(+ls: List<&2, String>, body: String) -> Reply:
@@ -367,13 +679,48 @@ def respond(+status: U32, headers: List<&2, Header>, +body: String) -> String:
     ++ "\r\n"
     ++ body
 
+# 204 and 304 are terminated by the header section (RFC 9110 §15.3.5, §15.4.5)
+def status.nocontent(+code: U32) -> Bool:
+  Bool.or(U32.is_eq(code, 204), U32.is_eq(code, 304))
+
+# drop a 204/304 body; any other status keeps it
+def respond.of.body(+status: U32, headers: List<&2, Header>, body: String,
+  drop: Bool) -> String:
+  match drop:
+    case True{}:
+      respond(status, headers, "")
+    case False{}:
+      respond(status, headers, body)
+
 # format a structured Reply as a response message
 def respond.of(r: Reply) -> String:
   match r:
     case Torn{why}:
       respond(500, [], why)
-    case Reply{status, headers, body}:
-      respond(status, headers, body)
+    case Reply{+status, headers, body}:
+      respond.of.body(status, headers, body, status.nocontent(status))
+
+# HEAD carries no message body; any other method keeps the body (RFC 9110 §9.3.2)
+def reply.for.pick(reply: Reply, head: Bool) -> Reply:
+  match reply head:
+    case Torn{why} _:
+      Torn{why}
+    case Reply{status, headers, body} False{}:
+      Reply{status, headers, body}
+    case Reply{status, headers, body} True{}:
+      Reply{status, headers, ""}
+
+# drop a HEAD response body before it is written
+def reply.for(method: String, reply: Reply) -> Reply:
+  reply.for.pick(reply, String.eq(method, "HEAD"))
+
+# the method token, or "" when the request did not parse
+def method.of(req: Request) -> String:
+  match req:
+    case Bad{why}:
+      ""
+    case Request{method, target, headers, body}:
+      method
 
 # request body against Content-Length
 def ask.short(method: String, target: String, headers: List<&2, Header>,
@@ -384,10 +731,12 @@ def ask.short(method: String, target: String, headers: List<&2, Header>,
     case False{}:
       Request{method, target, headers, utf8.take(body, n)}
 
+# a request body framed by Content-Length (RFC 9110 §8.6 / RFC 9112 §6.3)
 def ask.clen(method: String, target: String, headers: List<&2, Header>,
   +n: Nat, +body: String) -> Request:
   ask.short(method, target, headers, n, body, Nat.is_lt(utf8.len(body), n))
 
+# Content-Length when present; else the rest of the connection is the body
 def ask.len(method: String, target: String, headers: List<&2, Header>,
   m: Maybe<&2, Nat>, body: String) -> Request:
   match m:
@@ -396,25 +745,70 @@ def ask.len(method: String, target: String, headers: List<&2, Header>,
     case Some{n}:
       ask.clen(method, target, headers, n, body)
 
-def ask.pick(method: String, target: String, headers: List<&2, Header>,
-  chunked: Bool, len: String, body: String) -> Request:
-  match chunked:
-    case True{}:
+# a chunked request body, or why the chunk framing was rejected
+def ask.chunked(method: String, target: String, headers: List<&2, Header>,
+  body: String, bad: Maybe<&2, String>) -> Request:
+  match bad:
+    case None{}:
       Request{method, target, headers, dechunk(body)}
-    case False{}:
-      ask.len(method, target, headers, Nat.read(len), body)
+    case Some{why}:
+      Bad{why}
 
+# scan chunk sizes, then decode when they are hex and closed by 0
+def ask.chunks(method: String, target: String, headers: List<&2, Header>,
+  +body: String) -> Request:
+  ask.chunked(method, target, headers, body,
+    chunks.scan(String.length(body), divide(body, "\r\n")))
+
+# Transfer-Encoding together with Content-Length is a bad request
+def ask.te.clash(method: String, target: String, headers: List<&2, Header>,
+  body: String, present: Bool) -> Request:
+  match present:
+    case True{}:
+      Bad{"Content-Length and Transfer-Encoding conflict"}
+    case False{}:
+      ask.chunks(method, target, headers, body)
+
+# chunked framing, or Content-Length, or the rest of the connection
+def ask.te(method: String, target: String, headers: List<&2, Header>,
+  +lens: List<&2, String>, +body: String, chunked: Bool) -> Request:
+  match chunked:
+    case False{}:
+      ask.len(method, target, headers, digits.read(first(lens)), body)
+    case True{}:
+      ask.te.clash(method, target, headers, body, clen.any(lens))
+
+# disagreeing Content-Length values are bad before framing
+def ask.agree(method: String, target: String, headers: List<&2, Header>,
+  te: String, +lens: List<&2, String>, body: String, ok: Bool) -> Request:
+  match ok:
+    case False{}:
+      Bad{"Content-Length values disagree"}
+    case True{}:
+      ask.te(method, target, headers, lens, body,
+        String.contains(String.to_lower(te), "chunked"))
+
+# the headers that decide request framing (RFC 9112 §6.3)
 def ask.frame(method: String, target: String, headers: List<&2, Header>,
-  te: String, len: String, body: String) -> Request:
-  ask.pick(method, target, headers,
-    String.contains(String.to_lower(te), "chunked"), len, body)
+  te: String, +lens: List<&2, String>, body: String) -> Request:
+  ask.agree(method, target, headers, te, lens, body, clen.agree(lens))
+
+# origin-form, or a bad request when the target is not an absolute-path
+def ask.origin(method: String, target: String, +ls: List<&2, String>,
+  body: String, ok: Bool) -> Request:
+  match ok:
+    case False{}:
+      Bad{"the request-target is not in origin-form"}
+    case True{}:
+      +hs = head.list(ls)
+      ask.frame(method, target, hs, head.go(ls, "transfer-encoding"),
+        head.values(ls, "content-length"), body)
 
 # request-line: method SP request-target SP HTTP-version (RFC 9112 §3)
-def ask.line(method: String, target: String, +ls: List<&2, String>,
+def ask.line(+method: String, +target: String, +ls: List<&2, String>,
   body: String) -> Request:
-  +hs = head.list(ls)
-  ask.frame(method, target, hs, head.go(ls, "transfer-encoding"),
-    head.go(ls, "content-length"), body)
+  ask.origin(method, target, ls, body,
+    target.form(method, target, target.origin(target)))
 
 # three fields of the request-line, or torn
 def ask.parts(ps: List<&2, String>, +ls: List<&2, String>, body: String)
@@ -429,6 +823,7 @@ def ask.parts(ps: List<&2, String>, +ls: List<&2, String>, body: String)
         case t <> _ver:
           ask.line(m, t, ls, body)
 
+# the head's lines, with the request-line read off the first
 def ask.head(+ls: List<&2, String>, body: String) -> Request:
   match ls:
     case []:
@@ -436,6 +831,7 @@ def ask.head(+ls: List<&2, String>, body: String) -> Request:
     case _:
       ask.parts(String.split(first(ls), ' '), ls, body)
 
+# a request divided into its head and everything after the blank line
 def ask.cut(c: Cut) -> Request:
   match c:
     case NoCut{}:
