@@ -1,8 +1,10 @@
 # ezhttp/url: a URL taken apart far enough for an HTTP request. Scheme, host,
-# port and path. No userinfo, no query, no fragment in v0.
+# port, and an origin-form path (absolute-path, optional query). Userinfo is
+# stripped. The fragment is not part of the request-target.
 #
 # Shape follows RFC 3986 URI generic syntax: scheme ":" hier-part, with
-# hier-part as "//" authority path-abempty (RFC 3986 §3, §3.1, §3.2).
+# hier-part as "//" authority path-abempty ["?" query] ["#" fragment]
+# (RFC 3986 §3, §3.1, §3.2, §3.4, §3.5).
 import Base
 
 # a url that came apart, or the reason it would not
@@ -57,14 +59,78 @@ def path.of(ps: List<&2, String>) -> String:
     case h <> t:
       "/" ++ String.join(t, "/")
 
+# the last piece, or "" when the split was empty
+def auth.last.of(m: Maybe<&2, String>) -> String:
+  match m:
+    case None{}:
+      ""
+    case Some{hostport}:
+      hostport
+
+# the last `@`-separated piece (the hostport). Earlier pieces are userinfo.
+def auth.last(ps: List<&2, String>) -> String:
+  auth.last.of(List.last(&2, String, ps))
+
+# userinfo is stripped: `user:pass@host` yields `host` (RFC 3986 §3.2.1)
+def auth.host(authority: String) -> String:
+  auth.last(String.split(authority, '@'))
+
+# the first piece of a `#` split
+def frag.drop.of(ps: List<&2, String>) -> String:
+  match ps:
+    case []:
+      ""
+    case hier <> _:
+      hier
+
+# everything before `#` (RFC 3986 §3.5). The fragment is not a request-target.
+def frag.drop(s: String) -> String:
+  frag.drop.of(String.split(s, '#'))
+
+# the hier-part before `?`
+def query.hier(ps: List<&2, String>) -> String:
+  match ps:
+    case []:
+      ""
+    case hier <> _:
+      hier
+
+# the query after the first `?`, with later `?` kept (RFC 3986 §3.4)
+def query.text(ps: List<&2, String>) -> String:
+  match ps:
+    case []:
+      ""
+    case _ <> rest:
+      String.join(rest, "?")
+
+# origin-form path: absolute-path, then `?` query when the query is present
+def path.target.of(path: String, query: String, empty: Bool) -> String:
+  match empty:
+    case True{}:
+      path
+    case False{}:
+      path ++ "?" ++ query
+
+# absolute-path ["?" query] (RFC 3986 §3.4, RFC 9112 §3.2.1)
+def path.target(path: String, +query: String) -> String:
+  path.target.of(path, query, String.eq(query, ""))
+
 # a url whose authority is now split on its colon
 def parse.auth(+scheme: String, +au: List<&2, String>, path: String) -> Loc:
   Loc{scheme, host.of(au), port.of(au, scheme), path}
 
-# a url split on its slashes: the first piece is the authority, the rest is the
-# path
-def parse.parts(+scheme: String, +ps: List<&2, String>) -> Loc:
-  parse.auth(scheme, String.split(host.of(ps), ':'), path.of(ps))
+# authority (userinfo stripped) and origin-form path
+def parse.parts(+scheme: String, +ps: List<&2, String>, query: String) -> Loc:
+  parse.auth(scheme, String.split(auth.host(host.of(ps)), ':'),
+    path.target(path.of(ps), query))
+
+# hier-part split on `?`
+def parse.q(+scheme: String, +ps: List<&2, String>) -> Loc:
+  parse.parts(scheme, String.split(query.hier(ps), '/'), query.text(ps))
+
+# fragment stripped, then query split from the hier-part
+def parse.hier(+scheme: String, +rest: String) -> Loc:
+  parse.q(scheme, String.split(frag.drop(rest), '?'))
 
 # what follows the scheme, once it is known whether it opens with `//`
 def parse.body(+scheme: String, +rest: String, slashes: Bool) -> Loc:
@@ -72,7 +138,7 @@ def parse.body(+scheme: String, +rest: String, slashes: Bool) -> Loc:
     case False{}:
       Bad{scheme ++ ":" ++ rest ++ " has no //"}
     case True{}:
-      parse.parts(scheme, String.split(String.drop(rest, 2n), '/'))
+      parse.hier(scheme, String.drop(rest, 2n))
 
 # what follows the scheme, judged on its `//`
 def parse.rest(+scheme: String, +rest: String) -> Loc:

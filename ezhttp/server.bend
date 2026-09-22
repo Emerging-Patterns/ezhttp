@@ -3,6 +3,7 @@
 # Connection: close. Handler is a pure Request -> Reply function.
 import Base
 import ./http.bend as Http
+import ./cors.bend as Cors
 
 # default recv budget for one request message
 def server.max() -> U32:
@@ -80,13 +81,36 @@ def server.dispatch(~handle: Http.Request -> Http.Reply, req: Http.Request)
     case Http.Request{method, target, headers, body}:
       handle(Http.Request{method, target, headers, body})
 
+# apply HEAD body stripping once the method token is known
+def server.reply.built(~handle: Http.Request -> Http.Reply, method: String,
+  req: Http.Request) -> Http.Reply:
+  Http.reply.for(method, server.dispatch(handle, req))
+
+# HEAD responses are written with an empty body (RFC 9110 §9.3.2)
+def server.reply(~handle: Http.Request -> Http.Reply, req: Http.Request)
+  -> Http.Reply:
+  match req:
+    case Http.Bad{why}:
+      server.dispatch(handle, Http.Bad{why})
+    case Http.Request{+method, target, headers, body}:
+      server.reply.built(handle, method,
+        Http.Request{method, target, headers, body})
+
+# CORS preflight or simple headers, after HEAD bodies are dropped
+def server.cors_reply(
+  ~handle: Http.Request -> Http.Reply,
+  cfg: Cors.Cfg,
+  +req: Http.Request
+) -> Http.Reply:
+  Cors.cors.on(cfg, req, server.reply(handle, req))
+
 # after read: write the handler's reply and close
 def server.exchange.go(
   ~handle: Http.Request -> Http.Reply,
   sock: Socket,
   req: Http.Request
 ) -> IO(Unit):
-  IO.bind(Socket, Unit, server.write(sock, server.dispatch(handle, req)),
+  IO.bind(Socket, Unit, server.write(sock, server.reply(handle, req)),
     Socket.close)
 
 def server.exchange.un(

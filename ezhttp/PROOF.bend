@@ -496,3 +496,324 @@ def Laws.encode_is_body_encode(_s):
 
 def Laws.decode_is_body_decode(_s):
   {==}
+
+def Laws.url_empty_path():
+  {==}
+
+def Laws.url_ipv4_host():
+  {==}
+
+def Laws.url_ipv4_port():
+  {==}
+
+def Laws.url_userinfo_stripped():
+  {==}
+
+def Laws.url_query_drops_fragment():
+  {==}
+
+def Laws.url_query_on_empty_path():
+  {==}
+
+def Laws.url_scheme_lowercased():
+  {==}
+
+def Laws.url_https_default_port():
+  {==}
+
+def Laws.url_https_explicit_port():
+  {==}
+
+def Laws.wire_https_is_tls():
+  {==}
+
+def Laws.wire_http_is_tcp():
+  {==}
+
+def Laws.request_frames_host_and_close(_method, _host, _path, _hs, _body):
+  {==}
+
+def Laws.respond_writes_reason_and_close(_status, _hs, _body):
+  {==}
+
+def Laws.put_req_names_path(host, path, hs, body):
+  +payload = Body.body.payload(body)
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(Http.utf8.len(payload),
+        Nat.is_eq(Http.utf8.len(payload), 0n))
+      ++ "\r\n" ++ payload)
+
+def Laws.delete_req_names_path(host, path, hs, body):
+  +payload = Body.body.payload(body)
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(Http.utf8.len(payload),
+        Nat.is_eq(Http.utf8.len(payload), 0n))
+      ++ "\r\n" ++ payload)
+
+def Laws.options_req_names_path(host, path, hs):
+  eq.starts_append(path,
+    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ Http.clen.line(0n, True{}) ++ "\r\n")
+
+def Laws.method_tokens_are_case_sensitive():
+  {==}
+
+def Laws.method_safe_get():
+  {==}
+
+def Laws.method_safe_get_lower():
+  {==}
+
+def Laws.method_safe_post():
+  {==}
+
+def Laws.method_idempotent_put():
+  {==}
+
+def Laws.method_idempotent_delete():
+  {==}
+
+def Laws.method_idempotent_options():
+  {==}
+
+def Laws.method_idempotent_post():
+  {==}
+
+def Laws.reason_400():
+  {==}
+
+def Laws.reason_404():
+  {==}
+
+def Laws.reason_500():
+  {==}
+
+def Laws.head_reply_drops_body():
+  {==}
+
+def Laws.get_reply_keeps_body():
+  {==}
+
+def Laws.head_line_trims():
+  {==}
+
+def Laws.head_line_rejects_obs_fold():
+  {==}
+
+def Laws.head_line_rejects_continuation():
+  {==}
+
+def Laws.ask_rejects_relative_target():
+  {==}
+
+def Laws.ask_origin_form_keeps_query():
+  {==}
+
+def Laws.parse_rejects_cl_and_te():
+  {==}
+
+def Laws.ask_rejects_disagreeing_cl():
+  {==}
+
+def Laws.parse_rejects_non_hex_chunk():
+  {==}
+
+def Laws.dechunk_two_chunks():
+  {==}
+
+def Laws.dechunk_wiki():
+  {==}
+
+def Laws.parse_clen_takes_prefix():
+  {==}
+
+def Laws.parse_chunked_body():
+  {==}
+
+def Laws.token_ok_plain():
+  {==}
+
+def Laws.token_ok_space():
+  {==}
+
+def Laws.token_ok_tab():
+  {==}
+
+def Laws.b64_empty():
+  {==}
+
+def Laws.b64_f():
+  {==}
+
+def Laws.b64_fo():
+  {==}
+
+def Laws.b64_foo():
+  {==}
+
+def Laws.basic_user_pass():
+  {==}
+
+def Laws.basic_is_client_basic(_user, _password):
+  {==}
+
+def Laws.cookie_line_attributes():
+  {==}
+
+def Laws.cookie_parse_round_trip():
+  {==}
+
+def Laws.cookie_rejects_empty_name():
+  {==}
+
+def Laws.cookie_request_joins():
+  {==}
+
+def Laws.cookie_default_path_dir():
+  {==}
+
+def Laws.cookie_default_path_root():
+  {==}
+
+def Laws.cookie_default_path_trailing():
+  {==}
+
+def Laws.cookie_receive_host_only():
+  {==}
+
+def Laws.cookie_domain_suffix():
+  {==}
+
+def Laws.cookie_domain_not_suffix():
+  {==}
+
+def Laws.cookie_domain_ip_suffix():
+  {==}
+
+def Laws.cookie_domain_ip_exact():
+  {==}
+
+def Laws.cookie_path_prefix():
+  {==}
+
+def Laws.cookie_path_not_prefix():
+  {==}
+
+def Laws.cookie_secure_needs_tls():
+  {==}
+
+def Laws.cookie_secure_on_tls():
+  {==}
+
+def Laws.cookie_max_age_zero():
+  {==}
+
+def Laws.cookie_max_age_open():
+  {==}
+
+def Laws.cookie_session_alive():
+  {==}
+
+def Laws.set_cookie_is_cookie_set(_c):
+  {==}
+
+def Laws.parse_cookie_is_parse(_line):
+  {==}
+
+def Laws.cookie_header_is_request(_cs):
+  {==}
+
+def Laws.cache_directive_case():
+  {==}
+
+def Laws.cache_directives():
+  {==}
+
+def Laws.fresh_max_age_zero():
+  {==}
+
+def Laws.fresh_max_age_open():
+  {==}
+
+def Laws.fresh_max_age_limit():
+  {==}
+
+def Laws.fresh_no_cache():
+  {==}
+
+def Laws.fresh_no_store():
+  {==}
+
+def Laws.fresh_public_only():
+  {==}
+
+def Laws.cache_note_expires():
+  {==}
+
+def Laws.fresh_max_age_overrides_expires():
+  {==}
+
+def Laws.cache_max_age_present():
+  {==}
+
+def Laws.cache_control_is_parse(_value):
+  {==}
+
+def Laws.fresh_is_cache_fresh(_value, _age):
+  {==}
+
+def Laws.cors_credentials_reflect_origin():
+  {==}
+
+def Laws.cors_star_without_credentials():
+  {==}
+
+def Laws.cors_explicit_origin():
+  {==}
+
+def Laws.cors_refused_origin():
+  {==}
+
+def Laws.cors_vary_specific():
+  {==}
+
+def Laws.cors_vary_star():
+  {==}
+
+def Laws.cors_vary_empty():
+  {==}
+
+def Laws.cors_preflight_allowed():
+  {==}
+
+def Laws.cors_preflight_method_denied():
+  {==}
+
+def Laws.cors_simple_reflects():
+  {==}
+
+def Laws.cors_simple_star():
+  {==}
+
+def Laws.cors_simple_refused():
+  {==}
+
+def Laws.cors_on_preflight():
+  {==}
+
+def Laws.cors_origin_header():
+  {==}
+
+def Laws.cors_request_method_header():
+  {==}
+
+def Laws.cors_request_headers_header():
+  {==}
+
+def Laws.cors_reply_is_on(_cfg, _req, _reply):
+  {==}

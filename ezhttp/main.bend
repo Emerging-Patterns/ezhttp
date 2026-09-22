@@ -6,6 +6,9 @@ import ./http.bend as Http
 import ./body.bend as Body
 import ./client.bend as Client
 import ./server.bend as Server
+import ./cookie.bend as Cookie
+import ./cache.bend as Cache
+import ./cors.bend as Cors
 
 # URL parse re-export
 def parse_url(url: String) -> Url.Loc:
@@ -52,6 +55,34 @@ def decode(
 def bearer(token: String) -> Http.Header:
   Client.client.bearer(token)
 
+# Basic credentials header (RFC 7617)
+def basic(user: String, password: String) -> Http.Header:
+  Client.client.basic(user, password)
+
+# Set-Cookie header from a parsed cookie (RFC 6265)
+def set_cookie(c: Cookie.Cookie) -> Http.Header:
+  Cookie.cookie.set(c)
+
+# parse one Set-Cookie field value
+def parse_cookie(line: String) -> Maybe<&2, Cookie.Cookie>:
+  Cookie.cookie.parse(line)
+
+# Cookie request header for a list of cookies
+def cookie_header(cs: List<&2, Cookie.Cookie>) -> Http.Header:
+  Cookie.cookie.request(cs)
+
+# parse a Cache-Control field value (RFC 9111)
+def cache_control(value: String) -> Cache.Cc:
+  Cache.cache.parse(value)
+
+# freshness of a Cache-Control value at an age in seconds
+def fresh(value: String, age: Nat) -> Bool:
+  Cache.cache.fresh(Cache.cache.parse(value), age)
+
+# CORS preflight or simple headers on a handler reply
+def cors_reply(cfg: Cors.Cfg, req: Http.Request, reply: Http.Reply) -> Http.Reply:
+  Cors.cors.on(cfg, req, reply)
+
 # GET with no extra headers
 def http.get(url: String) -> IO(Client.Response):
   Client.client.get(url, [])
@@ -81,6 +112,36 @@ def http.post_with(
   body: Body.Body
 ) -> IO(Client.Response):
   Client.client.post(url, headers, body)
+
+# PUT with a body and no extra headers
+def http.put(url: String, body: Body.Body) -> IO(Client.Response):
+  Client.client.put(url, [], body)
+
+# PUT with headers and a body
+def http.put_with(url: String, headers: List<&2, Http.Header>, body: Body.Body)
+  -> IO(Client.Response):
+  Client.client.put(url, headers, body)
+
+# DELETE with a body and no extra headers
+def http.delete(url: String, body: Body.Body) -> IO(Client.Response):
+  Client.client.delete(url, [], body)
+
+# DELETE with headers and a body
+def http.delete_with(
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body
+) -> IO(Client.Response):
+  Client.client.delete(url, headers, body)
+
+# OPTIONS with no extra headers
+def http.options(url: String) -> IO(Client.Response):
+  Client.client.options(url, [])
+
+# OPTIONS with headers
+def http.options_with(url: String, headers: List<&2, Http.Header>)
+  -> IO(Client.Response):
+  Client.client.options(url, headers)
 
 # listen and serve up to `limit` connections
 def http.serve(
