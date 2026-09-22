@@ -34,26 +34,111 @@ def server.accept(listener: Listener) -> IO(Listener & Socket):
     TCP.accept(listener),
     server.accept.un)
 
-# recv then parse an HTTP request (RFC 9112 §3)
-def server.read.got(sock: Socket, raw: String) -> IO(Socket & Http.Request):
-  IO.pure(Socket & Http.Request, (sock, Http.ask(raw)))
+# the short-body refusal, so a partial recv can continue
+def server.read.why() -> String:
+  "the request body stopped before its Content-Length"
 
-def server.read.res(sock: Socket, r: Result<&1, &1, U32 & String, String>)
-  -> IO(Socket & Http.Request):
+# whether this refusal is a body that has not arrived yet
+def server.read.short(why: String) -> Bool:
+  String.eq(why, server.read.why())
+
+# a parsed request still wants more bytes
+def server.read.need(req: Http.Request) -> Bool:
+  match req:
+    case Http.Bad{why}:
+      server.read.short(why)
+    case Http.Request{method, target, headers, body}:
+      False{}
+
+# how many extra recvs to chase a Content-Length
+def server.read.fuel() -> Nat:
+  64n
+
+# parse what has arrived
+def server.read.done(sock: Socket, got: String) -> IO(Socket & Http.Request):
+  IO.pure(Socket & Http.Request, (sock, Http.ask(got)))
+
+# stop on a finished message, or ask for another recv
+def server.read.next(
+  sock: Socket,
+  got: String,
+  req: Http.Request,
+  rest: Socket -> String -> IO(Socket & Http.Request),
+  more: Bool
+) -> IO(Socket & Http.Request):
+  match more:
+    case False{}:
+      IO.pure(Socket & Http.Request, (sock, req))
+    case True{}:
+      rest(sock)(got)
+
+# append a chunk and decide whether it completes the request
+def server.read.grew(
+  sock: Socket,
+  +got: String,
+  rest: Socket -> String -> IO(Socket & Http.Request)
+) -> IO(Socket & Http.Request):
+  +req = Http.ask(got)
+  server.read.next(sock, got, req, rest, server.read.need(req))
+
+# peer closed, or the chunk extends the buffer
+def server.read.empty(
+  sock: Socket,
+  got: String,
+  chunk: String,
+  rest: Socket -> String -> IO(Socket & Http.Request),
+  closed: Bool
+) -> IO(Socket & Http.Request):
+  match closed:
+    case True{}:
+      server.read.done(sock, got)
+    case False{}:
+      server.read.grew(sock, got ++ chunk, rest)
+
+# one chunk of the request message
+def server.read.use(
+  sock: Socket,
+  got: String,
+  +chunk: String,
+  rest: Socket -> String -> IO(Socket & Http.Request)
+) -> IO(Socket & Http.Request):
+  server.read.empty(sock, got, chunk, rest, String.eq(chunk, ""))
+
+# the bytes from one recv
+def server.read.pass(
+  sock: Socket,
+  got: String,
+  rest: Socket -> String -> IO(Socket & Http.Request),
+  r: Result<&1, &1, U32 & String, String>
+) -> IO(Socket & Http.Request):
   IO.bind(String, Socket & Http.Request, IO.pass(String, r),
-    raw => server.read.got(sock, raw))
+    chunk => server.read.use(sock, got, chunk, rest))
 
-def server.read.un(pair: Socket & Result<&1, &1, U32 & String, String>)
-  -> IO(Socket & Http.Request):
-  (s, r) = pair
-  server.read.res(s, r)
+# unpack recv's socket and result
+def server.read.un(
+  got: String,
+  rest: Socket -> String -> IO(Socket & Http.Request),
+  pair: Socket & Result<&1, &1, U32 & String, String>
+) -> IO(Socket & Http.Request):
+  (sock, r) = pair
+  server.read.pass(sock, got, rest, r)
 
+# recv until Content-Length is met, the peer closes, or fuel runs out.
+# fuel is first so the recursive call is a decreasing self-call.
+def server.read.go(fuel: Nat, sock: Socket, got: String) -> IO(Socket & Http.Request):
+  match fuel:
+    case 0n:
+      server.read.done(sock, got)
+    case 1n+f:
+      IO.bind(
+        Socket & Result<&1, &1, U32 & String, String>,
+        Socket & Http.Request,
+        TCP.recv(sock, server.max()),
+        pair => server.read.un(got, s => g => server.read.go(f, s, g), pair))
+
+# recv then parse an HTTP request (RFC 9112 §3)
 def server.read(sock: Socket) -> IO(Socket & Http.Request):
-  IO.bind(
-    Socket & Result<&1, &1, U32 & String, String>,
-    Socket & Http.Request,
-    TCP.recv(sock, server.max()),
-    server.read.un)
+  server.read.go(server.read.fuel(), sock, "")
 
 # write a structured response and keep the socket
 def server.write.res(sock: Socket, r: Result<&1, &1, U32 & String, Unit>)
@@ -126,10 +211,11 @@ def server.exchange(~handle: Http.Request -> Http.Reply, sock: Socket)
   IO.bind(Socket & Http.Request, Unit, server.read(sock),
     pair => server.exchange.un(handle, pair))
 
-# continue after accept: exchange, then call `again` with the listener
+# continue after accept: exchange, then call `again` with the listener.
+# `again` is a runtime closure so it can carry the fuel still left.
 def server.loop.cont(
   ~handle: Http.Request -> Http.Reply,
-  ~again: Listener -> IO(Unit),
+  again: Listener -> IO(Unit),
   pair: Listener & Socket
 ) -> IO(Unit):
   (lst, sock) = pair
