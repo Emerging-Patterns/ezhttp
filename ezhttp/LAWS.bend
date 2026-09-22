@@ -13,7 +13,9 @@ import ./b64.bend as B64
 import ./cookie.bend as Cookie
 import ./cache.bend as Cache
 import ./cors.bend as Cors
+import ./json.bend as Json
 import ./main.bend as Ez
+import 0xce326a73bca73cdb726972cee5bd76d4/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
 # URL comes apart into is always absolute. The request-target is an
@@ -1275,6 +1277,19 @@ law cors_credentials_explicit_origin:
 law cors_get_is_not_preflight:
   {Cors.cors.is_preflight(Http.Request{"GET", "/",
       [Http.H{"Origin", "https://a"}], ""}) == False{} : Bool}
+
+# LAW: a JSON string is a text body of its compact encoding. The HTTP types
+# stay text (the body is not a JSON value).
+law json_string_is_text_body:
+  {Json.json.body(Ezjson.str("hi")) == Body.body.text("\"hi\"") : Body.Body}
+
+# LAW: a JSON string parses back to that string
+law json_parse_string:
+  {Json.json.as_str(Json.json.parse("\"hi\"")) == Some{"hi"} : Maybe<&2, String>}
+
+# LAW: text that is not JSON is none
+law json_parse_rejects:
+  {Json.json.as_str(Json.json.parse("nope")) == None{} : Maybe<&2, String>}
 
 # LAW (Fetch CORS): `*` without credentials is ACAO on a successful preflight
 law cors_preflight_star:

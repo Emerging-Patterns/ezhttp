@@ -1027,5 +1027,14 @@ def Laws.cors_credentials_explicit_origin():
 def Laws.cors_get_is_not_preflight():
   {==}
 
+def Laws.json_string_is_text_body():
+  {==}
+
+def Laws.json_parse_string():
+  {==}
+
+def Laws.json_parse_rejects():
+  {==}
+
 def Laws.cors_preflight_star():
   {==}

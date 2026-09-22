@@ -15,8 +15,11 @@ ez add Emerging-Patterns/ezhttp
 
 Shared types cover both sides: `Header`, structured `Request` / `Reply`
 (status or method, headers, body). Bodies are empty, UTF-8 text, or an octet
-list. JSON is bring-your-own via `encode` / `decode` — core does not depend on
-ezjson.
+list. ezhttp ships with [ezjson](https://github.com/Emerging-Patterns/ezjson)
+(`ez.toml` / `ez.lock.toml`, so a flake check fetches it). The HTTP API does
+not require it: `Request`, `Reply`, and the client `Response` stay text and
+octets. `encode` / `decode` still take any codec. `ezhttp/json.bend` is the
+optional helper that calls ezjson.
 
 ### Client
 
@@ -83,6 +86,13 @@ def cacheable(value: String) -> Bool:
 
 def cross(cfg: Cors.Cfg, req: Msg.Request, reply: Msg.Reply) -> Msg.Reply:
   Http.cors_reply(cfg, req, reply)
+```
+
+```
+import ./ezhttp/json.bend as Json
+
+def read(text: String) -> Maybe<&2, String>:
+  Json.json.as_str(Json.json.parse(text))
 ```
 
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
