@@ -918,3 +918,371 @@ law cors_reply_is_on:
   for reply: Http.Reply
   {Ez.cors_reply(cfg, req, reply) == Cors.cors.on(cfg, req, reply)
     : Http.Reply}
+
+# --- thicker fence: more closed witnesses of the same RFCs ---
+
+# LAW (RFC 3986 §3.2.3): http with no port is 80
+law url_http_default_port:
+  {Url.parse("http://example.com/a")
+    == Url.Loc{"http", "example.com", 80, "/a"} : Url.Loc}
+
+# LAW (RFC 3986 §3.4): a later `?` stays inside the query
+law url_query_keeps_question:
+  {Url.parse("http://example.com/a?x=1?y=2")
+    == Url.Loc{"http", "example.com", 80, "/a?x=1?y=2"} : Url.Loc}
+
+# LAW (RFC 3986 §3.5): a `?` inside the fragment is not a query
+law url_fragment_hides_query:
+  {Url.parse("http://example.com/a#b?c")
+    == Url.Loc{"http", "example.com", 80, "/a"} : Url.Loc}
+
+# LAW (RFC 3986 §3.2.1): the last `@` piece is the hostport
+law url_userinfo_last_at:
+  {Url.parse("http://a@b@example.com/z")
+    == Url.Loc{"http", "example.com", 80, "/z"} : Url.Loc}
+
+# LAW (RFC 3986 §3.3): a trailing slash is part of the path
+law url_trailing_slash:
+  {Url.parse("http://example.com/a/")
+    == Url.Loc{"http", "example.com", 80, "/a/"} : Url.Loc}
+
+# LAW (RFC 3986 §3.2.3): a non-numeric port falls back to the scheme default
+law url_bad_port_uses_default:
+  {Url.parse("http://example.com:abc/x")
+    == Url.Loc{"http", "example.com", 80, "/x"} : Url.Loc}
+
+# LAW (RFC 9110 §8.6): a non-empty request body is framed by Content-Length
+law post_writes_content_length:
+  {Http.request("POST", "h", "/a", [], "hi")
+    == "POST /a HTTP/1.1\r\n"
+      ++ "Host: h\r\n"
+      ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n"
+      ++ "Connection: close\r\n"
+      ++ "Content-Length: 2\r\n"
+      ++ "\r\n"
+      ++ "hi"
+    : String}
+
+# LAW (RFC 9110 §8.6): an empty GET omits Content-Length
+law get_omits_content_length:
+  {Http.get_req("h", "/", [])
+    == "GET / HTTP/1.1\r\n"
+      ++ "Host: h\r\n"
+      ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n"
+      ++ "Connection: close\r\n"
+      ++ "\r\n"
+    : String}
+
+# LAW (RFC 9110 §15.3.2): 201 Created
+law reason_201:
+  {Http.reason(201) == "Created" : String}
+
+# LAW (RFC 9110 §15.3.5): 204 No Content
+law reason_204:
+  {Http.reason(204) == "No Content" : String}
+
+# LAW (RFC 9110 §15.5.6): 405 Method Not Allowed
+law reason_405:
+  {Http.reason(405) == "Method Not Allowed" : String}
+
+# LAW (RFC 9110 §15): a status we do not name has an empty reason-phrase
+law reason_unknown_empty:
+  {Http.reason(418) == "" : String}
+
+# LAW (RFC 9110 §15.3.5): a 204 response is written with an empty body
+law respond_204_drops_body:
+  {Http.respond.of(Http.Reply{204, [], "nope"}) == Http.respond(204, [], "")
+    : String}
+
+# LAW (RFC 9110 §15.4.5): a 304 response is written with an empty body
+law respond_304_drops_body:
+  {Http.respond.of(Http.Reply{304, [], "nope"}) == Http.respond(304, [], "")
+    : String}
+
+# LAW (RFC 9110 §15.3.1): a 200 response keeps its body
+law respond_200_keeps_body:
+  {Http.respond.of(Http.Reply{200, [], "ok"}) == Http.respond(200, [], "ok")
+    : String}
+
+# LAW (RFC 9110 §9.2.1): HEAD is safe
+law method_safe_head:
+  {Http.method.safe("HEAD") == True{} : Bool}
+
+# LAW (RFC 9110 §9.2.1): OPTIONS is safe
+law method_safe_options:
+  {Http.method.safe("OPTIONS") == True{} : Bool}
+
+# LAW (RFC 9110 §9.2.1): PUT is not safe
+law method_safe_put:
+  {Http.method.safe("PUT") == False{} : Bool}
+
+# LAW (RFC 9110 §9.2.1): DELETE is not safe
+law method_safe_delete:
+  {Http.method.safe("DELETE") == False{} : Bool}
+
+# LAW (RFC 9110 §9.2.2): GET is idempotent
+law method_idempotent_get:
+  {Http.method.idempotent("GET") == True{} : Bool}
+
+# LAW (RFC 9110 §9.2.2): HEAD is idempotent
+law method_idempotent_head:
+  {Http.method.idempotent("HEAD") == True{} : Bool}
+
+# LAW (RFC 9110 §9.2.2): PATCH is not one of the idempotent methods we name
+law method_idempotent_patch:
+  {Http.method.idempotent("PATCH") == False{} : Bool}
+
+# LAW (RFC 9110 §5.1): field lookup folds the name and keeps the value
+law headers_find_ignores_case:
+  {Http.headers.find([Http.H{"hOsT", "Ex.COM"}], "host") == "Ex.COM" : String}
+
+# LAW (RFC 9110 §5.1): a missing field looks up as empty
+law headers_find_missing:
+  {Http.headers.find([], "host") == "" : String}
+
+# LAW (RFC 9110 §5.2): the first field of a repeated name is the one found
+law headers_find_first:
+  {Http.headers.find([Http.H{"Host", "a"}, Http.H{"Host", "b"}], "host")
+    == "a" : String}
+
+# LAW (RFC 9110 §5.1): the wire spelling of a field name is kept
+law ask_keeps_field_name_spelling:
+  {Http.ask("GET / HTTP/1.1\r\nhOsT: Ex.COM\r\n\r\n")
+    == Http.Request{"GET", "/", [Http.H{"hOsT", "Ex.COM"}], ""} : Http.Request}
+
+# LAW (RFC 9112 §6.3): identical Content-Length values are that one length
+law parse_equal_content_lengths:
+  {Http.parse("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello!!")
+    == Http.Reply{200, [Http.H{"Content-Length", "5"},
+      Http.H{"Content-Length", "5"}], "hello"} : Http.Reply}
+
+# LAW (RFC 9112 §6.3): a request with both framings is bad
+law ask_rejects_cl_and_te:
+  {Http.ask("POST / HTTP/1.1\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
+    == Http.Bad{"Content-Length and Transfer-Encoding conflict"} : Http.Request}
+
+# LAW (RFC 9112 §6.3): a response whose Content-Length values differ is torn
+law parse_rejects_disagreeing_cl:
+  {Http.parse("HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nab")
+    == Http.Torn{"Content-Length values disagree"} : Http.Reply}
+
+# LAW (RFC 9112 §6.3): identical request Content-Length values frame one body
+law ask_equal_content_lengths:
+  {Http.ask("POST / HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello!!")
+    == Http.Request{"POST", "/", [Http.H{"Content-Length", "5"},
+      Http.H{"Content-Length", "5"}], "hello"} : Http.Request}
+
+# LAW (RFC 9112 §7.1): chunked is recognized in any case
+law parse_chunked_ignores_case:
+  {Http.parse("HTTP/1.1 200 OK\r\nTransfer-Encoding: CHUNKED\r\n\r\n1\r\nZ\r\n0\r\n\r\n")
+    == Http.Reply{200, [Http.H{"Transfer-Encoding", "CHUNKED"}], "Z"}
+    : Http.Reply}
+
+# LAW (RFC 9112 §7.1): a chunk-ext after `;` does not change the decoded body
+law dechunk_ignores_extension:
+  {Http.dechunk("5;ext=1\r\nhello\r\n0\r\n\r\n") == "hello" : String}
+
+# LAW (RFC 9112 §7.1): the chunk of size 0 ends the body; a trailer is not data
+law dechunk_stops_at_zero:
+  {Http.dechunk("5\r\nhello\r\n0\r\nIgnored: 1\r\n\r\n") == "hello" : String}
+
+# LAW (RFC 9112 §7.1): a body that is only the last chunk is empty
+law dechunk_only_last:
+  {Http.dechunk("0\r\n\r\n") == "" : String}
+
+# LAW (RFC 9112 §7.1): chunk-size is hexadecimal, and an extension is skipped
+law hexlen_extension_and_case:
+  {Http.hexlen("5;ext=1") == 5n : Nat}
+
+# LAW (RFC 9112 §7.1): `a` and `A` are the same chunk-size digit
+law hexlen_alpha:
+  {Http.hexlen("a") == Http.hexlen("A") : Nat}
+
+# LAW (RFC 9112 §6.3): Content-Length is a decimal, not a prefix of junk
+law digits_read_decimal:
+  {Http.digits.read("12") == Some{12n} : Maybe<&2, Nat>}
+
+# LAW (RFC 9112 §6.3): a Content-Length that is not all digits is absent
+law digits_read_rejects_junk:
+  {Http.digits.read("12a") == None{} : Maybe<&2, Nat>}
+
+# LAW (RFC 9112 §3.2.4): OPTIONS asterisk-form names the whole server
+law ask_options_asterisk:
+  {Http.ask("OPTIONS * HTTP/1.1\r\nHost: h\r\n\r\n")
+    == Http.Request{"OPTIONS", "*", [Http.H{"Host", "h"}], ""} : Http.Request}
+
+# LAW (RFC 9112 §3.2.4): asterisk-form is not a GET target
+law ask_get_asterisk_rejected:
+  {Http.ask("GET * HTTP/1.1\r\nHost: h\r\n\r\n")
+    == Http.Bad{"the request-target is not in origin-form"} : Http.Request}
+
+# LAW (RFC 9112 §3.2.2): absolute-form is not accepted as origin-form
+law ask_rejects_absolute_form:
+  {Http.ask("GET http://example.com/a HTTP/1.1\r\nHost: h\r\n\r\n")
+    == Http.Bad{"the request-target is not in origin-form"} : Http.Request}
+
+# LAW (RFC 4648 §10 / RFC 7617 §2): user:pass is the Basic credential alphabet
+law b64_user_pass:
+  {B64.b64.encode("user:pass") == "dXNlcjpwYXNz" : String}
+
+# LAW (RFC 6750 §2.1): a newline is not a bearer token character
+law token_ok_newline:
+  {Http.token.ok("a\nb") == False{} : Bool}
+
+# LAW (RFC 6265 §4.1.1): SameSite=STRICT is canonical Strict
+law cookie_samesite_strict:
+  {Cookie.cookie.parse("a=b; SameSite=STRICT")
+    == Some{Cookie.Cookie{"a", "b", "", "", "", "", False{}, False{},
+      "Strict", True{}}} : Maybe<&2, Cookie.Cookie>}
+
+# LAW (RFC 6265 §4.1.1): SameSite=none is canonical None
+law cookie_samesite_none:
+  {Cookie.cookie.parse("a=b; SameSite=none")
+    == Some{Cookie.Cookie{"a", "b", "", "", "", "", False{}, False{},
+      "None", True{}}} : Maybe<&2, Cookie.Cookie>}
+
+# LAW (RFC 6265 §4.1.1): an unknown SameSite attribute is dropped
+law cookie_samesite_unknown:
+  {Cookie.cookie.parse("a=b; SameSite=weird")
+    == Some{Cookie.cookie.new("a", "b")} : Maybe<&2, Cookie.Cookie>}
+
+# LAW (RFC 6265 §5.2.2): a Max-Age that is not digits is ignored
+law cookie_max_age_ignores_junk:
+  {Cookie.cookie.parse("a=b; Max-Age=nope")
+    == Some{Cookie.cookie.new("a", "b")} : Maybe<&2, Cookie.Cookie>}
+
+# LAW (RFC 6265 §5.2.3): a Domain attribute is stored lowercase
+law cookie_domain_lowercased:
+  {Cookie.cookie.parse("a=b; Domain=Example.COM")
+    == Some{Cookie.Cookie{"a", "b", "", "", "example.com", "", False{},
+      False{}, "", False{}}} : Maybe<&2, Cookie.Cookie>}
+
+# LAW (RFC 6265 §5.1.4): identical paths match
+law cookie_path_identical:
+  {Cookie.cookie.path_ok("/app", "/app") == True{} : Bool}
+
+# LAW (RFC 6265 §5.1.4): default-path `/` matches a longer request path
+law cookie_path_root:
+  {Cookie.cookie.path_ok("/a", "/") == True{} : Bool}
+
+# LAW (RFC 6265 §5.1.4): a cookie-path the request does not extend fails
+law cookie_path_longer_cookie:
+  {Cookie.cookie.path_ok("/app", "/app/") == False{} : Bool}
+
+# LAW (RFC 6265 §5.1.4): a cookie-path that already ends in `/` is a prefix
+law cookie_path_slash_prefix:
+  {Cookie.cookie.path_ok("/app/x", "/app/") == True{} : Bool}
+
+# LAW (RFC 6265 §5.1.4): one slash is not enough for a directory default-path
+law cookie_default_path_one_slash:
+  {Cookie.cookie.default_path("/") == "/" : String}
+
+# LAW (RFC 6265 §5.1.3): an IPv4 literal is recognized, a name is not
+law cookie_ipv4_literal:
+  {Cookie.cookie.ipv4("192.0.2.1") == True{} : Bool}
+
+# LAW (RFC 6265 §5.1.3): a registered name is not an IPv4 address
+law cookie_ipv4_name:
+  {Cookie.cookie.ipv4("example.com") == False{} : Bool}
+
+# LAW (RFC 6265 §5.4): a host-only cookie is sent on its host and default-path
+law cookie_send_host_only:
+  {Cookie.cookie.send("example.com", "/a/x", False{},
+      Cookie.cookie.receive("Example.COM", "/a/b", Cookie.cookie.new("a", "b")))
+    == True{} : Bool}
+
+# LAW (RFC 6265 §5.4): a host-only cookie is not sent to another host
+law cookie_send_other_host:
+  {Cookie.cookie.send("other.com", "/", False{},
+      Cookie.cookie.receive("example.com", "/", Cookie.cookie.new("a", "b")))
+    == False{} : Bool}
+
+# LAW (RFC 6265 §5.4): a cookie with no Domain does not match a different host
+law cookie_send_unset_domain:
+  {Cookie.cookie.send("h", "/", False{}, Cookie.cookie.new("a", "b"))
+    == False{} : Bool}
+
+# LAW (RFC 6265 §5.4): a cookie that is not Secure is sent on cleartext
+law cookie_insecure_on_tcp:
+  {Cookie.cookie.send.secure(False{}, False{}) == True{} : Bool}
+
+# LAW (RFC 6265 §5.4): Max-Age 1 is alive at age 0 and stale at age 1
+law cookie_max_age_one:
+  {Bool.and(Cookie.cookie.alive("1", 0n),
+      Bool.not(Cookie.cookie.alive("1", 1n))) == True{} : Bool}
+
+# LAW (RFC 9111 §5.2): an unrecognized directive is ignored
+law cache_ignores_s_maxage:
+  {Cache.cache.parse("s-maxage=9, max-age=3")
+    == Cache.Cc{False{}, False{}, False{}, False{}, "3", ""} : Cache.Cc}
+
+# LAW (RFC 9111 §5.2.1.1): a non-digit max-age is not recorded
+law cache_max_age_ignores_junk:
+  {Cache.cache.parse("max-age=nope")
+    == Cache.Cc{False{}, False{}, False{}, False{}, "", ""} : Cache.Cc}
+
+# LAW (RFC 9111 §5.2.2.2): no-cache alone is recorded and not fresh
+law cache_no_cache_alone:
+  {Cache.cache.parse("no-cache")
+    == Cache.Cc{False{}, True{}, False{}, False{}, "", ""} : Cache.Cc}
+
+# LAW (RFC 9111 §5.2.2.6): private alone is recorded
+law cache_private_alone:
+  {Cache.cache.parse("private")
+    == Cache.Cc{False{}, False{}, False{}, True{}, "", ""} : Cache.Cc}
+
+# LAW (RFC 9111 §4.2.1): max-age=1 is fresh at 0 and stale at 1
+law fresh_max_age_one:
+  {Bool.and(Cache.cache.fresh(Cache.cache.parse("max-age=1"), 0n),
+      Bool.not(Cache.cache.fresh(Cache.cache.parse("max-age=1"), 1n)))
+    == True{} : Bool}
+
+# LAW (Fetch CORS): requested header names are matched case-insensitively
+law cors_preflight_header_case:
+  {Cors.cors.preflight(Cors.Cfg{["https://app.example"], ["PUT"],
+      ["Content-Type"], False{}, "10", []},
+      "https://app.example", "PUT", "content-type")
+    == Http.Reply{200, [
+      Http.H{"Vary", "Origin"},
+      Http.H{"Access-Control-Allow-Origin", "https://app.example"},
+      Http.H{"Access-Control-Allow-Methods", "PUT"},
+      Http.H{"Access-Control-Allow-Headers", "Content-Type"},
+      Http.H{"Access-Control-Max-Age", "10"}
+    ], ""} : Http.Reply}
+
+# LAW (Fetch CORS): a preflight whose origin is not allowed is 400
+law cors_preflight_origin_denied:
+  {Cors.cors.preflight(Cors.Cfg{["https://app.example"], ["PUT"],
+      ["Content-Type"], False{}, "10", []},
+      "https://no.example", "PUT", "")
+    == Http.Reply{400, [], ""} : Http.Reply}
+
+# LAW (Fetch CORS): a requested header outside the allow-list fails preflight
+law cors_preflight_header_denied:
+  {Cors.cors.preflight(Cors.Cfg{["https://app.example"], ["PUT"],
+      ["Content-Type"], False{}, "10", []},
+      "https://app.example", "PUT", "X-Nope")
+    == Http.Reply{400, [], ""} : Http.Reply}
+
+# LAW (Fetch CORS): credentials with an explicit origin still reflect it
+law cors_credentials_explicit_origin:
+  {Cors.cors.acao(["https://app.example"], True{}, "https://app.example")
+    == "https://app.example" : String}
+
+# LAW (Fetch CORS): a GET with no Access-Control-Request-Method is not a preflight
+law cors_get_is_not_preflight:
+  {Cors.cors.is_preflight(Http.Request{"GET", "/",
+      [Http.H{"Origin", "https://a"}], ""}) == False{} : Bool}
+
+# LAW (Fetch CORS): `*` without credentials is ACAO on a successful preflight
+law cors_preflight_star:
+  {Cors.cors.preflight(Cors.Cfg{["*"], ["GET"], [], False{}, "0", []},
+      "https://a", "GET", "")
+    == Http.Reply{200, [
+      Http.H{"Access-Control-Allow-Origin", "*"},
+      Http.H{"Access-Control-Allow-Methods", "GET"},
+      Http.H{"Access-Control-Allow-Headers", ""},
+      Http.H{"Access-Control-Max-Age", "0"}
+    ], ""} : Http.Reply}

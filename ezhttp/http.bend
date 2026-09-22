@@ -264,6 +264,16 @@ def chunks.scan(fuel: Nat, c: Cut) -> Maybe<&2, String>:
     case 1n+f Cut{before, +after}:
       chunks.scan.step(chunks.next(before, after), cut => chunks.scan(f, cut))
 
+# a zero chunk ends the body; anything after it is a trailer (RFC 9112 §7.1)
+def chunks.more(+n: Nat, +after: String, rest: Unit -> String, zero: Bool)
+  -> String:
+  match zero:
+    case True{}:
+      ""
+    case False{}:
+      utf8.take(after, n)
+        ++ rest(Unit{})
+
 # a chunked body put back together (RFC 9112 §7.1)
 def chunks(fuel: Nat, c: Cut) -> String:
   match fuel c:
@@ -273,8 +283,9 @@ def chunks(fuel: Nat, c: Cut) -> String:
       ""
     case 1n+f Cut{before, +after}:
       +n = hexlen(before)
-      utf8.take(after, n)
-        ++ chunks(f, divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n"))
+      chunks.more(n, after,
+        _u => chunks(f, divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n")),
+        Nat.is_eq(n, 0n))
 
 # a Transfer-Encoding: chunked body as the octets it stands for
 def dechunk(+s: String) -> String:
@@ -484,6 +495,22 @@ def token.ok(s: String) -> Bool:
 def target.origin(path: String) -> Bool:
   String.starts_with(path, "/")
 
+# asterisk-form is only `*` and only for OPTIONS (RFC 9112 §3.2.4)
+def target.asterisk(method: String, star: Bool) -> Bool:
+  match star:
+    case False{}:
+      False{}
+    case True{}:
+      String.eq(method, "OPTIONS")
+
+# origin-form, or OPTIONS asterisk-form
+def target.form(method: String, path: String, absolute: Bool) -> Bool:
+  match absolute:
+    case True{}:
+      True{}
+    case False{}:
+      target.asterisk(method, String.eq(path, "*"))
+
 # a body against the length its head promised
 def parse.short(status: U32, headers: List<&2, Header>, n: Nat, body: String,
   short: Bool) -> Reply:
@@ -652,13 +679,26 @@ def respond(+status: U32, headers: List<&2, Header>, +body: String) -> String:
     ++ "\r\n"
     ++ body
 
+# 204 and 304 are terminated by the header section (RFC 9110 §15.3.5, §15.4.5)
+def status.nocontent(+code: U32) -> Bool:
+  Bool.or(U32.is_eq(code, 204), U32.is_eq(code, 304))
+
+# drop a 204/304 body; any other status keeps it
+def respond.of.body(+status: U32, headers: List<&2, Header>, body: String,
+  drop: Bool) -> String:
+  match drop:
+    case True{}:
+      respond(status, headers, "")
+    case False{}:
+      respond(status, headers, body)
+
 # format a structured Reply as a response message
 def respond.of(r: Reply) -> String:
   match r:
     case Torn{why}:
       respond(500, [], why)
-    case Reply{status, headers, body}:
-      respond(status, headers, body)
+    case Reply{+status, headers, body}:
+      respond.of.body(status, headers, body, status.nocontent(status))
 
 # HEAD carries no message body; any other method keeps the body (RFC 9110 §9.3.2)
 def reply.for.pick(reply: Reply, head: Bool) -> Reply:
@@ -765,9 +805,10 @@ def ask.origin(method: String, target: String, +ls: List<&2, String>,
         head.values(ls, "content-length"), body)
 
 # request-line: method SP request-target SP HTTP-version (RFC 9112 §3)
-def ask.line(method: String, +target: String, +ls: List<&2, String>,
+def ask.line(+method: String, +target: String, +ls: List<&2, String>,
   body: String) -> Request:
-  ask.origin(method, target, ls, body, target.origin(target))
+  ask.origin(method, target, ls, body,
+    target.form(method, target, target.origin(target)))
 
 # three fields of the request-line, or torn
 def ask.parts(ps: List<&2, String>, +ls: List<&2, String>, body: String)

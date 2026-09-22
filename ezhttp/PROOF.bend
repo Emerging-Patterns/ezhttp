@@ -817,3 +817,215 @@ def Laws.cors_request_headers_header():
 
 def Laws.cors_reply_is_on(_cfg, _req, _reply):
   {==}
+def Laws.url_http_default_port():
+  {==}
+
+def Laws.url_query_keeps_question():
+  {==}
+
+def Laws.url_fragment_hides_query():
+  {==}
+
+def Laws.url_userinfo_last_at():
+  {==}
+
+def Laws.url_trailing_slash():
+  {==}
+
+def Laws.url_bad_port_uses_default():
+  {==}
+
+def Laws.post_writes_content_length():
+  {==}
+
+def Laws.get_omits_content_length():
+  {==}
+
+def Laws.reason_201():
+  {==}
+
+def Laws.reason_204():
+  {==}
+
+def Laws.reason_405():
+  {==}
+
+def Laws.reason_unknown_empty():
+  {==}
+
+def Laws.respond_204_drops_body():
+  {==}
+
+def Laws.respond_304_drops_body():
+  {==}
+
+def Laws.respond_200_keeps_body():
+  {==}
+
+def Laws.method_safe_head():
+  {==}
+
+def Laws.method_safe_options():
+  {==}
+
+def Laws.method_safe_put():
+  {==}
+
+def Laws.method_safe_delete():
+  {==}
+
+def Laws.method_idempotent_get():
+  {==}
+
+def Laws.method_idempotent_head():
+  {==}
+
+def Laws.method_idempotent_patch():
+  {==}
+
+def Laws.headers_find_ignores_case():
+  {==}
+
+def Laws.headers_find_missing():
+  {==}
+
+def Laws.headers_find_first():
+  {==}
+
+def Laws.ask_keeps_field_name_spelling():
+  {==}
+
+def Laws.parse_equal_content_lengths():
+  {==}
+
+def Laws.ask_rejects_cl_and_te():
+  {==}
+
+def Laws.parse_rejects_disagreeing_cl():
+  {==}
+
+def Laws.ask_equal_content_lengths():
+  {==}
+
+def Laws.parse_chunked_ignores_case():
+  {==}
+
+def Laws.dechunk_ignores_extension():
+  {==}
+
+def Laws.dechunk_stops_at_zero():
+  {==}
+
+def Laws.dechunk_only_last():
+  {==}
+
+def Laws.hexlen_extension_and_case():
+  {==}
+
+def Laws.hexlen_alpha():
+  {==}
+
+def Laws.digits_read_decimal():
+  {==}
+
+def Laws.digits_read_rejects_junk():
+  {==}
+
+def Laws.ask_options_asterisk():
+  {==}
+
+def Laws.ask_get_asterisk_rejected():
+  {==}
+
+def Laws.ask_rejects_absolute_form():
+  {==}
+
+def Laws.b64_user_pass():
+  {==}
+
+def Laws.token_ok_newline():
+  {==}
+
+def Laws.cookie_samesite_strict():
+  {==}
+
+def Laws.cookie_samesite_none():
+  {==}
+
+def Laws.cookie_samesite_unknown():
+  {==}
+
+def Laws.cookie_max_age_ignores_junk():
+  {==}
+
+def Laws.cookie_domain_lowercased():
+  {==}
+
+def Laws.cookie_path_identical():
+  {==}
+
+def Laws.cookie_path_root():
+  {==}
+
+def Laws.cookie_path_longer_cookie():
+  {==}
+
+def Laws.cookie_path_slash_prefix():
+  {==}
+
+def Laws.cookie_default_path_one_slash():
+  {==}
+
+def Laws.cookie_ipv4_literal():
+  {==}
+
+def Laws.cookie_ipv4_name():
+  {==}
+
+def Laws.cookie_send_host_only():
+  {==}
+
+def Laws.cookie_send_other_host():
+  {==}
+
+def Laws.cookie_send_unset_domain():
+  {==}
+
+def Laws.cookie_insecure_on_tcp():
+  {==}
+
+def Laws.cookie_max_age_one():
+  {==}
+
+def Laws.cache_ignores_s_maxage():
+  {==}
+
+def Laws.cache_max_age_ignores_junk():
+  {==}
+
+def Laws.cache_no_cache_alone():
+  {==}
+
+def Laws.cache_private_alone():
+  {==}
+
+def Laws.fresh_max_age_one():
+  {==}
+
+def Laws.cors_preflight_header_case():
+  {==}
+
+def Laws.cors_preflight_origin_denied():
+  {==}
+
+def Laws.cors_preflight_header_denied():
+  {==}
+
+def Laws.cors_credentials_explicit_origin():
+  {==}
+
+def Laws.cors_get_is_not_preflight():
+  {==}
+
+def Laws.cors_preflight_star():
+  {==}
