@@ -4,10 +4,19 @@ HTTP client and server for [Bend 2](https://github.com/bendlang/bend).
 
 ## Install
 
-Use with [Bend](https://github.com/bendlang/bend) or install easily with [ez](https://github.com/Emerging-Patterns/ez):
+With [Bend](https://github.com/bendlang/bend) alone there is nothing to
+install: import ezhttp by its hub name and `bend` fetches it from
+[the hub](https://hub.bend-lang.com) into `~/.bend/lib` on the first run.
+`0x0a372da4a053652f70ded7d6e0d19330` is ezhttp v0.5.0.
 
 ```
-ez init
+import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
+```
+
+Or with [ez](https://github.com/Emerging-Patterns/ez), which records the
+package in `ez.toml` (`ez init` makes one):
+
+```
 ez add Emerging-Patterns/ezhttp
 ```
 
@@ -15,11 +24,12 @@ ez add Emerging-Patterns/ezhttp
 
 Shared types cover both sides: `Header`, structured `Request` / `Reply`
 (status or method, headers, body). Bodies are empty, UTF-8 text, or an octet
-list. ezhttp ships with [ezjson](https://github.com/Emerging-Patterns/ezjson)
-(`ez.toml` / `ez.lock.toml`, so a flake check fetches it). The HTTP API does
-not require it: `Request`, `Reply`, and the client `Response` stay text and
-octets. `encode` / `decode` still take any codec. `ezhttp/json.bend` is the
-optional helper that calls ezjson.
+list. The HTTP API does not need JSON: `Request`, `Reply`, and the client
+`Response` stay text and octets, and `encode` / `decode` take any codec. The
+hub package is the HTTP library alone. `ezhttp/json.bend`, the optional
+helper that calls [ezjson](https://github.com/Emerging-Patterns/ezjson), is
+in this repository but not reachable from `main.bend`, so it is not in the
+hub package; import ezjson from the hub to read a JSON body (below).
 
 ### Client
 
@@ -31,9 +41,8 @@ wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path
 and port 443.
 
 ```
-import ./ezhttp/main.bend as Http
-import ./ezhttp/client.bend as Client
-import ./ezhttp/body.bend as Body
+import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
+import 0x0a372da4a053652f70ded7d6e0d19330/client.bend as Client
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -53,8 +62,8 @@ per connection, calls a pure handler, and writes one response
 in v0 for the server. A HEAD response is written with an empty body.
 
 ```
-import ./ezhttp/main.bend as Http
-import ./ezhttp/http.bend as Msg
+import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
+import 0x0a372da4a053652f70ded7d6e0d19330/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -70,10 +79,10 @@ def main() -> IO(Unit):
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
-import ./ezhttp/main.bend as Http
-import ./ezhttp/http.bend as Msg
-import ./ezhttp/cookie.bend as Cookie
-import ./ezhttp/cors.bend as Cors
+import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
+import 0x0a372da4a053652f70ded7d6e0d19330/http.bend as Msg
+import 0x0a372da4a053652f70ded7d6e0d19330/cookie.bend as Cookie
+import 0x0a372da4a053652f70ded7d6e0d19330/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
@@ -89,10 +98,18 @@ def cross(cfg: Cors.Cfg, req: Msg.Request, reply: Msg.Reply) -> Msg.Reply:
 ```
 
 ```
-import ./ezhttp/json.bend as Json
+import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
+import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as Value
+
+def read.of(got: Maybe<&2, Value.Json>) -> Maybe<&2, String>:
+  match got:
+    case None{}:
+      None{}
+    case Some{j}:
+      Ezjson.as_str(j)
 
 def read(text: String) -> Maybe<&2, String>:
-  Json.json.as_str(Json.json.parse(text))
+  read.of(Ezjson.parse(text))
 ```
 
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
