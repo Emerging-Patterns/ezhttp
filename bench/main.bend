@@ -76,7 +76,7 @@ def die.msg(msg: String) -> IO(Unit):
   IO.die(Unit, 1, msg)
 
 # command plus three words; further words are ignored
-def argv.3(a: String, b: String, c: String, xs: List<String>) -> String & String & String & String:
+def argv.w3(a: String, b: String, c: String, xs: List<String>) -> String & String & String & String:
   match xs:
     case Nil{}:
       (a, b, c, "")
@@ -84,28 +84,28 @@ def argv.3(a: String, b: String, c: String, xs: List<String>) -> String & String
       (a, b, c, d)
 
 # third word
-def argv.2(a: String, b: String, xs: List<String>) -> String & String & String & String:
+def argv.w2(a: String, b: String, xs: List<String>) -> String & String & String & String:
   match xs:
     case Nil{}:
       (a, b, "", "")
     case c <> t:
-      argv.3(a, b, c, t)
+      argv.w3(a, b, c, t)
 
 # second word
-def argv.1(a: String, xs: List<String>) -> String & String & String & String:
+def argv.w1(a: String, xs: List<String>) -> String & String & String & String:
   match xs:
     case Nil{}:
       (a, "", "", "")
     case b <> t:
-      argv.2(a, b, t)
+      argv.w2(a, b, t)
 
 # split argv in one walk (the list is affine)
-def argv.0(xs: List<String>) -> String & String & String & String:
+def argv.w0(xs: List<String>) -> String & String & String & String:
   match xs:
     case Nil{}:
       ("", "", "", "")
     case a <> t:
-      argv.1(a, t)
+      argv.w1(a, t)
 
 # plain text content type
 def ctype.plain() -> String:
@@ -610,7 +610,7 @@ def main.go.un(quad: String & String & String & String) -> IO(Unit):
 
 # unpack argv and run the named command
 def main.go(args: List<String>) -> IO(Unit):
-  main.go.un(argv.0(args))
+  main.go.un(argv.w0(args))
 
 # CLI entry
 def main() -> IO(Unit):

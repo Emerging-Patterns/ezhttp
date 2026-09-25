@@ -7,8 +7,9 @@
 // same way too, with dlopen at run time, because neither lane has a link line
 // that could name -lssl.
 //
-// Every name here is a `function`, never a top-level `const`: each effect's JS
-// lands in one concatenated script, and a redeclared `const` there is fatal.
+// The file runs once in a closure of its own and registers the effect at its
+// foot with io_eff, as wire.c does. The helpers are still `function`s and the
+// loaded libraries still live on globalThis, so each is opened once per process.
 
 // libc's resolver. io_sys() already carries the socket calls; getaddrinfo is
 // the one it does not, and it is the whole of ez's DNS.
@@ -259,3 +260,5 @@ function ezwire_talk(spec) {
   io_sys().close(fd);
   return out;
 }
+
+io_eff(CID(ezwire.talk), ezwire_talk);
