@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.5.0...v0.6.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* bend 2.0.28 (wire effect registration, bench renames) ([#14](https://github.com/Emerging-Patterns/ezhttp/issues/14)) ([7225964](https://github.com/Emerging-Patterns/ezhttp/commit/72259648c1bd6f7e3c2afbba71d6d5a931323139))
+
 ## [0.5.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.4.0...v0.5.0) (2026-09-25)
 
 
