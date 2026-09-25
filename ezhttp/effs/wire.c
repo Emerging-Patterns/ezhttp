@@ -338,5 +338,5 @@ Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ezwire_talk_use(void) {
-  io_eff(CID_EZWIRE_TALK, ezwire_talk_run, 0);
+  io_eff(CID(ezwire.talk), ezwire_talk_run, 0);
 }
