@@ -7,7 +7,7 @@ import ../ezhttp/http.bend as Msg
 import ../ezhttp/body.bend as Body
 import ../ezhttp/client.bend as Client
 import ../ezhttp/json.bend as Json
-import 0xce326a73bca73cdb726972cee5bd76d4/value.bend as V
+import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as V
 import ./fix.bend as Fix
 
 # unwrap a parsed U32, or zero when parse fails

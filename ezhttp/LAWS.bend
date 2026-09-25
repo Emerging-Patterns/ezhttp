@@ -15,7 +15,7 @@ import ./cache.bend as Cache
 import ./cors.bend as Cors
 import ./json.bend as Json
 import ./main.bend as Ez
-import 0xce326a73bca73cdb726972cee5bd76d4/main.bend as Ezjson
+import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
 # URL comes apart into is always absolute. The request-target is an
