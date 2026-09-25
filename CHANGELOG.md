@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.4.0...v0.5.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **deps:** ezjson 1.1.0 from the hub ([#8](https://github.com/Emerging-Patterns/ezhttp/issues/8)) ([65980dc](https://github.com/Emerging-Patterns/ezhttp/commit/65980dc4a2068785cd5f23604a76e198ff96ac77))
+
 ## [0.4.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.3.0...v0.4.0) (2026-09-22)
 
 
