@@ -10,3 +10,11 @@ tag = "v1.1.0"
 root = "."
 narHash = "sha256-yHxl1aW4luf2bdPqOUcULhOEZLlcaTOWjTrPJys4CMI="
 entry = "main.bend"
+
+[tools.bolt]
+git = "https://github.com/Emerging-Patterns/bolt"
+rev = "02fb09377f5c0fbddb5f6b7c32c8ab4ae14240df"
+tag = "v1.8.0"
+root = "."
+narHash = "sha256-53zE+3lZ/jn9GvIeGoavvNMaFyUs5dEFWd7fwP49TlM="
+entry = "main.bend"
