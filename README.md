@@ -7,10 +7,10 @@ HTTP client and server for [Bend 2](https://github.com/bendlang/bend).
 With [Bend](https://github.com/bendlang/bend) alone there is nothing to
 install: import ezhttp by its hub name and `bend` fetches it from
 [the hub](https://hub.bend-lang.com) into `~/.bend/lib` on the first run.
-`0x0a372da4a053652f70ded7d6e0d19330` is ezhttp v0.5.0.
+`0x5e4e2a9db839a0214ace6923b04b685b` is ezhttp v0.6.0.
 
 ```
-import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
+import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
 ```
 
 Or with [ez](https://github.com/Emerging-Patterns/ez), which records the
@@ -41,8 +41,8 @@ wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path
 and port 443.
 
 ```
-import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
-import 0x0a372da4a053652f70ded7d6e0d19330/client.bend as Client
+import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
+import 0x5e4e2a9db839a0214ace6923b04b685b/client.bend as Client
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -62,8 +62,8 @@ per connection, calls a pure handler, and writes one response
 in v0 for the server. A HEAD response is written with an empty body.
 
 ```
-import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
-import 0x0a372da4a053652f70ded7d6e0d19330/http.bend as Msg
+import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
+import 0x5e4e2a9db839a0214ace6923b04b685b/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -79,10 +79,10 @@ def main() -> IO(Unit):
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
-import 0x0a372da4a053652f70ded7d6e0d19330/main.bend as Http
-import 0x0a372da4a053652f70ded7d6e0d19330/http.bend as Msg
-import 0x0a372da4a053652f70ded7d6e0d19330/cookie.bend as Cookie
-import 0x0a372da4a053652f70ded7d6e0d19330/cors.bend as Cors
+import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
+import 0x5e4e2a9db839a0214ace6923b04b685b/http.bend as Msg
+import 0x5e4e2a9db839a0214ace6923b04b685b/cookie.bend as Cookie
+import 0x5e4e2a9db839a0214ace6923b04b685b/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
