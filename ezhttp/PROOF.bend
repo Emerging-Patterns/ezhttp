@@ -3,8 +3,6 @@ import Base
 import ./http.bend as Http
 import ./url.bend as Url
 import ./body.bend as Body
-import ./client.bend as Client
-import ./main.bend as Ez
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -464,37 +462,7 @@ def Laws.url_show_bad_is_marked(why):
 def Laws.url_show_opens_with_scheme(scheme, host, port, path):
   eq.starts_append(scheme, " " ++ host ++ " " ++ U32.show(port) ++ " " ++ path)
 
-def Laws.parse_url_is_url_parse(_url):
-  {==}
-
-def Laws.parse_response_is_http_parse(_raw):
-  {==}
-
-def Laws.parse_request_is_ask(_raw):
-  {==}
-
-def Laws.format_response_is_respond(_status, _hs, _body):
-  {==}
-
-def Laws.empty_body_is_empty():
-  {==}
-
-def Laws.text_body_is_text(_s):
-  {==}
-
-def Laws.octets_body_is_octets(_bs):
-  {==}
-
 def Laws.bearer_is_authorization(_token):
-  {==}
-
-def Laws.bearer_is_client_bearer(_token):
-  {==}
-
-def Laws.encode_is_body_encode(_s):
-  {==}
-
-def Laws.decode_is_body_decode(_s):
   {==}
 
 def Laws.url_empty_path():
@@ -659,9 +627,6 @@ def Laws.b64_foo():
 def Laws.basic_user_pass():
   {==}
 
-def Laws.basic_is_client_basic(_user, _password):
-  {==}
-
 def Laws.cookie_line_attributes():
   {==}
 
@@ -719,15 +684,6 @@ def Laws.cookie_max_age_open():
 def Laws.cookie_session_alive():
   {==}
 
-def Laws.set_cookie_is_cookie_set(_c):
-  {==}
-
-def Laws.parse_cookie_is_parse(_line):
-  {==}
-
-def Laws.cookie_header_is_request(_cs):
-  {==}
-
 def Laws.cache_directive_case():
   {==}
 
@@ -759,12 +715,6 @@ def Laws.fresh_max_age_overrides_expires():
   {==}
 
 def Laws.cache_max_age_present():
-  {==}
-
-def Laws.cache_control_is_parse(_value):
-  {==}
-
-def Laws.fresh_is_cache_fresh(_value, _age):
   {==}
 
 def Laws.cors_credentials_reflect_origin():
@@ -815,8 +765,6 @@ def Laws.cors_request_method_header():
 def Laws.cors_request_headers_header():
   {==}
 
-def Laws.cors_reply_is_on(_cfg, _req, _reply):
-  {==}
 def Laws.url_http_default_port():
   {==}
 

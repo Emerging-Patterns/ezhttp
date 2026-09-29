@@ -519,11 +519,11 @@ def handle(req: Msg.Request) -> Msg.Reply:
 
 # listen; the handler is closed, so fixtures stay in the binary
 def serve.go(port: U32, limit: U32) -> IO(Unit):
-  Http.http.serve(handle, port, limit)
+  Http.http.serve(handle, "127.0.0.1", port, limit)
 
 # one connection, then stop
 def once.go(port: U32) -> IO(Unit):
-  Http.http.serve_once(handle, port)
+  Http.http.serve_once(handle, "127.0.0.1", port)
 
 # serve port limit
 def run.serve(+cmd: String, a1: String, a2: String) -> IO(Unit):
@@ -608,9 +608,14 @@ def main.go.un(quad: String & String & String & String) -> IO(Unit):
   (cmd, a1, a2, a3) = quad
   run.ping(cmd, a1, a2, a3)
 
+# drop the program (bend 2.0.32 puts it at the head of IO.args), then
 # unpack argv and run the named command
 def main.go(args: List<String>) -> IO(Unit):
-  main.go.un(argv.w0(args))
+  match args:
+    case Nil{}:
+      main.go.un(argv.w0([]))
+    case prog <> rest:
+      main.go.un(argv.w0(rest))
 
 # CLI entry
 def main() -> IO(Unit):

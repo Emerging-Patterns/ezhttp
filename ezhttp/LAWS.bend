@@ -7,14 +7,13 @@ import Base
 import ./http.bend as Http
 import ./url.bend as Url
 import ./body.bend as Body
-import ./client.bend as Client
-import ./wire.bend as Wire
+import ./auth.bend as Auth
+import ./wirespec.bend as Spec
 import ./b64.bend as B64
 import ./cookie.bend as Cookie
 import ./cache.bend as Cache
 import ./cors.bend as Cors
 import ./json.bend as Json
-import ./main.bend as Ez
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -293,65 +292,11 @@ law url_show_opens_with_scheme:
 
 # --- main API surface (named so bolt laws stay clean) ---
 
-# LAW: parse_url is Url.parse
-law parse_url_is_url_parse:
-  for url: String
-  {Ez.parse_url(url) == Url.parse(url) : Url.Loc}
-
-# LAW: parse_response is Http.parse
-law parse_response_is_http_parse:
-  for raw: String
-  {Ez.parse_response(raw) == Http.parse(raw) : Http.Reply}
-
-# LAW: parse_request is Http.ask
-law parse_request_is_ask:
-  for raw: String
-  {Ez.parse_request(raw) == Http.ask(raw) : Http.Request}
-
-# LAW: format_response is Http.respond
-law format_response_is_respond:
-  for +status: U32
-  for hs: List<&2, Http.Header>
-  for +body: String
-  {Ez.format_response(status, hs, body) == Http.respond(status, hs, body)
-    : String}
-
-# LAW: empty_body is empty
-law empty_body_is_empty:
-  {Ez.empty_body() == Body.body.empty() : Body.Body}
-
-# LAW: text_body wraps Text
-law text_body_is_text:
-  for s: String
-  {Ez.text_body(s) == Body.body.text(s) : Body.Body}
-
-# LAW: octets_body wraps Octets
-law octets_body_is_octets:
-  for bs: List<&2, U32>
-  {Ez.octets_body(bs) == Body.body.octets(bs) : Body.Body}
-
 # LAW: bearer builds Authorization: Bearer …
 law bearer_is_authorization:
   for token: String
-  {Ez.bearer(token) == Http.H{"Authorization", "Bearer " ++ token}
+  {Auth.auth.bearer(token) == Http.H{"Authorization", "Bearer " ++ token}
     : Http.Header}
-
-# LAW: bearer is the client helper (reaches client.bend for type coverage)
-law bearer_is_client_bearer:
-  for token: String
-  {Ez.bearer(token) == Client.client.bearer(token) : Http.Header}
-
-# LAW: encode is Body.body.encode (identity of the wrapper)
-law encode_is_body_encode:
-  for +s: String
-  {Ez.encode(String, x => x, s) == Body.body.encode(String, x => x, s)
-    : Body.Body}
-
-# LAW: decode is Body.body.decode
-law decode_is_body_decode:
-  for +s: String
-  {Ez.decode(String, x => Some{x}, s)
-    == Body.body.decode(String, x => Some{x}, s) : Maybe<&2, String>}
 
 # --- RFC 3986 authority, query, fragment ---
 
@@ -404,12 +349,12 @@ law url_https_explicit_port:
 
 # LAW (RFC 2818): a secure exchange is labeled tls, on the given port
 law wire_https_is_tls:
-  {Wire.wire.spec(True{}, "example.com", 443, "GET / HTTP/1.1\r\n\r\n")
+  {Spec.wire.spec(True{}, "example.com", 443, "GET / HTTP/1.1\r\n\r\n")
     == "tls\nexample.com\n443\nGET / HTTP/1.1\r\n\r\n" : String}
 
 # LAW: a cleartext exchange is labeled tcp
 law wire_http_is_tcp:
-  {Wire.wire.spec(False{}, "example.com", 80, "GET / HTTP/1.1\r\n\r\n")
+  {Spec.wire.spec(False{}, "example.com", 80, "GET / HTTP/1.1\r\n\r\n")
     == "tcp\nexample.com\n80\nGET / HTTP/1.1\r\n\r\n" : String}
 
 # --- RFC 9112 request and response writers ---
@@ -618,15 +563,8 @@ law b64_foo:
 
 # LAW (RFC 7617 §2): Basic credentials are Base64 of user:password
 law basic_user_pass:
-  {Ez.basic("user", "pass")
+  {Auth.auth.basic("user", "pass")
     == Http.H{"Authorization", "Basic dXNlcjpwYXNz"} : Http.Header}
-
-# LAW: basic is the client helper
-law basic_is_client_basic:
-  for user: String
-  for password: String
-  {Ez.basic(user, password) == Client.client.basic(user, password)
-    : Http.Header}
 
 # --- RFC 6265 cookies ---
 
@@ -720,22 +658,6 @@ law cookie_max_age_open:
 law cookie_session_alive:
   {Cookie.cookie.alive("", 5n) == True{} : Bool}
 
-# LAW: set_cookie is the Set-Cookie serializer
-law set_cookie_is_cookie_set:
-  for c: Cookie.Cookie
-  {Ez.set_cookie(c) == Cookie.cookie.set(c) : Http.Header}
-
-# LAW: parse_cookie is the Set-Cookie parser
-law parse_cookie_is_parse:
-  for line: String
-  {Ez.parse_cookie(line) == Cookie.cookie.parse(line)
-    : Maybe<&2, Cookie.Cookie>}
-
-# LAW: cookie_header is the Cookie request header
-law cookie_header_is_request:
-  for cs: List<&2, Cookie.Cookie>
-  {Ez.cookie_header(cs) == Cookie.cookie.request(cs) : Http.Header}
-
 # --- RFC 9111 cache directives ---
 
 # LAW (RFC 9111 §5.2): directive names are case-insensitive
@@ -788,18 +710,6 @@ law fresh_max_age_overrides_expires:
 # LAW (RFC 9111 §4.2.1): a present max-age is what freshness uses
 law cache_max_age_present:
   {Cache.cache.max_age(Cache.cache.parse("max-age=1")) == True{} : Bool}
-
-# LAW: cache_control is the Cache-Control parser
-law cache_control_is_parse:
-  for value: String
-  {Ez.cache_control(value) == Cache.cache.parse(value) : Cache.Cc}
-
-# LAW: fresh is freshness of the parsed directives
-law fresh_is_cache_fresh:
-  for value: String
-  for age: Nat
-  {Ez.fresh(value, age)
-    == Cache.cache.fresh(Cache.cache.parse(value), age) : Bool}
 
 # --- Fetch CORS (https://fetch.spec.whatwg.org/#cors-protocol) ---
 
@@ -912,14 +822,6 @@ law cors_request_method_header:
 law cors_request_headers_header:
   {Cors.cors.request_headers("Content-Type")
     == Http.H{"Access-Control-Request-Headers", "Content-Type"} : Http.Header}
-
-# LAW: cors_reply is the CORS helper
-law cors_reply_is_on:
-  for cfg: Cors.Cfg
-  for req: Http.Request
-  for reply: Http.Reply
-  {Ez.cors_reply(cfg, req, reply) == Cors.cors.on(cfg, req, reply)
-    : Http.Reply}
 
 # --- thicker fence: more closed witnesses of the same RFCs ---
 

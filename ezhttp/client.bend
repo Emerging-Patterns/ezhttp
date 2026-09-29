@@ -6,7 +6,7 @@ import ./url.bend as Url
 import ./http.bend as Http
 import ./body.bend as Body
 import ./wire.bend as Wire
-import ./b64.bend as B64
+import ./auth.bend as Auth
 
 # structured client result: transport/parse error, or an HTTP response
 type Response is Data:
@@ -99,10 +99,10 @@ def client.delete(url: String, headers: List<&2, Http.Header>, body: Body.Body)
 def client.options(url: String, headers: List<&2, Http.Header>) -> IO(Response):
   http.loc("OPTIONS", Url.parse(url), headers, "")
 
-# Authorization: Bearer …
+# Authorization: Bearer … (auth.bend)
 def client.bearer(token: String) -> Http.Header:
-  Http.H{"Authorization", "Bearer " ++ token}
+  Auth.auth.bearer(token)
 
-# Authorization: Basic … (RFC 7617, credentials are RFC 4648 Base64)
+# Authorization: Basic … (auth.bend; RFC 7617, RFC 4648 Base64)
 def client.basic(user: String, password: String) -> Http.Header:
-  Http.H{"Authorization", "Basic " ++ B64.b64.encode(user ++ ":" ++ password)}
+  Auth.auth.basic(user, password)
