@@ -9,9 +9,10 @@ import ./cors.bend as Cors
 def server.max() -> U32:
   65536
 
-# listen on a port (RFC 9112 connection establishment stays at the socket)
-def server.listen(port: U32) -> IO(Listener):
-  IO.try(Listener, TCP.listen(port))
+# listen on a host address and port, e.g. "127.0.0.1" or "0.0.0.0"
+# (RFC 9112 connection establishment stays at the socket)
+def server.listen(host: String, port: U32) -> IO(Listener):
+  IO.try(Listener, TCP.listen(host, port))
 
 # unpack accept: listener stays, socket from the Result
 def server.accept.of(
@@ -247,10 +248,11 @@ def server.loop(
 # listen and serve up to `limit` connections
 def server.serve(
   ~handle: Http.Request -> Http.Reply,
+  host: String,
   port: U32,
   limit: U32
 ) -> IO(Unit):
-  IO.bind(Listener, Unit, server.listen(port),
+  IO.bind(Listener, Unit, server.listen(host, port),
     lst => server.loop(handle, lst, limit))
 
 # serve exactly one connection then stop
@@ -262,7 +264,11 @@ def server.once.cont(
   IO.bind(Unit, Unit, server.exchange(handle, sock),
     _u => Listener.close(lst))
 
-def server.once(~handle: Http.Request -> Http.Reply, port: U32) -> IO(Unit):
-  IO.bind(Listener, Unit, server.listen(port), lst =>
+def server.once(
+  ~handle: Http.Request -> Http.Reply,
+  host: String,
+  port: U32
+) -> IO(Unit):
+  IO.bind(Listener, Unit, server.listen(host, port), lst =>
     IO.bind(Listener & Socket, Unit, server.accept(lst),
       pair => server.once.cont(handle, pair)))

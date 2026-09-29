@@ -1,6 +1,7 @@
 # ezhttp
 
 HTTP client and server for [Bend 2](https://github.com/bendlang/bend).
+It needs bend 2.0.32 or later (the server binds `TCP.listen(host, port)`).
 
 ## Install
 
@@ -56,9 +57,10 @@ def create() -> IO(Client.Response):
 
 ### Server
 
-`http.serve` listens with Base TCP, accepts connections, parses one request
+`http.serve(handle, host, port, limit)` listens with Base TCP on `host`
+(`"127.0.0.1"` for loopback only, `"0.0.0.0"` for every interface), accepts connections, parses one request
 per connection, calls a pure handler, and writes one response
-(`Connection: close`). `http.serve_once` stops after a single client. No TLS
+(`Connection: close`). `http.serve_once(handle, host, port)` stops after a single client. No TLS
 in v0 for the server. A HEAD response is written with an empty body.
 
 ```
@@ -73,7 +75,7 @@ def handle(req: Msg.Request) -> Msg.Reply:
       Msg.Reply{200, [], "ok"}
 
 def main() -> IO(Unit):
-  Http.http.serve(handle, 8080, 1024)
+  Http.http.serve(handle, "127.0.0.1", 8080, 1024)
 ```
 
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
@@ -121,7 +123,11 @@ never pair with `Access-Control-Allow-Origin: *`.
 ## Compliance
 
 Closed equalities in `ezhttp/LAWS.bend`, proved in `ezhttp/PROOF.bend`
-(`bend ezhttp/PROOF.bend`), target:
+(`bend ezhttp/PROOF.bend` prints `ALL PROOFS CHECK`). The laws that say the
+entry's re-exports and the client's header helpers equal those pure
+definitions are in `ezhttp/ENTRY.bend`. `main.bend` and `client.bend` reach
+the wire effect, so bend's verdict on that file is `SOME PROOFS FAIL`, with
+the list of defs that rely on foreign code as its only error. The laws target:
 
 - [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) URI: scheme before the
   first colon and lowercased (§3.1), `hier-part` requiring `//` (§3),

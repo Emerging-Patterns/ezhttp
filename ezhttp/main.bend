@@ -143,14 +143,19 @@ def http.options_with(url: String, headers: List<&2, Http.Header>)
   -> IO(Client.Response):
   Client.client.options(url, headers)
 
-# listen and serve up to `limit` connections
+# listen on host:port and serve up to `limit` connections
 def http.serve(
   ~handle: Http.Request -> Http.Reply,
+  host: String,
   port: U32,
   limit: U32
 ) -> IO(Unit):
-  Server.server.serve(handle, port, limit)
+  Server.server.serve(handle, host, port, limit)
 
-# serve one connection then stop
-def http.serve_once(~handle: Http.Request -> Http.Reply, port: U32) -> IO(Unit):
-  Server.server.once(handle, port)
+# listen on host:port, serve one connection, then stop
+def http.serve_once(
+  ~handle: Http.Request -> Http.Reply,
+  host: String,
+  port: U32
+) -> IO(Unit):
+  Server.server.once(handle, host, port)

@@ -2,17 +2,19 @@
   description = "ezhttp: HTTP client and server for Bend 2";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # bendlang/bend's flake at the commit that packages 2.0.34 (the v2.0.34 tag
+  # still packages 2.0.33)
   inputs.bend = {
-    url = "github:bendlang/bend";
+    url = "github:bendlang/bend/777ee0b55c485afdd7e68bd917b3d23a88d77371";
     inputs.nixpkgs.follows = "nixpkgs";
   };
   inputs.ez = {
     url = "github:Emerging-Patterns/ez";
     inputs.nixpkgs.follows = "nixpkgs";
-    # not `inputs.bend.follows = "bend"`: ez 1.2.0 does not build on bend
-    # 2.0.28, so ez (and `ez prove`, and bolt through mkLint) keep the bend
-    # ez 1.2.0 locks, 2.0.27
-    inputs.bend.url = "github:bendlang/bend/d37909174ebd664338ae3194799a9e0899dedd51";
+    # ez and its bolt stay on the bend ez's own flake.lock records until ez
+    # releases on 2.0.34, so ez's inputs.bend is pinned, not followed. The
+    # package's own builds and its proofs (checks.proofs) run on 2.0.34.
+    inputs.bend.url = "github:bendlang/bend/af569d4826913b2ce3557e9829ccad31fcf86f94";
   };
 
   outputs = { self, nixpkgs, ... }@inputs:
@@ -40,7 +42,32 @@
       apps.${system} = bench.apps;
 
       checks.${system} = {
-        proofs = ez.mkProofs { ez = ezBin; src = self; };
+        # every PROOF.bend on this flake's bend: its first line must be
+        # ALL PROOFS CHECK. ez.mkProofs comes back when ez runs on 2.0.34.
+        # ezhttp/ENTRY.bend states the laws on main.bend and client.bend,
+        # which reach the wire effect, so its verdict is SOME PROOFS FAIL;
+        # its only error may be the list of defs relying on foreign code.
+        proofs = pkgs.runCommand "ezhttp-proofs" {
+          nativeBuildInputs = [ bend ];
+          BEND_LIB = ez.bendLib ./ez.lock.toml;
+        } ''
+          export HOME=$TMPDIR
+          cp -r ${self} src && chmod -R u+w src && cd src
+          for p in $(find . -name PROOF.bend -not -path './.ez/*' | sort); do
+            first=$(cd "$(dirname "$p")" && bend "$(basename "$p")" | head -n 1)
+            echo "$p: $first"
+            [ "$first" = "ALL PROOFS CHECK" ] || exit 1
+          done
+          out_entry=$(cd ezhttp && bend ENTRY.bend 2>&1 || true)
+          echo "$out_entry" | head -n 2
+          [ "$(echo "$out_entry" | sed -n 1p)" = "SOME PROOFS FAIL" ] || exit 1
+          echo "$out_entry" | sed -n 2p \
+            | grep -Eq '^Error: [0-9]+ defs? rel(y|ies) on unsafe or foreign code:$' || exit 1
+          if echo "$out_entry" | tail -n +3 | grep -v '^- ' | grep -q .; then
+            echo "$out_entry"; exit 1
+          fi
+          touch $out
+        '';
         lint = ez.mkLint { src = self; };
       } // bench.checks;
 

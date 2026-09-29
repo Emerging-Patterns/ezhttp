@@ -7,16 +7,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1790359392,
-        "narHash": "sha256-z0Xwg46QesyRnlb7+sQue2GRq90v9M2XVaNVVSdd5Vs=",
+        "lastModified": 1790643370,
+        "narHash": "sha256-VYGPIHkNeccEaBHGer1B7+GNiWKQBiN/iiS7PozBXx0=",
         "owner": "bendlang",
         "repo": "bend",
-        "rev": "11c65a2572e16d0bfc2e83068b23ed8fb180ccc0",
+        "rev": "777ee0b55c485afdd7e68bd917b3d23a88d77371",
         "type": "github"
       },
       "original": {
         "owner": "bendlang",
         "repo": "bend",
+        "rev": "777ee0b55c485afdd7e68bd917b3d23a88d77371",
         "type": "github"
       }
     },
@@ -25,17 +26,17 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1790200275,
-        "narHash": "sha256-huYLnKbMUukFhFLypIXx/wLVU3EmgsUEe9l67mU6CDw=",
+        "lastModified": 1790482124,
+        "narHash": "sha256-Gv309ikt48M8cISbwSo6V0md2572iieIRiyl3noF1cA=",
         "owner": "bendlang",
         "repo": "bend",
-        "rev": "d37909174ebd664338ae3194799a9e0899dedd51",
+        "rev": "af569d4826913b2ce3557e9829ccad31fcf86f94",
         "type": "github"
       },
       "original": {
         "owner": "bendlang",
         "repo": "bend",
-        "rev": "d37909174ebd664338ae3194799a9e0899dedd51",
+        "rev": "af569d4826913b2ce3557e9829ccad31fcf86f94",
         "type": "github"
       }
     },
