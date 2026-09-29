@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.6.0...v0.7.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* http.serve and http.serve_once (and server.listen, server.serve, server.once) take `host: String` before `port`, the address to bind, e.g. "127.0.0.1" for loopback or "0.0.0.0" for every interface. Replace `http.serve(handle, 8080, n)` with `http.serve(handle, "127.0.0.1", 8080, n)`. ezhttp now needs bend 2.0.32 or later.
+
+### Features
+
+* server takes the host to bind; bend 2.0.34 ([#17](https://github.com/Emerging-Patterns/ezhttp/issues/17)) ([f7158f9](https://github.com/Emerging-Patterns/ezhttp/commit/f7158f918f96035bd22825d11eea6200039d95dd))
+
 ## [0.6.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.5.0...v0.6.0) (2026-09-25)
 
 
