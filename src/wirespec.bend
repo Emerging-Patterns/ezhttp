@@ -1,4 +1,4 @@
-# ezhttp/wirespec: the text the wire effect reads, pure. Kept apart from
+# ezhttp/src/wirespec: the text the wire effect reads, pure. Kept apart from
 # wire.bend (the effect) so the proof gate can import it.
 #
 # Spec: scheme, host, port each on their own line; everything after the third

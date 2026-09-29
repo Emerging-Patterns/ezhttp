@@ -1,4 +1,4 @@
-# ezhttp/url: a URL taken apart far enough for an HTTP request. Scheme, host,
+# ezhttp/src/url: a URL taken apart far enough for an HTTP request. Scheme, host,
 # port, and an origin-form path (absolute-path, optional query). Userinfo is
 # stripped. The fragment is not part of the request-target.
 #

@@ -1,4 +1,4 @@
-# ezhttp/client: fetch a URL. URL and HTTP parsing joined to the wire effect.
+# ezhttp/src/client: fetch a URL. URL and HTTP parsing joined to the wire effect.
 # Answers a structured Response (status + headers + body), not a hub-style
 # "0\n…" string contract.
 import Base

@@ -1,4 +1,4 @@
-# ezhttp/wire: one request out and one response back. TLS and DNS stay in
+# ezhttp/src/wire: one request out and one response back. TLS and DNS stay in
 # the effect (OpenSSL via dlopen); this module does not re-specify TLS.
 #
 # Spec: scheme, host, port each on their own line; everything after the third

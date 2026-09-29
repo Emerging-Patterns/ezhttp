@@ -1,4 +1,4 @@
-# ezhttp/cache: Cache-Control and a small freshness check (RFC 9111). This is
+# ezhttp/src/cache: Cache-Control and a small freshness check (RFC 9111). This is
 # not a shared cache. Expires is recorded; max-age overrides it for freshness.
 # IMF-fixdate arithmetic is not evaluated.
 import Base

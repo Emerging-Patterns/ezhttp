@@ -1,4 +1,4 @@
-# ezhttp/cookie: Set-Cookie and Cookie (RFC 6265 §§4–5). A thin jar: parse
+# ezhttp/src/cookie: Set-Cookie and Cookie (RFC 6265 §§4–5). A thin jar: parse
 # attributes, serialize the request header, and domain/path/secure matching.
 # Expires is stored, not evaluated against a clock. SameSite is stored; there
 # is no browsing context to suppress cross-site sends.

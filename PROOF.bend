@@ -1,8 +1,8 @@
-# ezhttp: the proofs. `bend ezhttp/PROOF.bend` is the gate.
+# ezhttp: the proofs. `bend PROOF.bend` is the gate.
 import Base
-import ./http.bend as Http
-import ./url.bend as Url
-import ./body.bend as Body
+import ./src/http.bend as Http
+import ./src/url.bend as Url
+import ./src/body.bend as Body
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---

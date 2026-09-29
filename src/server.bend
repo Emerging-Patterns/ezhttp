@@ -1,4 +1,4 @@
-# ezhttp/server: listen, accept, parse one request, write one response.
+# ezhttp/src/server: listen, accept, parse one request, write one response.
 # Uses Base TCP (no TLS in v0). One exchange per connection with
 # Connection: close. Handler is a pure Request -> Reply function.
 import Base

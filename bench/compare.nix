@@ -8,7 +8,7 @@
 #   Request→response is timed by one ureq process, not a CLI wrapper.
 # - Load: hey (outside the timed path) reports RPS and p50/p99. Same payload,
 #   count, and concurrency on both servers.
-# - JSON cases use ezhttp/json.bend on the Bend side and serde_json on the
+# - JSON cases use src/json.bend on the Bend side and serde_json on the
 #   Rust side. Text and octet bodies are the same fixture bytes.
 # - Ratio = ezhttp/ref when both timers resolve. If MS stays 0, wall/n is
 #   reported and there is no vs claim. Ratios never fail the check.

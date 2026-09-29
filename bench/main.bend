@@ -1,12 +1,12 @@
 # Fair HTTP bench driver. Fixtures are loaded before IO.now. Timed loops stay
 # in this process: GET/POST through ezhttp, and serve / serve_once for the
-# server track. JSON cases call ezhttp/json.bend (ezjson). Core HTTP types
+# server track. JSON cases call src/json.bend (ezjson). Core HTTP types
 # stay text and octets.
-import ../ezhttp/main.bend as Http
-import ../ezhttp/http.bend as Msg
-import ../ezhttp/body.bend as Body
-import ../ezhttp/client.bend as Client
-import ../ezhttp/json.bend as Json
+import ../main.bend as Http
+import ../src/http.bend as Msg
+import ../src/body.bend as Body
+import ../src/client.bend as Client
+import ../src/json.bend as Json
 import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as V
 import ./fix.bend as Fix
 
@@ -413,7 +413,7 @@ def reply.json.of(m: Maybe<&2, V.Json>) -> Msg.Reply:
     case Some{j}:
       reply.ok(ctype.json(), json.out(Some{j}))
 
-# POST /json: parse with ezhttp/json.bend and answer with the print
+# POST /json: parse with src/json.bend and answer with the print
 def reply.json(body: String) -> Msg.Reply:
   reply.json.of(Json.json.parse(body))
 

@@ -1,4 +1,4 @@
-# ezhttp/auth: Authorization header values, pure. Kept apart from client.bend
+# ezhttp/src/auth: Authorization header values, pure. Kept apart from client.bend
 # (which reaches the wire effect) so the proof gate can import it.
 import Base
 import ./http.bend as Http

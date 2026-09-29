@@ -27,7 +27,7 @@ Shared types cover both sides: `Header`, structured `Request` / `Reply`
 (status or method, headers, body). Bodies are empty, UTF-8 text, or an octet
 list. The HTTP API does not need JSON: `Request`, `Reply`, and the client
 `Response` stay text and octets, and `encode` / `decode` take any codec. The
-hub package is the HTTP library alone. `ezhttp/json.bend`, the optional
+hub package is the HTTP library alone. `src/json.bend`, the optional
 helper that calls [ezjson](https://github.com/Emerging-Patterns/ezjson), is
 in this repository but not reachable from `main.bend`, so it is not in the
 hub package; import ezjson from the hub to read a JSON body (below).
@@ -43,7 +43,7 @@ and port 443.
 
 ```
 import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/client.bend as Client
+import 0x5e4e2a9db839a0214ace6923b04b685b/src/client.bend as Client
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -65,7 +65,7 @@ in v0 for the server. A HEAD response is written with an empty body.
 
 ```
 import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/http.bend as Msg
+import 0x5e4e2a9db839a0214ace6923b04b685b/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -82,9 +82,9 @@ Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
 import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/http.bend as Msg
-import 0x5e4e2a9db839a0214ace6923b04b685b/cookie.bend as Cookie
-import 0x5e4e2a9db839a0214ace6923b04b685b/cors.bend as Cors
+import 0x5e4e2a9db839a0214ace6923b04b685b/src/http.bend as Msg
+import 0x5e4e2a9db839a0214ace6923b04b685b/src/cookie.bend as Cookie
+import 0x5e4e2a9db839a0214ace6923b04b685b/src/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
@@ -122,10 +122,10 @@ never pair with `Access-Control-Allow-Origin: *`.
 
 ## Compliance
 
-Closed equalities in `ezhttp/LAWS.bend`, proved in `ezhttp/PROOF.bend`
-(`bend ezhttp/PROOF.bend` prints `ALL PROOFS CHECK`). The laws that say the
+Closed equalities in `LAWS.bend`, proved in `PROOF.bend`
+(`bend PROOF.bend` prints `ALL PROOFS CHECK`). The laws that say the
 entry's re-exports and the client's header helpers equal those pure
-definitions are in `ezhttp/ENTRY.bend`. `main.bend` and `client.bend` reach
+definitions are in `ENTRY.bend`. `main.bend` and `src/client.bend` reach
 the wire effect, so bend's verdict on that file is `SOME PROOFS FAIL`, with
 the list of defs that rely on foreign code as its only error. The laws target:
 

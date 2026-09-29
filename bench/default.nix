@@ -18,14 +18,15 @@ let
   bendLib = ez.bendLib (self + "/ez.lock.toml");
 
   # Sandbox-safe CC: nixpkgs clang (native ELF). BEND_LIB is the locked ezjson
-  # tree, so ezhttp/json.bend resolves without a hub publish.
+  # tree, so src/json.bend resolves without a hub publish.
   drv = pkgs.stdenv.mkDerivation {
     pname = "ezhttp-bench-drv";
     version = "0.1.0";
     dontUnpack = true;
     nativeBuildInputs = [ bend llvm.clang ];
     buildPhase = ''
-      cp -r ${self}/ezhttp ./ezhttp
+      cp ${self}/main.bend ./main.bend
+      cp -r ${self}/src ./src
       mkdir -p bench
       cp ${./main.bend} bench/main.bend
       cp ${./fix.bend} bench/fix.bend

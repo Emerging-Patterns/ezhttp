@@ -1,6 +1,6 @@
 [package]
 name = "ezhttp"
-entry = "ezhttp/main.bend"
+entry = "main.bend"
 
 [deps.ezjson]
 hash = "0x81c67699424929b5c44cd8577e18117f"

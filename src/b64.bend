@@ -1,4 +1,4 @@
-# ezhttp/b64: Base64 encoding for HTTP credentials (RFC 4648 §4). The
+# ezhttp/src/b64: Base64 encoding for HTTP credentials (RFC 4648 §4). The
 # alphabet is the standard table, with `=` padding. Decoding is not required
 # for the Authorization helpers.
 import Base
