@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.7.0...v0.8.0) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* ezhttp's internal modules moved from ezhttp/ to src/, and the entry from ezhttp/main.bend to main.bend. Importers of main.bend by the package's hub name are unaffected; importers of any other module update the path, e.g. <hash>/http.bend becomes <hash>/src/http.bend.
+
+### Features
+
+* ez init's layout, main.bend at the root and modules under src/ ([#19](https://github.com/Emerging-Patterns/ezhttp/issues/19)) ([f1caaee](https://github.com/Emerging-Patterns/ezhttp/commit/f1caaee1dfe7d01903e67cc031973866aefb3783))
+
 ## [0.7.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.6.0...v0.7.0) (2026-09-29)
 
 
