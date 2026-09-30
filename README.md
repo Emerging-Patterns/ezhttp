@@ -1,18 +1,23 @@
 # ezhttp
 
 HTTP client and server for [Bend 2](https://github.com/bendlang/bend).
-It needs bend 2.0.32 or later (the server binds `TCP.listen(host, port)`).
 
 ## Install
 
-With [Bend](https://github.com/bendlang/bend) alone there is nothing to
-install: import ezhttp by its hub name and `bend` fetches it from
+It needs bend 2.0.32 or later (the server binds `TCP.listen(host, port)`).
+ezhttp is built and checked on bend 2.0.34.
+
+With [Bend](https://github.com/bendlang/bend) alone there is no install
+step: import ezhttp by its hub name and `bend` fetches it from
 [the hub](https://hub.bend-lang.com) into `~/.bend/lib` on the first run.
-`0x5e4e2a9db839a0214ace6923b04b685b` is ezhttp v0.6.0.
+`emerging-ezhttp@0.8.0.0` is ezhttp v0.8.0:
 
 ```
-import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
+import emerging-ezhttp@0.8.0.0/main.bend as Http
 ```
+
+That name resolves to `0xf1c957a470368870a6d1d62a8c0cbe32`.
+To pin by content instead, import `0xf1c957a470368870a6d1d62a8c0cbe32/main.bend`.
 
 Or with [ez](https://github.com/Emerging-Patterns/ez), which records the
 package in `ez.toml` (`ez init` makes one):
@@ -42,8 +47,8 @@ wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path
 and port 443.
 
 ```
-import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/src/client.bend as Client
+import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.8.0.0/src/client.bend as Client
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -64,8 +69,8 @@ per connection, calls a pure handler, and writes one response
 in v0 for the server. A HEAD response is written with an empty body.
 
 ```
-import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/src/http.bend as Msg
+import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -81,10 +86,10 @@ def main() -> IO(Unit):
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
-import 0x5e4e2a9db839a0214ace6923b04b685b/main.bend as Http
-import 0x5e4e2a9db839a0214ace6923b04b685b/src/http.bend as Msg
-import 0x5e4e2a9db839a0214ace6923b04b685b/src/cookie.bend as Cookie
-import 0x5e4e2a9db839a0214ace6923b04b685b/src/cors.bend as Cors
+import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.8.0.0/src/cookie.bend as Cookie
+import emerging-ezhttp@0.8.0.0/src/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
@@ -100,8 +105,8 @@ def cross(cfg: Cors.Cfg, req: Msg.Request, reply: Msg.Reply) -> Msg.Reply:
 ```
 
 ```
-import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
-import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as Value
+import emerging-ezjson@1.1.0.0/main.bend as Ezjson
+import emerging-ezjson@1.1.0.0/src/value.bend as Value
 
 def read.of(got: Maybe<&2, Value.Json>) -> Maybe<&2, String>:
   match got:
