@@ -1,4 +1,4 @@
-# ezhttp/http: HTTP/1.1 message text for client and server — request and
+# ezhttp/src/http: HTTP/1.1 message text for client and server — request and
 # response formatting/parsing — with no sockets. Semantics follow RFC 9110;
 # message syntax and framing follow RFC 9112. TLS is outside this module.
 import Base

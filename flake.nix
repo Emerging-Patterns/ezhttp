@@ -44,7 +44,7 @@
       checks.${system} = {
         # every PROOF.bend on this flake's bend: its first line must be
         # ALL PROOFS CHECK. ez.mkProofs comes back when ez runs on 2.0.34.
-        # ezhttp/ENTRY.bend states the laws on main.bend and client.bend,
+        # ENTRY.bend states the laws on main.bend and client.bend,
         # which reach the wire effect, so its verdict is SOME PROOFS FAIL;
         # its only error may be the list of defs relying on foreign code.
         proofs = pkgs.runCommand "ezhttp-proofs" {
@@ -58,7 +58,7 @@
             echo "$p: $first"
             [ "$first" = "ALL PROOFS CHECK" ] || exit 1
           done
-          out_entry=$(cd ezhttp && bend ENTRY.bend 2>&1 || true)
+          out_entry=$(bend ENTRY.bend 2>&1 || true)
           echo "$out_entry" | head -n 2
           [ "$(echo "$out_entry" | sed -n 1p)" = "SOME PROOFS FAIL" ] || exit 1
           echo "$out_entry" | sed -n 2p \

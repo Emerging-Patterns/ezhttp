@@ -2,18 +2,18 @@
 # message framing (RFC 9112), HTTP semantics (RFC 9110), TLS selection
 # (RFC 2818), Basic and Bearer credentials (RFC 7617, RFC 4648, RFC 6750),
 # cookies (RFC 6265), caching directives (RFC 9111), and Fetch CORS.
-# PROOF.bend fills them. `bend ezhttp/PROOF.bend` is the gate.
+# PROOF.bend fills them. `bend PROOF.bend` is the gate.
 import Base
-import ./http.bend as Http
-import ./url.bend as Url
-import ./body.bend as Body
-import ./auth.bend as Auth
-import ./wirespec.bend as Spec
-import ./b64.bend as B64
-import ./cookie.bend as Cookie
-import ./cache.bend as Cache
-import ./cors.bend as Cors
-import ./json.bend as Json
+import ./src/http.bend as Http
+import ./src/url.bend as Url
+import ./src/body.bend as Body
+import ./src/auth.bend as Auth
+import ./src/wirespec.bend as Spec
+import ./src/b64.bend as B64
+import ./src/cookie.bend as Cookie
+import ./src/cache.bend as Cache
+import ./src/cors.bend as Cors
+import ./src/json.bend as Json
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a

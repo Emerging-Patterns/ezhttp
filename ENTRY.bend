@@ -3,18 +3,18 @@
 #
 # main.bend and client.bend reach the wire effect (user foreign code), so from
 # bend 2.0.32 no file importing them can print ALL PROOFS CHECK: the verdict
-# covers every def of every import. `bend ezhttp/ENTRY.bend` must print
+# covers every def of every import. `bend ENTRY.bend` must print
 # SOME PROOFS FAIL with the foreign-code list as its only error (the wire
 # effect and the defs that reach it); the flake's proofs check holds it to that.
 import Base
-import ./http.bend as Http
-import ./url.bend as Url
-import ./body.bend as Body
-import ./auth.bend as Auth
-import ./cookie.bend as Cookie
-import ./cache.bend as Cache
-import ./cors.bend as Cors
-import ./client.bend as Client
+import ./src/http.bend as Http
+import ./src/url.bend as Url
+import ./src/body.bend as Body
+import ./src/auth.bend as Auth
+import ./src/cookie.bend as Cookie
+import ./src/cache.bend as Cache
+import ./src/cors.bend as Cors
+import ./src/client.bend as Client
 import ./main.bend as Ez
 
 # LAW: parse_url is Url.parse

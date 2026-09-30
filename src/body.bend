@@ -1,4 +1,4 @@
-# ezhttp/body: request entity as empty, UTF-8 text, or octet list. Core does
+# ezhttp/src/body: request entity as empty, UTF-8 text, or octet list. Core does
 # not depend on ezjson. Callers plug encode/decode through Bend type
 # parameters (BYO JSON or any other representation).
 import Base

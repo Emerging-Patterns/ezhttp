@@ -1,4 +1,4 @@
-# ezhttp/json: optional JSON helpers. HTTP messages stay text and octets.
+# ezhttp/src/json: optional JSON helpers. HTTP messages stay text and octets.
 # This module is the only one that imports ezjson. Request, Reply, and the
 # client Response do not.
 import Base

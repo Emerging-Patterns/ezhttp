@@ -1,14 +1,16 @@
-# ezhttp: HTTP client and server for Bend 2. Shared message types, BYO JSON
-# via encode/decode. TLS for the client stays at the wire/runtime layer.
+# ezhttp: HTTP/1.1 client and server for Bend 2, with auth, cookie and CORS helpers.
+#
+# Shared message types, BYO JSON via encode/decode. TLS for the client stays
+# at the wire/runtime layer.
 import Base
-import ./url.bend as Url
-import ./http.bend as Http
-import ./body.bend as Body
-import ./client.bend as Client
-import ./server.bend as Server
-import ./cookie.bend as Cookie
-import ./cache.bend as Cache
-import ./cors.bend as Cors
+import ./src/url.bend as Url
+import ./src/http.bend as Http
+import ./src/body.bend as Body
+import ./src/client.bend as Client
+import ./src/server.bend as Server
+import ./src/cookie.bend as Cookie
+import ./src/cache.bend as Cache
+import ./src/cors.bend as Cors
 
 # URL parse re-export
 def parse_url(url: String) -> Url.Loc:

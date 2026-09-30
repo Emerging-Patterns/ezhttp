@@ -1,4 +1,4 @@
-# ezhttp/cors: Fetch CORS response headers for a simple request and an OPTIONS
+# ezhttp/src/cors: Fetch CORS response headers for a simple request and an OPTIONS
 # preflight. Origins are reflected, or `*`, and credentials never pair with `*`.
 # See https://fetch.spec.whatwg.org/#cors-protocol.
 import Base
