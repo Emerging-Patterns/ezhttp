@@ -105,21 +105,35 @@ def server.read.use(
 ) -> IO(Socket & Http.Request):
   server.read.empty(sock, got, chunk, rest, String.eq(chunk, ""))
 
+# None{} is the peer closing its write side; Some is the bytes that arrived
+def server.read.got(
+  sock: Socket,
+  got: String,
+  rest: Socket -> String -> IO(Socket & Http.Request),
+  chunk: Maybe<&1, String>
+) -> IO(Socket & Http.Request):
+  match chunk:
+    case None{}:
+      server.read.done(sock, got)
+    case Some{text}:
+      server.read.use(sock, got, text, rest)
+
 # the bytes from one recv
 def server.read.pass(
   sock: Socket,
   got: String,
   rest: Socket -> String -> IO(Socket & Http.Request),
-  r: Result<&1, &1, U32 & String, String>
+  r: Result<&1, &1, U32 & String, Maybe<&1, String>>
 ) -> IO(Socket & Http.Request):
-  IO.bind(String, Socket & Http.Request, IO.pass(String, r),
-    chunk => server.read.use(sock, got, chunk, rest))
+  IO.bind(Maybe<&1, String>, Socket & Http.Request,
+    IO.pass(Maybe<&1, String>, r),
+    chunk => server.read.got(sock, got, rest, chunk))
 
 # unpack recv's socket and result
 def server.read.un(
   got: String,
   rest: Socket -> String -> IO(Socket & Http.Request),
-  pair: Socket & Result<&1, &1, U32 & String, String>
+  pair: Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>
 ) -> IO(Socket & Http.Request):
   (sock, r) = pair
   server.read.pass(sock, got, rest, r)
@@ -132,7 +146,7 @@ def server.read.go(fuel: Nat, sock: Socket, got: String) -> IO(Socket & Http.Req
       server.read.done(sock, got)
     case 1n+f:
       IO.bind(
-        Socket & Result<&1, &1, U32 & String, String>,
+        Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>,
         Socket & Http.Request,
         TCP.recv(sock, server.max()),
         pair => server.read.un(got, s => g => server.read.go(f, s, g), pair))
@@ -141,19 +155,28 @@ def server.read.go(fuel: Nat, sock: Socket, got: String) -> IO(Socket & Http.Req
 def server.read(sock: Socket) -> IO(Socket & Http.Request):
   server.read.go(server.read.fuel(), sock, "")
 
-# write a structured response and keep the socket
-def server.write.res(sock: Socket, r: Result<&1, &1, U32 & String, Unit>)
-  -> IO(Socket):
-  IO.bind(Unit, Socket, IO.pass(Unit, r), _u => IO.pure(Socket, sock))
+# a failed send stops with the kernel's code and message
+def server.write.fail(err: (U32 & String) & String) -> IO(Socket):
+  ((code, message), _left) = err
+  IO.die(Socket, code, message)
 
-def server.write.un(pair: Socket & Result<&1, &1, U32 & String, Unit>)
+# write a structured response and keep the socket
+def server.write.res(sock: Socket, r: Result<&1, &1, (U32 & String) & String, Unit>)
+  -> IO(Socket):
+  match r:
+    case Done{_u}:
+      IO.pure(Socket, sock)
+    case Fail{err}:
+      server.write.fail(err)
+
+def server.write.un(pair: Socket & Result<&1, &1, (U32 & String) & String, Unit>)
   -> IO(Socket):
   (s, r) = pair
   server.write.res(s, r)
 
 def server.write(sock: Socket, reply: Http.Reply) -> IO(Socket):
   IO.bind(
-    Socket & Result<&1, &1, U32 & String, Unit>,
+    Socket & Result<&1, &1, (U32 & String) & String, Unit>,
     Socket,
     TCP.send(sock, Http.respond.of(reply)),
     server.write.un)
