@@ -59,7 +59,7 @@
           bench.packages.ezhttp-http-bench
         ];
         extraHook = ''
-          export EZ_LIBSSL=${pkgs.openssl.out}/lib/libssl.so
+          export BEND_LIBSSL=${pkgs.openssl.out}/lib/libssl.so.3
           export SSL_CERT_FILE=''${SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}
         '';
       };
