@@ -16,6 +16,8 @@ import ./src/cors.bend as Cors
 import ./src/json.bend as Json
 import ./src/step.bend as Step
 import ./src/pct.bend as Pct
+import ./src/html.bend as Html
+import ./src/redirect.bend as Redirect
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -1525,3 +1527,346 @@ law frame_quote:
   for +str: String
   for +e: {nibbles(slash, str) == True{} : Bool}
   {framed(slash, Pct.quote(slash, str), 0n) == True{} : Bool}
+
+# --- the client's timeout (SPEC.md HTTP-CLI) ---
+
+# LAW: a timed spec carries exactly the timeout it was given: the effect reads
+# back the same number of milliseconds
+# HTTP-CLI-1
+law spec_timed_ms:
+  for +secure: Bool
+  for ms: U32
+  for +host: String
+  for +port: U32
+  for +req: String
+  {Spec.wire.ms(Spec.wire.spec.timed(secure, ms, host, port, req)) == ms
+    : U32}
+
+# LAW: the spec every other client call sends carries no timeout, and the
+# effect reads 60000 ms from it
+# HTTP-CLI-1
+law spec_plain_ms:
+  for secure: Bool
+  for host: String
+  for port: U32
+  for req: String
+  {Spec.wire.ms(Spec.wire.spec(secure, host, port, req)) == 60000 : U32}
+
+# LAW: a timed spec is its first line (scheme, a space, the timeout), then
+# host, port and request on the lines the untimed spec puts them
+# HTTP-CLI-2
+law spec_timed_lines:
+  for secure: Bool
+  for ms: U32
+  for host: String
+  for port: U32
+  for req: String
+  {Spec.wire.spec.timed(secure, ms, host, port, req)
+    == (Spec.wire.scheme(secure) ++ " " ++ Spec.wire.ms.text(ms)) ++ "\n"
+      ++ host ++ "\n" ++ U32.show(port) ++ "\n" ++ req : String}
+
+# LAW: the untimed spec is the scheme alone on its first line, then host,
+# port and request
+# HTTP-CLI-2
+law spec_plain_lines:
+  for secure: Bool
+  for host: String
+  for port: U32
+  for req: String
+  {Spec.wire.spec(secure, host, port, req)
+    == Spec.wire.scheme(secure) ++ "\n" ++ host ++ "\n" ++ U32.show(port)
+      ++ "\n" ++ req : String}
+
+# LAW: a failed exchange with status 28 is reported as `timed out: <why>`
+# HTTP-CLI-3
+law why_late:
+  for why: String
+  {Spec.wire.why(Some{28}, why) == "timed out: " ++ why : String}
+
+# LAW: a failed exchange with any other status keeps its reason unchanged
+# HTTP-CLI-3
+law why_other:
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 28) : Bool}
+  for why: String
+  {Spec.wire.why(Some{n}, why) == why : String}
+
+# LAW: a failed exchange with no status keeps its reason unchanged
+# HTTP-CLI-3
+law why_none:
+  for why: String
+  {Spec.wire.why(None{}, why) == why : String}
+
+# LAW: the reason reported for status 28 is one timed_out recognizes
+# HTTP-CLI-3
+law why_late_timed_out:
+  for why: String
+  {Spec.wire.timed_out(Spec.wire.why(Some{28}, why)) == True{} : Bool}
+
+# --- redirects (SPEC.md HTTP-REDIR) ---
+
+# LAW: a redirect status, with hops left, whose Location has a target goes to
+# exactly that target
+# HTTP-REDIR-1
+law redir_go:
+  for +status: U32
+  for e: {True{} == Bool.or(U32.is_eq(status, 301), Bool.or(U32.is_eq(status,
+    302), Bool.or(U32.is_eq(status, 303), Bool.or(U32.is_eq(status, 307),
+    U32.is_eq(status, 308))))) : Bool}
+  for n: Nat
+  for url: String
+  for +loc: String
+  for next: String
+  for et: {Some{next} == Redirect.redirect.target(url, loc)
+    : Maybe<&2, String>}
+  {Redirect.redirect.next(1n+n, url, status, loc) == Redirect.Go{next}
+    : Redirect.Hop}
+
+# LAW: a redirect whose Location has no target stops the chain
+# HTTP-REDIR-1
+law redir_no_target:
+  for +status: U32
+  for left: Nat
+  for url: String
+  for +loc: String
+  for et: {None{} == Redirect.redirect.target(url, loc) : Maybe<&2, String>}
+  {Redirect.redirect.next(left, url, status, loc) == Redirect.Stop{}
+    : Redirect.Hop}
+
+# LAW: the Location the planner reads is the response's Location header
+# (case-insensitive, "" when absent)
+# HTTP-REDIR-1
+law redir_plan_location:
+  for left: Nat
+  for url: String
+  for +status: U32
+  for hs: List<&2, Http.Header>
+  {Redirect.redirect.plan(left, url, status, hs)
+    == Redirect.redirect.next(left, url, status,
+      Http.headers.find(hs, "location")) : Redirect.Hop}
+
+# LAW: every status other than 301, 302, 303, 307 and 308 stops the chain
+# HTTP-REDIR-2
+law redir_other:
+  for +status: U32
+  for e: {False{} == Bool.or(U32.is_eq(status, 301), Bool.or(U32.is_eq(status,
+    302), Bool.or(U32.is_eq(status, 303), Bool.or(U32.is_eq(status, 307),
+    U32.is_eq(status, 308))))) : Bool}
+  for left: Nat
+  for url: String
+  for +loc: String
+  {Redirect.redirect.next(left, url, status, loc) == Redirect.Stop{}
+    : Redirect.Hop}
+
+# LAW: with no hops left the chain stops, whatever the response
+# HTTP-REDIR-2
+law redir_zero:
+  for url: String
+  for +status: U32
+  for +loc: String
+  {Redirect.redirect.next(0n, url, status, loc) == Redirect.Stop{}
+    : Redirect.Hop}
+
+# LAW: an absolute http or https Location is its own target
+# HTTP-REDIR-3
+law target_absolute:
+  for url: String
+  for +loc: String
+  for e: {True{} == Bool.or(String.starts_with(loc, "http://"),
+    String.starts_with(loc, "https://")) : Bool}
+  {Redirect.redirect.target(url, loc) == Some{loc} : Maybe<&2, String>}
+
+# LAW: an absolute-path Location is resolved against the current URL's
+# scheme, host and port
+# HTTP-REDIR-3
+law target_path:
+  for url: String
+  for +loc: String
+  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
+    String.starts_with(loc, "https://")) : Bool}
+  for e2: {True{} == Bool.and(String.starts_with(loc, "/"),
+    Bool.not(String.starts_with(loc, "//"))) : Bool}
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
+  for e3: {Url.Loc{scheme, host, port, path} == Url.parse(url) : Url.Loc}
+  {Redirect.redirect.target(url, loc)
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
+    : Maybe<&2, String>}
+
+# LAW: an absolute path against a URL that does not parse has no target
+# HTTP-REDIR-3
+law target_path_bad:
+  for url: String
+  for +loc: String
+  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
+    String.starts_with(loc, "https://")) : Bool}
+  for e2: {True{} == Bool.and(String.starts_with(loc, "/"),
+    Bool.not(String.starts_with(loc, "//"))) : Bool}
+  for why: String
+  for e3: {Url.Bad{why} == Url.parse(url) : Url.Loc}
+  {Redirect.redirect.target(url, loc) == None{} : Maybe<&2, String>}
+
+# LAW: any other Location (empty, relative, `//host`) has no target
+# HTTP-REDIR-3
+law target_other:
+  for url: String
+  for +loc: String
+  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
+    String.starts_with(loc, "https://")) : Bool}
+  for e2: {False{} == Bool.and(String.starts_with(loc, "/"),
+    Bool.not(String.starts_with(loc, "//"))) : Bool}
+  {Redirect.redirect.target(url, loc) == None{} : Maybe<&2, String>}
+
+# --- HTML escaping (SPEC.md HTTP-HTML) ---
+
+# LAW: escaping a string is escaping it in front of nothing
+# HTTP-HTML-1
+law html_escape_onto:
+  for s: String
+  {Html.escape(s) == Html.escape.onto(s, "") : String}
+
+# LAW: nothing is written for the empty string
+# HTTP-HTML-1
+law html_nil:
+  for rest: String
+  {Html.escape.onto("", rest) == rest : String}
+
+# LAW: a string is written one character at a time, the first character's
+# writing followed by the rest's
+# HTTP-HTML-1
+law html_cons:
+  for +c: Char
+  for t: String
+  for rest: String
+  {Html.escape.onto(SCon{c, t}, rest) == Html.one(c, Html.escape.onto(t, rest))
+    : String}
+
+# LAW: `&` is written as `&amp;`
+# HTTP-HTML-2
+law html_amp:
+  for rest: String
+  {Html.one('&', rest) == "&amp;" ++ rest : String}
+
+# LAW: `<` is written as `&lt;`
+# HTTP-HTML-2
+law html_lt:
+  for rest: String
+  {Html.one('<', rest) == "&lt;" ++ rest : String}
+
+# LAW: `>` is written as `&gt;`
+# HTTP-HTML-2
+law html_gt:
+  for rest: String
+  {Html.one('>', rest) == "&gt;" ++ rest : String}
+
+# LAW: `"` is written as `&#34;`
+# HTTP-HTML-2
+law html_dq:
+  for rest: String
+  {Html.one('"', rest) == "&#34;" ++ rest : String}
+
+# LAW: `'` is written as `&#39;`
+# HTTP-HTML-2
+law html_sq:
+  for rest: String
+  {Html.one('\'', rest) == "&#39;" ++ rest : String}
+
+# LAW: every other character is written as itself
+# HTTP-HTML-3
+law html_other:
+  for +c: Char
+  for e1: {False{} == Char.is_eq(c, '&') : Bool}
+  for e2: {False{} == Char.is_eq(c, '<') : Bool}
+  for e3: {False{} == Char.is_eq(c, '>') : Bool}
+  for e4: {False{} == Char.is_eq(c, '"') : Bool}
+  for e5: {False{} == Char.is_eq(c, '\'') : Bool}
+  for rest: String
+  {Html.one(c, rest) == SCon{c, rest} : String}
+
+# where the HTTP-HTML-4 frame is, reading left to right: between entities,
+# after `&`, after `&#`, after `&#3`, or owing exactly the rest of an entity
+type Ent is Data:
+  Out{}
+  Amp{}
+  Hash{}
+  Three{}
+  Want{c: Char, rest: String}
+
+# between entities: anything but `<`, `>`, `"` and `'`
+def ent.out.ok(lt: Bool, gt: Bool, dq: Bool, sq: Bool) -> Bool:
+  Bool.not(Bool.or(lt, Bool.or(gt, Bool.or(dq, sq))))
+
+# between entities, an `&` opens one
+def ent.out.next(amp: Bool) -> Ent:
+  Bool.pick(Ent, amp, Amp{}, Out{})
+
+# what is owed after the rest of an entity's next character
+def ent.want(rest: String) -> Ent:
+  match rest:
+    case SNil{}:
+      Out{}
+    case SCon{c, t}:
+      Want{c, t}
+
+# whether character c may come next
+def ent.ok(+c: Char, st: Ent) -> Bool:
+  match st:
+    case Out{}:
+      ent.out.ok(Char.is_eq(c, '<'), Char.is_eq(c, '>'), Char.is_eq(c, '"'),
+        Char.is_eq(c, '\''))
+    case Amp{}:
+      Bool.or(Char.is_eq(c, 'a'), Bool.or(Char.is_eq(c, 'l'),
+        Bool.or(Char.is_eq(c, 'g'), Char.is_eq(c, '#'))))
+    case Hash{}:
+      Char.is_eq(c, '3')
+    case Three{}:
+      Bool.or(Char.is_eq(c, '4'), Char.is_eq(c, '9'))
+    case Want{w, t}:
+      Char.is_eq(c, w)
+
+# where the frame is after character c
+def ent.next(+c: Char, st: Ent) -> Ent:
+  match st:
+    case Out{}:
+      ent.out.next(Char.is_eq(c, '&'))
+    case Amp{}:
+      Bool.pick(Ent, Char.is_eq(c, 'a'), Want{'m', "p;"},
+        Bool.pick(Ent, Char.is_eq(c, '#'), Hash{}, Want{'t', ";"}))
+    case Hash{}:
+      Three{}
+    case Three{}:
+      Want{';', ""}
+    case Want{w, t}:
+      ent.want(t)
+
+# nothing is owed at the end
+def ent.end(st: Ent) -> Bool:
+  match st:
+    case Out{}:
+      True{}
+    case Amp{}:
+      False{}
+    case Hash{}:
+      False{}
+    case Three{}:
+      False{}
+    case Want{w, t}:
+      False{}
+
+# the HTTP-HTML-4 frame: no `<`, `>`, `"` or `'`, and every `&` opens one of
+# `&amp;`, `&lt;`, `&gt;`, `&#34;`, `&#39;`
+def html.framed(str: String, +st: Ent) -> Bool:
+  match str:
+    case SNil{}:
+      ent.end(st)
+    case SCon{+c, tail}:
+      Bool.and(ent.ok(c, st), html.framed(tail, ent.next(c, st)))
+
+# LAW (frame): every escaped string holds no `<`, `>`, `"` or `'`, and each
+# `&` in it opens one of the five entities
+# HTTP-HTML-4
+law html_frame:
+  for s: String
+  {html.framed(Html.escape(s), Out{}) == True{} : Bool}

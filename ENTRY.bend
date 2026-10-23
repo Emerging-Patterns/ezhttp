@@ -10,6 +10,7 @@ import Base
 import ./src/http.bend as Http
 import ./src/url.bend as Url
 import ./src/pct.bend as Pct
+import ./src/html.bend as Html
 import ./src/body.bend as Body
 import ./src/auth.bend as Auth
 import ./src/cookie.bend as Cookie
@@ -136,6 +137,24 @@ law cors_reply_is_on:
   {Ez.cors_reply(cfg, req, reply) == Cors.cors.on(cfg, req, reply)
     : Http.Reply}
 
+# LAW: html_escape is Html.escape
+law html_escape_is_escape:
+  for s: String
+  {Ez.html_escape(s) == Html.escape(s) : String}
+
+# LAW: a response that came back is never a timeout
+law timed_out_reply:
+  for status: U32
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Ez.http.timed_out(Client.Response{status, hs, body}) == False{} : Bool}
+
+# LAW: a failed exchange is a timeout exactly when its reason says so
+law timed_out_err:
+  for why: String
+  {Ez.http.timed_out(Client.Err{why}) == String.starts_with(why, "timed out: ")
+    : Bool}
+
 # --- fills ---
 
 # parse_url_is_url_parse holds by unfolding the re-export
@@ -220,4 +239,16 @@ def fresh_is_cache_fresh(_value, _age):
 
 # cors_reply_is_on holds by unfolding the re-export
 def cors_reply_is_on(_cfg, _req, _reply):
+  {==}
+
+# html_escape_is_escape holds by unfolding the re-export
+def html_escape_is_escape(_s):
+  {==}
+
+# timed_out_reply holds by unfolding client.timed_out
+def timed_out_reply(_status, _hs, _body):
+  {==}
+
+# timed_out_err holds by unfolding client.timed_out and wire.timed_out
+def timed_out_err(_why):
   {==}

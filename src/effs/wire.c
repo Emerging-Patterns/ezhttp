@@ -4,7 +4,13 @@
 // session first.
 //
 // The spec arrives as four parts: the scheme, the host, the port, each on its
-// own line, and the rest of the string is the request verbatim. The answer is
+// own line, and the rest of the string is the request verbatim. The scheme
+// line may carry a timeout after a space, in milliseconds, as 32 binary
+// digits least significant first (wirespec.bend); without one it is 60000.
+// The timeout bounds the connect, every send and every receive on its own,
+// as httpx's does; name resolution is not bounded. A call that runs out of
+// time answers status 28 (curl's CURLE_OPERATION_TIMEDOUT), and no other
+// failure does. The answer is
 // a status on its own first line and then the text: "0" and the raw response,
 // or a non-zero code and the reason.
 //
@@ -15,6 +21,7 @@
 // message says libssl, because "connection refused" for a missing library is
 // the kind of error that costs an afternoon.
 #include <dlfcn.h>
+#include <errno.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -28,6 +35,36 @@
 // mean the response ended; anything else means it was cut off.
 #define EZWIRE_SHUT_CLEAN 6
 #define EZWIRE_SHUT_EOF 5
+// SSL_ERROR_WANT_READ and SSL_ERROR_WANT_WRITE: on a blocking socket these
+// come back only when a receive or send timeout ran out
+#define EZWIRE_WANT_READ 2
+#define EZWIRE_WANT_WRITE 3
+// the status of an exchange that ran out of time
+#define EZWIRE_LATE 28
+
+// whether the call that just failed ran out of time: errno as a timed-out
+// socket call leaves it (a connect bounded by SO_SNDTIMEO says EINPROGRESS)
+static int ezwire_late_errno(int code) {
+  return code == EAGAIN || code == EWOULDBLOCK || code == EINPROGRESS
+    || code == ETIMEDOUT;
+}
+
+// the timeout the scheme line carries, or 60000 ms when it carries none. A
+// zero would mean "no timeout" to setsockopt, so it is read as 1 ms.
+static long ezwire_ms(const char* line) {
+  const char* gap = strchr(line, ' ');
+  if (gap == NULL) {
+    return 60000;
+  }
+  unsigned long ms = 0;
+  const char* bits = gap + 1;
+  for (int i = 0; i < 32 && bits[i] != '\0'; i++) {
+    if (bits[i] == '1') {
+      ms |= 1UL << i;
+    }
+  }
+  return ms == 0 ? 1 : (long)ms;
+}
 
 // the OpenSSL entry points a client handshake needs, and the context they are
 // used through. A void* stands in for SSL_CTX* and SSL*, which is all a caller
@@ -156,12 +193,14 @@ static int ezwire_tls_ready(void) {
 // takes it that way, and getaddrinfo is also the whole of ez's DNS: Base's
 // own TCP.connect runs the host through inet_pton, so it reaches an address
 // literal and nothing else.
-static int ezwire_dial(const char* host, const char* port) {
+static int ezwire_dial(const char* host, const char* port, long ms,
+  int* late) {
   struct addrinfo want;
   struct addrinfo* list = NULL;
   memset(&want, 0, sizeof(want));
   want.ai_family = AF_UNSPEC;
   want.ai_socktype = SOCK_STREAM;
+  *late = 0;
   if (getaddrinfo(host, port, &want, &list) != 0) {
     return -1;
   }
@@ -171,10 +210,11 @@ static int ezwire_dial(const char* host, const char* port) {
     if (fd < 0) {
       continue;
     }
-    struct timeval wait = { 60, 0 };
+    struct timeval wait = { ms / 1000, (ms % 1000) * 1000 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof(wait));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof(wait));
     if (connect(fd, at->ai_addr, at->ai_addrlen) != 0) {
+      *late = ezwire_late_errno(errno);
       close(fd);
       fd = -1;
     }
@@ -185,7 +225,7 @@ static int ezwire_dial(const char* host, const char* port) {
 
 // the session over an open socket, with the hostname used for both the name
 // sent in the hello and the name the certificate is checked against
-static void* ezwire_shake(int fd, const char* host) {
+static void* ezwire_shake(int fd, const char* host, int* late) {
   void* ssl = ezwire_tls.ssl_new(ezwire_tls.ctx);
   if (ssl == NULL) {
     return NULL;
@@ -193,7 +233,13 @@ static void* ezwire_shake(int fd, const char* host) {
   ezwire_tls.set_fd(ssl, fd);
   ezwire_tls.ctrl(ssl, EZWIRE_SET_SNI, EZWIRE_NAME_HOST, (void*)host);
   ezwire_tls.set_host(ssl, host);
-  if (ezwire_tls.connect(ssl) != 1) {
+  errno = 0;
+  int n = ezwire_tls.connect(ssl);
+  if (n != 1) {
+    int code = errno;
+    int why = ezwire_tls.error(ssl, n);
+    *late = why == EZWIRE_WANT_READ || why == EZWIRE_WANT_WRITE
+      || ezwire_late_errno(code);
     ezwire_tls.ssl_free(ssl);
     return NULL;
   }
@@ -201,12 +247,19 @@ static void* ezwire_shake(int fd, const char* host) {
 }
 
 // the whole request out, over TLS when there is a session
-static int ezwire_say(int fd, void* ssl, const char* text, size_t len) {
+static int ezwire_say(int fd, void* ssl, const char* text, size_t len,
+  int* late) {
   size_t at = 0;
+  *late = 0;
   while (at < len) {
+    errno = 0;
     int n = ssl != NULL ? ezwire_tls.write(ssl, text + at, (int)(len - at))
       : (int)send(fd, text + at, len - at, 0);
     if (n <= 0) {
+      int code = errno;
+      int why = ssl != NULL ? ezwire_tls.error(ssl, n) : 0;
+      *late = why == EZWIRE_WANT_WRITE || why == EZWIRE_WANT_READ
+        || ezwire_late_errno(code);
       return -1;
     }
     at += (size_t)n;
@@ -219,24 +272,31 @@ static int ezwire_say(int fd, void* ssl, const char* text, size_t len) {
 // it is body. A TLS read that stops for any reason other than the peer being
 // done sets `bad`, so a connection cut mid-body is an error and not a short
 // file that happens to parse.
-static char* ezwire_hear(int fd, void* ssl, size_t* len, int* bad) {
+static char* ezwire_hear(int fd, void* ssl, size_t* len, int* bad,
+  int* late) {
   size_t cap = 65536;
   size_t at = 0;
   char* buf = malloc(cap);
+  *late = 0;
   for (;;) {
     if (at + 16384 > cap) {
       cap *= 2;
       buf = realloc(buf, cap);
     }
+    errno = 0;
     int n = ssl != NULL ? ezwire_tls.read(ssl, buf + at, 16384)
       : (int)recv(fd, buf + at, 16384, 0);
     if (n <= 0) {
+      int code = errno;
       if (ssl == NULL) {
         *bad = n < 0;
+        *late = n < 0 && ezwire_late_errno(code);
       } else {
         int why = ezwire_tls.error(ssl, n);
         *bad = !(why == EZWIRE_SHUT_CLEAN
           || (why == EZWIRE_SHUT_EOF && n == 0));
+        *late = *bad && (why == EZWIRE_WANT_READ || why == EZWIRE_WANT_WRITE
+          || ezwire_late_errno(code));
       }
       break;
     }
@@ -281,7 +341,8 @@ Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
     free(spec);
     return ezwire_say_back(e, 22, "a malformed request spec", 24);
   }
-  int secure = strcmp(part[0], "tls") == 0;
+  int secure = strncmp(part[0], "tls", 3) == 0
+    && (part[0][3] == '\0' || part[0][3] == ' ');
   if (secure && ezwire_tls_ready() != 1) {
     free(spec);
     char why[512];
@@ -291,38 +352,52 @@ Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
     return ezwire_say_back(e, 1, why, (size_t)wn);
   }
   char why[512];
-  int fd = ezwire_dial(part[1], part[2]);
+  long ms = ezwire_ms(part[0]);
+  int late = 0;
+  int fd = ezwire_dial(part[1], part[2], ms, &late);
   if (fd < 0) {
-    int wn = snprintf(why, sizeof(why), "could not reach %s port %s",
-      part[1], part[2]);
-    Term miss = ezwire_say_back(e, 6, why, (size_t)wn);
+    int wn = late
+      ? snprintf(why, sizeof(why), "connecting to %s port %s took over %ld ms",
+        part[1], part[2], ms)
+      : snprintf(why, sizeof(why), "could not reach %s port %s",
+        part[1], part[2]);
+    Term miss = ezwire_say_back(e, late ? EZWIRE_LATE : 6, why, (size_t)wn);
     free(spec);
     return miss;
   }
-  void* ssl = secure ? ezwire_shake(fd, part[1]) : NULL;
+  void* ssl = secure ? ezwire_shake(fd, part[1], &late) : NULL;
   if (secure && ssl == NULL) {
     close(fd);
-    int wn = snprintf(why, sizeof(why), "the TLS handshake with %s failed",
-      part[1]);
-    Term miss = ezwire_say_back(e, 35, why, (size_t)wn);
+    int wn = late
+      ? snprintf(why, sizeof(why), "the TLS handshake with %s took over %ld ms",
+        part[1], ms)
+      : snprintf(why, sizeof(why), "the TLS handshake with %s failed",
+        part[1]);
+    Term miss = ezwire_say_back(e, late ? EZWIRE_LATE : 35, why, (size_t)wn);
     free(spec);
     return miss;
   }
   Term out;
   /* remaining bytes after the third newline — not strlen, so a body may hold NUL */
   size_t req_len = (size_t)n - (size_t)(part[3] - spec);
-  if (ezwire_say(fd, ssl, part[3], req_len) != 0) {
-    int wn = snprintf(why, sizeof(why), "the request to %s could not be sent",
-      part[1]);
-    out = ezwire_say_back(e, 55, why, (size_t)wn);
+  if (ezwire_say(fd, ssl, part[3], req_len, &late) != 0) {
+    int wn = late
+      ? snprintf(why, sizeof(why), "sending the request to %s took over %ld ms",
+        part[1], ms)
+      : snprintf(why, sizeof(why), "the request to %s could not be sent",
+        part[1]);
+    out = ezwire_say_back(e, late ? EZWIRE_LATE : 55, why, (size_t)wn);
   } else {
     size_t len = 0;
     int bad = 0;
-    char* got = ezwire_hear(fd, ssl, &len, &bad);
+    char* got = ezwire_hear(fd, ssl, &len, &bad, &late);
     if (bad) {
-      int wn = snprintf(why, sizeof(why), "the answer from %s was cut short",
-        part[1]);
-      out = ezwire_say_back(e, 56, why, (size_t)wn);
+      int wn = late
+        ? snprintf(why, sizeof(why), "%s sent nothing for %ld ms",
+          part[1], ms)
+        : snprintf(why, sizeof(why), "the answer from %s was cut short",
+          part[1]);
+      out = ezwire_say_back(e, late ? EZWIRE_LATE : 56, why, (size_t)wn);
     } else {
       out = ezwire_say_back(e, 0, got, len);
     }

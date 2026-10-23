@@ -1,4 +1,6 @@
-// ezwire.talk: the JS lane's twin of wire.c, and the same exchange.
+// ezwire.talk: the JS lane's twin of wire.c, and the same exchange, with the
+// same timeout: read from the scheme line, bounding the connect and every
+// send and receive, and answered as status 28 when it runs out.
 //
 // Bend's JS backend drives raw file descriptors through bun:ffi and runs its
 // own poll loop over them, so node's `net` and `tls` modules are not an option
@@ -107,6 +109,42 @@ function ezwire_tls() {
   return globalThis.EZ_WIRE_TLS;
 }
 
+// the timeout the scheme line carries, in milliseconds: 32 binary digits,
+// least significant first, after a space (wirespec.bend); 60000 without one.
+// A zero would mean "no timeout" to setsockopt, so it is read as 1 ms.
+function ezwire_ms(line) {
+  const gap = line.indexOf(" ");
+  if (gap < 0) {
+    return 60000;
+  }
+  let ms = 0;
+  const bits = line.slice(gap + 1);
+  for (let i = 0; i < 32 && i < bits.length; i++) {
+    if (bits[i] === "1") {
+      ms += 2 ** i;
+    }
+  }
+  return ms === 0 ? 1 : ms;
+}
+
+// whether the call that just failed ran out of time, by its errno (a connect
+// bounded by SO_SNDTIMEO says EINPROGRESS)
+function ezwire_late_errno(code) {
+  const mac = process.platform === "darwin";
+  return mac ? (code === 35 || code === 36 || code === 60)
+    : (code === 11 || code === 115 || code === 110);
+}
+
+// the receive and send timeouts on a socket, as a struct timeval
+function ezwire_wait(sys, fd, ms) {
+  const mac = process.platform === "darwin";
+  const tv = new BigInt64Array([BigInt(Math.floor(ms / 1000)),
+    BigInt((ms % 1000) * 1000)]);
+  const level = mac ? 0xffff : 1;
+  sys.setsockopt(fd, level, mac ? 0x1006 : 20, sys.ptr(tv), 16);
+  sys.setsockopt(fd, level, mac ? 0x1005 : 21, sys.ptr(tv), 16);
+}
+
 // a NUL-terminated copy of a string, for a C call that wants one
 function ezwire_cstr(s) {
   return Buffer.from(s + "\0", "utf8");
@@ -115,7 +153,7 @@ function ezwire_cstr(s) {
 // a connected, blocking socket, or -1. glibc's addrinfo is 48 bytes: the
 // family at 4, the address length at 16, the sockaddr at 24 and the next
 // record at 40.
-function ezwire_dial(host, port) {
+function ezwire_dial(host, port, ms, late) {
   const ffi = require("bun:ffi");
   const sys = io_sys();
   const hints = new Uint8Array(48);
@@ -134,7 +172,11 @@ function ezwire_dial(host, port) {
     const len = Number(ffi.read.i32(at, 16));
     const addr = Number(ffi.read.ptr(at, 24));
     fd = Number(sys.socket(family, 1, 0));
+    if (fd >= 0) {
+      ezwire_wait(sys, fd, ms);
+    }
     if (fd >= 0 && Number(sys.connect(fd, addr, len)) < 0) {
+      late.late = ezwire_late_errno(Number(sys.errno()));
       sys.close(fd);
       fd = -1;
     }
@@ -146,7 +188,7 @@ function ezwire_dial(host, port) {
 
 // the session over an open socket. The hostname is both the name sent in the
 // hello and the name the certificate is checked against.
-function ezwire_shake(tls, fd, host) {
+function ezwire_shake(tls, fd, host, late) {
   const ffi = require("bun:ffi");
   const ssl = tls.SSL_new(tls.ctx);
   if (ssl === null) {
@@ -156,7 +198,11 @@ function ezwire_shake(tls, fd, host) {
   const name = ffi.ptr(ezwire_cstr(host));
   tls.SSL_ctrl(ssl, 55, 0n, name); // SNI, TLSEXT_NAMETYPE_host_name
   tls.SSL_set1_host(ssl, name);
-  if (tls.SSL_connect(ssl) !== 1) {
+  const n = tls.SSL_connect(ssl);
+  if (n !== 1) {
+    const code = Number(io_sys().errno());
+    const why = tls.SSL_get_error(ssl, n);
+    late.late = why === 2 || why === 3 || ezwire_late_errno(code);
     tls.SSL_free(ssl);
     return null;
   }
@@ -164,7 +210,7 @@ function ezwire_shake(tls, fd, host) {
 }
 
 // the whole request out, over TLS when there is a session
-function ezwire_say(tls, fd, ssl, text) {
+function ezwire_say(tls, fd, ssl, text, late) {
   const ffi = require("bun:ffi");
   const b = new TextEncoder().encode(text);
   let at = 0;
@@ -174,6 +220,9 @@ function ezwire_say(tls, fd, ssl, text) {
       ? Number(io_sys().send(fd, ffi.ptr(part), part.length, 0))
       : tls.SSL_write(ssl, ffi.ptr(part), part.length);
     if (n <= 0) {
+      const code = Number(io_sys().errno());
+      const why = ssl === null ? 0 : tls.SSL_get_error(ssl, n);
+      late.late = why === 2 || why === 3 || ezwire_late_errno(code);
       return false;
     }
     at += n;
@@ -185,7 +234,7 @@ function ezwire_say(tls, fd, ssl, text) {
 // reason other than the peer being done is a cut connection, not a short body:
 // SSL_ERROR_ZERO_RETURN is 6 and SSL_ERROR_SYSCALL with nothing read is 5, and
 // those two are the only clean ends.
-function ezwire_hear(tls, fd, ssl) {
+function ezwire_hear(tls, fd, ssl, late) {
   const ffi = require("bun:ffi");
   const b = new Uint8Array(16384);
   const parts = [];
@@ -195,11 +244,14 @@ function ezwire_hear(tls, fd, ssl) {
       ? Number(io_sys().recv(fd, ffi.ptr(b), b.length, 0))
       : tls.SSL_read(ssl, ffi.ptr(b), b.length);
     if (n <= 0) {
+      const code = Number(io_sys().errno());
       if (ssl === null) {
         bad = n < 0;
+        late.late = bad && ezwire_late_errno(code);
       } else {
         const why = tls.SSL_get_error(ssl, n);
         bad = !(why === 6 || (why === 5 && n === 0));
+        late.late = bad && (why === 2 || why === 3 || ezwire_late_errno(code));
       }
       break;
     }
@@ -230,28 +282,38 @@ function ezwire_talk(spec) {
     cut.push(spec.slice(at, n));
     at = n + 1;
   }
-  const secure = cut[0] === "tls";
+  const secure = cut[0] === "tls" || cut[0].startsWith("tls ");
+  const ms = ezwire_ms(cut[0]);
+  const late = { late: false };
   const tls = secure ? ezwire_tls() : null;
   if (secure && tls === null) {
     return "1\ncould not load libssl at run time; "
       + "install openssl or point EZ_LIBSSL at the library";
   }
-  const fd = ezwire_dial(cut[1], cut[2]);
+  const fd = ezwire_dial(cut[1], cut[2], ms, late);
   if (fd < 0) {
-    return "6\ncould not reach " + cut[1] + " port " + cut[2];
+    return late.late
+      ? "28\nconnecting to " + cut[1] + " port " + cut[2] + " took over "
+        + ms + " ms"
+      : "6\ncould not reach " + cut[1] + " port " + cut[2];
   }
-  const ssl = secure ? ezwire_shake(tls, fd, cut[1]) : null;
+  const ssl = secure ? ezwire_shake(tls, fd, cut[1], late) : null;
   if (secure && ssl === null) {
     io_sys().close(fd);
-    return "35\nthe TLS handshake with " + cut[1] + " failed";
+    return late.late
+      ? "28\nthe TLS handshake with " + cut[1] + " took over " + ms + " ms"
+      : "35\nthe TLS handshake with " + cut[1] + " failed";
   }
   let out;
-  if (!ezwire_say(tls, fd, ssl, spec.slice(at))) {
-    out = "55\nthe request to " + cut[1] + " could not be sent";
+  if (!ezwire_say(tls, fd, ssl, spec.slice(at), late)) {
+    out = late.late
+      ? "28\nsending the request to " + cut[1] + " took over " + ms + " ms"
+      : "55\nthe request to " + cut[1] + " could not be sent";
   } else {
-    const got = ezwire_hear(tls, fd, ssl);
-    out = got.bad ? "56\nthe answer from " + cut[1] + " was cut short"
-      : "0\n" + got.text;
+    const got = ezwire_hear(tls, fd, ssl, late);
+    out = !got.bad ? "0\n" + got.text
+      : late.late ? "28\n" + cut[1] + " sent nothing for " + ms + " ms"
+      : "56\nthe answer from " + cut[1] + " was cut short";
   }
   if (ssl !== null) {
     tls.SSL_shutdown(ssl);

@@ -6,6 +6,8 @@ import ./url.bend as Url
 import ./http.bend as Http
 import ./body.bend as Body
 import ./wire.bend as Wire
+import ./wirespec.bend as Spec
+import ./redirect.bend as Redirect
 import ./auth.bend as Auth
 
 # structured client result: transport/parse error, or an HTTP response
@@ -47,11 +49,12 @@ def from.reply(r: Http.Reply) -> Response:
     case Http.Reply{status, headers, body}:
       Response{status, headers, body}
 
-# a finished exchange
-def from.raw(raw: String, ok: Bool) -> Response:
+# a finished exchange; a failed one keeps its reason, marked when it was a
+# timeout (wirespec.bend wire.why)
+def from.raw(+raw: String, ok: Bool) -> Response:
   match ok:
     case False{}:
-      Err{wire.text(raw)}
+      Err{Spec.wire.why(wire.code(raw), wire.text(raw))}
     case True{}:
       from.reply(Http.parse(wire.text(raw)))
 
@@ -71,6 +74,76 @@ def http.loc(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
     case Url.Loc{+scheme, +host, port, path}:
       http.talk(String.eq(scheme, "https"), host, port,
         Http.request(method, host, path, headers, body))
+
+# HTTP(S) exchange with a pre-built request and a timeout in milliseconds
+def http.talk.timed(secure: Bool, ms: U32, host: String, port: U32,
+  req: String) -> IO(Response):
+  do IO<Response>:
+    +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, req)
+    IO.pure(Response, from.raw(raw, wire.ok(raw)))
+
+# a URL that came apart into a GET bounded by a timeout
+def http.loc.timed(ms: U32, l: Url.Loc, headers: List<&2, Http.Header>)
+  -> IO(Response):
+  match l:
+    case Url.Bad{why}:
+      IO.pure(Response, Err{why})
+    case Url.Loc{+scheme, +host, port, path}:
+      http.talk.timed(String.eq(scheme, "https"), ms, host, port,
+        Http.request("GET", host, path, headers, ""))
+
+# GET bounded by a timeout in milliseconds
+def client.get.timed(url: String, headers: List<&2, Http.Header>, ms: U32)
+  -> IO(Response):
+  http.loc.timed(ms, Url.parse(url), headers)
+
+# the next hop after a response (redirect.bend); a failed exchange stops
+def client.hop(left: Nat, url: String, r: Response) -> Redirect.Hop:
+  match r:
+    case Err{why}:
+      Redirect.Stop{}
+    case Response{status, headers, body}:
+      Redirect.redirect.plan(left, url, status, headers)
+
+# a response, or the GET its hop asks for
+def client.after(hop: Redirect.Hop, r: Response, go: String -> IO(Response))
+  -> IO(Response):
+  match hop:
+    case Redirect.Stop{}:
+      IO.pure(Response, r)
+    case Redirect.Go{next}:
+      go(next)
+
+# GET, following redirects while `left` hops remain; the answer is the last
+# response, which is a redirect only when the hops ran out or its Location
+# is not one redirect.bend follows
+def client.follow(+left: Nat, +url: String, +headers: List<&2, Http.Header>,
+  +ms: U32) -> IO(Response):
+  match left:
+    case 0n:
+      client.get.timed(url, headers, ms)
+    case 1n+p:
+      do IO<Response>:
+        +r : Response <- client.get.timed(url, headers, ms)
+        client.after(client.hop(left, url, r), r,
+          next => client.follow(p, next, headers, ms))
+
+# GET with headers and a timeout, following redirects when `follow` is set
+def client.get.opts(url: String, headers: List<&2, Http.Header>, ms: U32,
+  follow: Bool) -> IO(Response):
+  match follow:
+    case True{}:
+      client.follow(Redirect.redirect.max(), url, headers, ms)
+    case False{}:
+      client.get.timed(url, headers, ms)
+
+# whether a response is the failure of an exchange that ran out of time
+def client.timed_out(r: Response) -> Bool:
+  match r:
+    case Err{why}:
+      Spec.wire.timed_out(why)
+    case Response{status, headers, body}:
+      False{}
 
 # GET
 def client.get(url: String, headers: List<&2, Http.Header>) -> IO(Response):

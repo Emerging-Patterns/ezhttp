@@ -5,6 +5,9 @@ import ./src/url.bend as Url
 import ./src/body.bend as Body
 import ./src/step.bend as Step
 import ./src/pct.bend as Pct
+import ./src/wirespec.bend as Spec
+import ./src/html.bend as Html
+import ./src/redirect.bend as Redirect
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -1204,3 +1207,377 @@ def Laws.frame_quote(slash, str, e):
         Laws.frame_quote(slash, t,
           eq.and.right(Bool.or(Pct.safe(slash, c), Laws.hexes(Pct.utf8(c))),
             Laws.nibbles(slash, t), e)))
+
+# --- the client's timeout (SPEC.md HTTP-CLI) ---
+
+# binary digits read back are the word they were written from
+def bits.round(n: Nat, w: Word(n))
+  -> {Spec.wire.bits.read(n, Spec.wire.bits(n, w)) == w : Word(n)}:
+  match n:
+    case 0n:
+      match w:
+        case WNil{}:
+          {==}
+    case 1n+p:
+      match w:
+        case WCon{b, t}:
+          match b:
+            case True{}:
+              Equal.cong(Word(p), Word(1n+p), x => WCon{True{}, x},
+                Spec.wire.bits.read(p, Spec.wire.bits(p, t)), t,
+                bits.round(p, t))
+            case False{}:
+              Equal.cong(Word(p), Word(1n+p), x => WCon{False{}, x},
+                Spec.wire.bits.read(p, Spec.wire.bits(p, t)), t,
+                bits.round(p, t))
+
+# binary digits hold no character other than 0 and 1
+def bits.avoid(n: Nat, w: Word(n), +c: Char,
+  +e0: {False{} == Char.is_eq('0', c) : Bool},
+  +e1: {False{} == Char.is_eq('1', c) : Bool})
+  -> {Laws.avoids(Spec.wire.bits(n, w), c) == True{} : Bool}:
+  match n:
+    case 0n:
+      match w:
+        case WNil{}:
+          {==}
+    case 1n+p:
+      match w:
+        case WCon{b, t}:
+          match b:
+            case True{}:
+              %e1 : {Bool.and(Bool.not(_), Laws.avoids(Spec.wire.bits(p, t), c))
+                == True{} : Bool}
+              bits.avoid(p, t, c, e0, e1)
+            case False{}:
+              %e0 : {Bool.and(Bool.not(_), Laws.avoids(Spec.wire.bits(p, t), c))
+                == True{} : Bool}
+              bits.avoid(p, t, c, e0, e1)
+
+# the first line of a timed spec holds no newline
+def head.avoid(secure: Bool, w: Word(32n))
+  -> {Laws.avoids(Spec.wire.head(secure, U32{w}), '\n') == True{} : Bool}:
+  match secure:
+    case True{}:
+      bits.avoid(32n, w, '\n', {==}, {==})
+    case False{}:
+      bits.avoid(32n, w, '\n', {==}, {==})
+
+# the scheme word holds no space
+def scheme.avoid(secure: Bool)
+  -> {Laws.avoids(Spec.wire.scheme(secure), ' ') == True{} : Bool}:
+  match secure:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.spec_timed_ms(secure, ms, host, port, req):
+  match ms:
+    case U32{+w}:
+      Equal.trans(U32,
+        Spec.wire.ms(Spec.wire.spec.timed(secure, U32{w}, host, port, req)),
+        Spec.wire.ms.words(String.split(Spec.wire.head(secure, U32{w}), ' ')),
+        U32{w},
+        Equal.cong(List<&2, String>, U32,
+          ls => Spec.wire.ms.words(String.split(Spec.wire.line(ls), ' ')),
+          String.split(String.append(Spec.wire.head(secure, U32{w}),
+            SCon{'\n', Spec.wire.rest(host, port, req)}), '\n'),
+          Spec.wire.head(secure, U32{w})
+            <> String.split(Spec.wire.rest(host, port, req), '\n'),
+          Laws.split_cut(Spec.wire.head(secure, U32{w}), '\n',
+            Spec.wire.rest(host, port, req), head.avoid(secure, w))),
+        Equal.trans(U32,
+          Spec.wire.ms.words(String.split(Spec.wire.head(secure, U32{w}), ' ')),
+          Spec.wire.ms.words(Spec.wire.scheme(secure)
+            <> String.split(Spec.wire.bits(32n, w), ' ')),
+          U32{w},
+          Equal.cong(List<&2, String>, U32, ls => Spec.wire.ms.words(ls),
+            String.split(String.append(Spec.wire.scheme(secure),
+              SCon{' ', Spec.wire.bits(32n, w)}), ' '),
+            Spec.wire.scheme(secure)
+              <> String.split(Spec.wire.bits(32n, w), ' '),
+            Laws.split_cut(Spec.wire.scheme(secure), ' ',
+              Spec.wire.bits(32n, w), scheme.avoid(secure))),
+          Equal.trans(U32,
+            Spec.wire.ms.words(Spec.wire.scheme(secure)
+              <> String.split(Spec.wire.bits(32n, w), ' ')),
+            U32{Spec.wire.bits.read(32n, Spec.wire.bits(32n, w))},
+            U32{w},
+            Equal.cong(List<&2, String>, U32,
+              ls => Spec.wire.ms.words(Spec.wire.scheme(secure) <> ls),
+              String.split(Spec.wire.bits(32n, w), ' '),
+              [Spec.wire.bits(32n, w)],
+              Laws.split_whole(Spec.wire.bits(32n, w), ' ',
+                bits.avoid(32n, w, ' ', {==}, {==}))),
+            Equal.cong(Word(32n), U32, x => U32{x},
+              Spec.wire.bits.read(32n, Spec.wire.bits(32n, w)), w,
+              bits.round(32n, w)))))
+
+def Laws.spec_plain_ms(secure, _host, _port, _req):
+  match secure:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.spec_timed_lines(_secure, _ms, _host, _port, _req):
+  {==}
+
+def Laws.spec_plain_lines(_secure, _host, _port, _req):
+  {==}
+
+def Laws.why_late(_why):
+  {==}
+
+def Laws.why_other(_n, e, why):
+  %e : {Spec.wire.why.of(why, _) == why : String}
+  {==}
+
+def Laws.why_none(_why):
+  {==}
+
+def Laws.why_late_timed_out(why):
+  eq.starts_append("timed out: ", why)
+
+# --- redirects (SPEC.md HTTP-REDIR) ---
+
+def Laws.redir_go(_status, e, _n, url, loc, next, et):
+  %e : {Redirect.redirect.on(url, loc, _) == Redirect.Go{next} : Redirect.Hop}
+  %et : {Redirect.redirect.hop(_) == Redirect.Go{next} : Redirect.Hop}
+  {==}
+
+# a response whose Location has no target stops, redirect or not
+law redir_no_target.on:
+  for url: String
+  for +loc: String
+  for moved: Bool
+  for et: {None{} == Redirect.redirect.target(url, loc) : Maybe<&2, String>}
+  {Redirect.redirect.on(url, loc, moved) == Redirect.Stop{} : Redirect.Hop}
+
+def redir_no_target.on(_url, _loc, moved, et):
+  match moved:
+    case True{}:
+      %et : {Redirect.redirect.hop(_) == Redirect.Stop{} : Redirect.Hop}
+      {==}
+    case False{}:
+      {==}
+
+def Laws.redir_no_target(status, left, url, loc, et):
+  match left:
+    case 0n:
+      {==}
+    case 1n+p:
+      redir_no_target.on(url, loc, Redirect.redirect.is(status), et)
+
+def Laws.redir_plan_location(_left, _url, _status, _hs):
+  {==}
+
+def Laws.redir_other(_status, e, left, url, loc):
+  match left:
+    case 0n:
+      {==}
+    case 1n+p:
+      %e : {Redirect.redirect.on(url, loc, _) == Redirect.Stop{}
+        : Redirect.Hop}
+      {==}
+
+def Laws.redir_zero(_url, _status, _loc):
+  {==}
+
+def Laws.target_absolute(url, loc, e):
+  %e : {Redirect.redirect.target.of(url, loc, _) == Some{loc}
+    : Maybe<&2, String>}
+  {==}
+
+def Laws.target_path(url, loc, e1, e2, scheme, host, port, _path, e3):
+  %e1 : {Redirect.redirect.target.of(url, loc, _)
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
+    : Maybe<&2, String>}
+  %e2 : {Redirect.redirect.target.path(url, loc, _)
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
+    : Maybe<&2, String>}
+  %e3 : {Redirect.redirect.join(_, loc)
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
+    : Maybe<&2, String>}
+  {==}
+
+def Laws.target_path_bad(url, loc, e1, e2, _why, e3):
+  %e1 : {Redirect.redirect.target.of(url, loc, _) == None{}
+    : Maybe<&2, String>}
+  %e2 : {Redirect.redirect.target.path(url, loc, _) == None{}
+    : Maybe<&2, String>}
+  %e3 : {Redirect.redirect.join(_, loc) == None{} : Maybe<&2, String>}
+  {==}
+
+def Laws.target_other(url, loc, e1, e2):
+  %e1 : {Redirect.redirect.target.of(url, loc, _) == None{}
+    : Maybe<&2, String>}
+  %e2 : {Redirect.redirect.target.path(url, loc, _) == None{}
+    : Maybe<&2, String>}
+  {==}
+
+# --- HTML escaping (SPEC.md HTTP-HTML) ---
+
+def Laws.html_escape_onto(_s):
+  {==}
+
+def Laws.html_nil(_rest):
+  {==}
+
+def Laws.html_cons(_c, _t, _rest):
+  {==}
+
+def Laws.html_amp(_rest):
+  {==}
+
+def Laws.html_lt(_rest):
+  {==}
+
+def Laws.html_gt(_rest):
+  {==}
+
+def Laws.html_dq(_rest):
+  {==}
+
+def Laws.html_sq(_rest):
+  {==}
+
+def Laws.html_other(c, e1, e2, e3, e4, e5, rest):
+  %e1 : {Html.one.amp(c, rest, _) == SCon{c, rest} : String}
+  %e2 : {Html.one.lt(c, rest, _) == SCon{c, rest} : String}
+  %e3 : {Html.one.gt(c, rest, _) == SCon{c, rest} : String}
+  %e4 : {Html.one.dq(c, rest, _) == SCon{c, rest} : String}
+  %e5 : {Html.one.sq(c, rest, _) == SCon{c, rest} : String}
+  {==}
+
+# LAW: a character none of the five stays in the frame
+law frame.sq:
+  for +c: Char
+  for rest: String
+  for k: Bool
+  for ek: {k == Char.is_eq(c, '\'') : Bool}
+  for ea: {False{} == Char.is_eq(c, '&') : Bool}
+  for el: {False{} == Char.is_eq(c, '<') : Bool}
+  for eg: {False{} == Char.is_eq(c, '>') : Bool}
+  for ed: {False{} == Char.is_eq(c, '"') : Bool}
+  {Laws.html.framed(Html.one.sq(c, rest, k), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.sq(c, rest, k, ek, ea, el, eg, ed):
+  match k:
+    case True{}:
+      {==}
+    case False{}:
+      %ea : {Bool.and(Laws.ent.out.ok(Char.is_eq(c, '<'), Char.is_eq(c, '>'),
+        Char.is_eq(c, '"'), Char.is_eq(c, '\'')),
+        Laws.html.framed(rest, Laws.ent.out.next(_)))
+        == Laws.html.framed(rest, Laws.Out{}) : Bool}
+      %el : {Bool.and(Laws.ent.out.ok(_, Char.is_eq(c, '>'),
+        Char.is_eq(c, '"'), Char.is_eq(c, '\'')),
+        Laws.html.framed(rest, Laws.Out{}))
+        == Laws.html.framed(rest, Laws.Out{}) : Bool}
+      %eg : {Bool.and(Laws.ent.out.ok(False{}, _,
+        Char.is_eq(c, '"'), Char.is_eq(c, '\'')),
+        Laws.html.framed(rest, Laws.Out{}))
+        == Laws.html.framed(rest, Laws.Out{}) : Bool}
+      %ed : {Bool.and(Laws.ent.out.ok(False{}, False{}, _,
+        Char.is_eq(c, '\'')),
+        Laws.html.framed(rest, Laws.Out{}))
+        == Laws.html.framed(rest, Laws.Out{}) : Bool}
+      %ek : {Bool.and(Laws.ent.out.ok(False{}, False{}, False{}, _),
+        Laws.html.framed(rest, Laws.Out{}))
+        == Laws.html.framed(rest, Laws.Out{}) : Bool}
+      {==}
+
+# LAW: a character that is not `&`, `<` or `>` stays in the frame
+law frame.dq:
+  for +c: Char
+  for rest: String
+  for k: Bool
+  for ek: {k == Char.is_eq(c, '"') : Bool}
+  for ea: {False{} == Char.is_eq(c, '&') : Bool}
+  for el: {False{} == Char.is_eq(c, '<') : Bool}
+  for eg: {False{} == Char.is_eq(c, '>') : Bool}
+  {Laws.html.framed(Html.one.dq(c, rest, k), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.dq(c, rest, k, ek, ea, el, eg):
+  match k:
+    case True{}:
+      {==}
+    case False{}:
+      frame.sq(c, rest, Char.is_eq(c, '\''), {==}, ea, el, eg, ek)
+
+# LAW: a character that is not `&` or `<` stays in the frame
+law frame.gt:
+  for +c: Char
+  for rest: String
+  for k: Bool
+  for ek: {k == Char.is_eq(c, '>') : Bool}
+  for ea: {False{} == Char.is_eq(c, '&') : Bool}
+  for el: {False{} == Char.is_eq(c, '<') : Bool}
+  {Laws.html.framed(Html.one.gt(c, rest, k), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.gt(c, rest, k, ek, ea, el):
+  match k:
+    case True{}:
+      {==}
+    case False{}:
+      frame.dq(c, rest, Char.is_eq(c, '"'), {==}, ea, el, ek)
+
+# LAW: a character that is not `&` stays in the frame
+law frame.lt:
+  for +c: Char
+  for rest: String
+  for k: Bool
+  for ek: {k == Char.is_eq(c, '<') : Bool}
+  for ea: {False{} == Char.is_eq(c, '&') : Bool}
+  {Laws.html.framed(Html.one.lt(c, rest, k), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.lt(c, rest, k, ek, ea):
+  match k:
+    case True{}:
+      {==}
+    case False{}:
+      frame.gt(c, rest, Char.is_eq(c, '>'), {==}, ea, ek)
+
+# LAW: one escaped character stays in the frame
+law frame.amp:
+  for +c: Char
+  for rest: String
+  for k: Bool
+  for ek: {k == Char.is_eq(c, '&') : Bool}
+  {Laws.html.framed(Html.one.amp(c, rest, k), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.amp(c, rest, k, ek):
+  match k:
+    case True{}:
+      {==}
+    case False{}:
+      frame.lt(c, rest, Char.is_eq(c, '<'), {==}, ek)
+
+# LAW: an escaped string stays in the frame, whatever follows it
+law frame.onto:
+  for s: String
+  for +rest: String
+  {Laws.html.framed(Html.escape.onto(s, rest), Laws.Out{})
+    == Laws.html.framed(rest, Laws.Out{}) : Bool}
+
+def frame.onto(s, rest):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{+c, +t}:
+      Equal.trans(Bool,
+        Laws.html.framed(Html.one(c, Html.escape.onto(t, rest)), Laws.Out{}),
+        Laws.html.framed(Html.escape.onto(t, rest), Laws.Out{}),
+        Laws.html.framed(rest, Laws.Out{}),
+        frame.amp(c, Html.escape.onto(t, rest), Char.is_eq(c, '&'), {==}),
+        frame.onto(t, rest))
+
+def Laws.html_frame(s):
+  frame.onto(s, "")
