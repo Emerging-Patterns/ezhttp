@@ -1051,6 +1051,15 @@ def status.bare(m: Maybe<&2, U32>) -> Bool:
     case Some{n}:
       status.nocontent(n)
 
+# a 1xx status is an interim response (RFC 9110 §15.2); a status line that
+# did not parse is not
+def status.interim(m: Maybe<&2, U32>) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{+n}:
+      Bool.and(U32.is_le(100, n), U32.is_lt(n, 200))
+
 # a Content-Length that reads as a number, or the close when none does
 def frame.sized(m: Maybe<&2, Nat>) -> Frame:
   match m:
@@ -1144,18 +1153,98 @@ def whole.of(f: Frame, +body: String) -> Bool:
     case Closed{}:
       False{}
 
+# a head that is interim: whole when what follows is; else whole under the
+# framing it gives
+def whole.step(asked: Bool, +ls: List<&2, String>, +after: String,
+  interim: Bool, rest: Cut -> Bool) -> Bool:
+  match interim:
+    case True{}:
+      rest(divide(after, "\r\n\r\n"))
+    case False{}:
+      whole.of(frame(Bool.or(asked, status.bare(status.of(ls))),
+        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
+        after)
+
 # a response whose head has ended, or not yet
-def whole.cut(asked: Bool, c: Cut) -> Bool:
+def whole.at(asked: Bool, c: Cut, rest: Cut -> Bool) -> Bool:
   match c:
     case NoCut{}:
       False{}
     case Cut{before, after}:
       +ls = String.lines(before)
-      whole.of(frame(Bool.or(asked, status.bare(status.of(ls))),
-        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
-        after)
+      whole.step(asked, ls, after, status.interim(status.of(ls)), rest)
+
+# the heads in turn, at most `fuel` of them
+def whole.go(fuel: Nat, +asked: Bool, c: Cut) -> Bool:
+  match fuel:
+    case 0n:
+      False{}
+    case 1n+f:
+      whole.at(asked, c, cut => whole.go(f, asked, cut))
 
 # whether the text received so far is a whole response to a request with
-# this method (RFC 9112 §6.3); a response framed by the close never is
-def whole(+method: String, raw: String) -> Bool:
-  whole.cut(String.eq(method, "HEAD"), divide(raw, "\r\n\r\n"))
+# this method (RFC 9112 §6.3), interim 1xx heads read past (RFC 9110 §15.2);
+# a response framed by the close never is
+def whole(+method: String, +raw: String) -> Bool:
+  whole.go(String.length(raw), String.eq(method, "HEAD"),
+    divide(raw, "\r\n\r\n"))
+
+# --- a response read by the request's method (RFC 9110 §15.2, §6.4.1) ---
+
+# a 1xx, 204 or 304 response has no body (RFC 9110 §6.4.1)
+def status.empty(+m: Maybe<&2, U32>) -> Bool:
+  Bool.or(status.interim(m), status.bare(m))
+
+# an interim head is skipped when more text follows it
+def interim.skip(m: Maybe<&2, U32>, after: String) -> Bool:
+  Bool.and(status.interim(m), Bool.not(String.is_empty(after)))
+
+# the final head with no body: its status and fields, an empty body
+def parse.to.bare(m: Maybe<&2, U32>, ls: List<&2, String>) -> Reply:
+  match m:
+    case None{}:
+      Torn{"the response has no status line"}
+    case Some{n}:
+      Reply{n, head.list(ls), ""}
+
+# the final head: with no body, or framed as parse frames it
+def parse.to.final(m: Maybe<&2, U32>, +ls: List<&2, String>, after: String,
+  bare: Bool) -> Reply:
+  match bare:
+    case True{}:
+      parse.to.bare(m, ls)
+    case False{}:
+      parse.status(m, ls, after)
+
+# an interim head is skipped, any other is the final one
+def parse.to.step(head: Bool, +ls: List<&2, String>, +m: Maybe<&2, U32>,
+  +after: String, skip: Bool, rest: Cut -> Reply) -> Reply:
+  match skip:
+    case True{}:
+      rest(divide(after, "\r\n\r\n"))
+    case False{}:
+      parse.to.final(m, ls, after, Bool.or(head, status.empty(m)))
+
+# a head that has ended, or the reason it has not
+def parse.to.at(head: Bool, c: Cut, rest: Cut -> Reply) -> Reply:
+  match c:
+    case NoCut{}:
+      Torn{"the response head has no blank line after it"}
+    case Cut{before, +after}:
+      +ls = String.lines(before)
+      +m = status.of(ls)
+      parse.to.step(head, ls, m, after, interim.skip(m, after), rest)
+
+# the heads in turn, at most `fuel` of them
+def parse.to.go(fuel: Nat, +head: Bool, c: Cut) -> Reply:
+  match fuel:
+    case 0n:
+      Torn{"the response head has no blank line after it"}
+    case 1n+f:
+      parse.to.at(head, c, cut => parse.to.go(f, head, cut))
+
+# the response to a request with this method (RFC 9112 §6.3): interim 1xx
+# heads skipped, and no body for HEAD or a 1xx, 204 or 304 final status
+def parse.to(+method: String, +raw: String) -> Reply:
+  parse.to.go(String.length(raw), String.eq(method, "HEAD"),
+    divide(raw, "\r\n\r\n"))

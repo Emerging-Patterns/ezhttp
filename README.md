@@ -110,6 +110,13 @@ def ingest(url: String, json: String) -> IO(Client.Response):
     Http.text_body(json), 10000)
 ```
 
+The client reads a response with its request's method in mind (SPEC.md
+HTTP-CLI-9): interim 1xx responses such as `100 Continue` are skipped, and a
+response to HEAD, or with a 1xx, 204 or 304 status, has an empty body
+whatever its `Content-Length` or `Transfer-Encoding` say.
+`parse_response_to(method, raw)` is that reading; `parse_response(raw)` does
+not know the method and frames every body by its fields.
+
 ### Server
 
 `http.serve(handle, host, port, limit)` listens with Base TCP on `host`
@@ -265,6 +272,8 @@ the list of defs that rely on foreign code as its only error. The laws target:
   size, and a size of 0 that ends the body before any trailer (§7.1),
   `Connection: close` (§9.6). A body shorter than its `Content-Length` is
   torn (client response) or bad (server request). Absolute-form is rejected.
+  The client skips interim 1xx responses (RFC 9110 §15.2) and reads no body
+  for a reply to HEAD or a 1xx, 204 or 304 status (§6.3 item 1).
 - [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) Base64 (§4, §10) and
   [RFC 7617](https://www.rfc-editor.org/rfc/rfc7617) Basic authentication
   (§2): `Authorization: Basic` is Base64 of `user:password`.

@@ -2653,17 +2653,15 @@ def Laws.request_plain(method, host, path, hs, body, eh, ea, ec, eo):
         Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))),
         hd.plain_tail(host, hs, body)))
 
-def Laws.whole_open(method, _raw, e):
-  %e : {Http.whole.cut(String.eq(method, "HEAD"), _) == False{} : Bool}
+def Laws.whole_open(_f, _asked):
   {==}
 
-def Laws.whole_head(method, _raw, before, after, e):
-  %e : {Http.whole.cut(String.eq(method, "HEAD"), _)
-    == Http.whole.of(Http.frame(Bool.or(String.eq(method, "HEAD"),
-      Http.status.bare(Http.status.of(String.lines(before)))),
+def Laws.whole_head(f, asked, before, after, e):
+  %e : {Http.whole.step(asked, String.lines(before), after, _,
+    cut => Http.whole.go(f, asked, cut))
+    == Http.whole.of(Http.frame(Bool.or(asked, Http.status.bare(Http.status.of(String.lines(before)))),
       Http.head.go(String.lines(before), "transfer-encoding"),
-      Http.head.values(String.lines(before), "content-length")), after)
-    : Bool}
+      Http.head.values(String.lines(before), "content-length")), after) : Bool}
   {==}
 
 def Laws.status_of(_ls):
@@ -2991,4 +2989,86 @@ def Laws.pop_nil(out, e):
         Equal.sym(Bool, True{}, False{}, e))
 
 def Laws.pop_cons(_s, _t):
+  {==}
+
+# --- responses read by the request's method (HTTP-CLI-9) ---
+
+def Laws.whole_go(_method, _raw):
+  {==}
+
+def Laws.whole_fuel(_asked, _c):
+  {==}
+
+def Laws.whole_interim(f, asked, before, after, e):
+  %e : {Http.whole.step(asked, String.lines(before), after, _,
+    cut => Http.whole.go(f, asked, cut))
+    == Http.whole.go(f, asked, Http.divide(after, "\r\n\r\n")) : Bool}
+  {==}
+
+def Laws.status_interim_some(_n):
+  {==}
+
+def Laws.status_interim_none(_m, e):
+  %e : {Http.status.interim(_) == False{} : Bool}
+  {==}
+
+def Laws.reply_to(_method, _raw):
+  {==}
+
+def Laws.reply_fuel(_head, _c):
+  {==}
+
+def Laws.reply_open(_f, _head):
+  {==}
+
+def Laws.reply_interim(f, head, before, after, e):
+  %e : {Http.parse.to.step(head, String.lines(before), Http.status.of(String.lines(before)), after, _,
+    cut => Http.parse.to.go(f, head, cut))
+    == Http.parse.to.go(f, head, Http.divide(after, "\r\n\r\n"))
+    : Http.Reply}
+  {==}
+
+def Laws.reply_bare(f, head, before, after, e1, e2, n, e3):
+  %e1 : {Http.parse.to.step(head, String.lines(before), Http.status.of(String.lines(before)), after, _,
+    cut => Http.parse.to.go(f, head, cut))
+    == Http.Reply{n, Http.head.list(String.lines(before)), ""} : Http.Reply}
+  %e2 : {Http.parse.to.final(Http.status.of(String.lines(before)), String.lines(before), after, _)
+    == Http.Reply{n, Http.head.list(String.lines(before)), ""} : Http.Reply}
+  %e3 : {Http.parse.to.bare(_, String.lines(before))
+    == Http.Reply{n, Http.head.list(String.lines(before)), ""} : Http.Reply}
+  {==}
+
+def Laws.reply_bare_none(f, head, before, after, e1, e2, e3):
+  %e1 : {Http.parse.to.step(head, String.lines(before), Http.status.of(String.lines(before)), after, _,
+    cut => Http.parse.to.go(f, head, cut))
+    == Http.Torn{"the response has no status line"} : Http.Reply}
+  %e2 : {Http.parse.to.final(Http.status.of(String.lines(before)), String.lines(before), after, _)
+    == Http.Torn{"the response has no status line"} : Http.Reply}
+  %e3 : {Http.parse.to.bare(_, String.lines(before))
+    == Http.Torn{"the response has no status line"} : Http.Reply}
+  {==}
+
+def Laws.reply_framed(f, head, before, after, e1, e2):
+  %e1 : {Http.parse.to.step(head, String.lines(before), Http.status.of(String.lines(before)), after, _,
+    cut => Http.parse.to.go(f, head, cut))
+    == Http.parse.head(String.lines(before), after) : Http.Reply}
+  %e2 : {Http.parse.to.final(Http.status.of(String.lines(before)), String.lines(before), after, _)
+    == Http.parse.head(String.lines(before), after) : Http.Reply}
+  {==}
+
+def Laws.interim_skip(_m, _after):
+  {==}
+
+def Laws.status_empty(_m):
+  {==}
+
+def Laws.heard_ok(method, text):
+  dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
+  %dz : {Http.parse.to(method, _) == Http.parse.to(method, text) : Http.Reply}
+  {==}
+
+def Laws.heard_fail(method, raw, e):
+  %e : {Spec.wire.heard.of(method, raw, _)
+    == Http.Torn{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
+    : Http.Reply}
   {==}

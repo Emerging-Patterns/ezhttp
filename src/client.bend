@@ -23,18 +23,11 @@ def from.reply(r: Http.Reply) -> Response:
     case Http.Reply{status, headers, body}:
       Response{status, headers, body}
 
-# a finished exchange; a failed one keeps its reason, marked when it was a
-# timeout (wirespec.bend wire.why)
-def from.raw(+raw: String, ok: Bool) -> Response:
-  match ok:
-    case False{}:
-      Err{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
-    case True{}:
-      from.reply(Http.parse(Spec.wire.text(raw)))
-
-# an exchange's answer as a client Response
-def http.heard(+raw: String) -> Response:
-  from.raw(raw, Spec.wire.ok(raw))
+# an exchange's answer as a client Response, read by the request's method
+# (wirespec.bend wire.heard: interim 1xx heads skipped, no body for HEAD,
+# 1xx, 204 or 304; a failed exchange keeps its reason)
+def http.heard(+method: String, +raw: String) -> Response:
+  from.reply(Spec.wire.heard(method, raw))
 
 # an exchange as wirespec.bend wrote it: sent and read by its own method, or
 # the URL's reason
@@ -42,10 +35,10 @@ def http.send(ex: Spec.Exchange) -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
-    case Spec.Exchange{secure, host, port, method, req}:
+    case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
         +raw : String <- Wire.wire.talk(secure, host, port, method, req)
-        IO.pure(Response, http.heard(raw))
+        IO.pure(Response, http.heard(method, raw))
 
 # a URL that came apart (or not) into an HTTP exchange
 def http.loc(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
@@ -58,11 +51,11 @@ def http.send.timed(ms: U32, ex: Spec.Exchange) -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
-    case Spec.Exchange{secure, host, port, method, req}:
+    case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
         +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, method,
           req)
-        IO.pure(Response, http.heard(raw))
+        IO.pure(Response, http.heard(method, raw))
 
 # a request with this method, headers and body, bounded by a timeout in
 # milliseconds

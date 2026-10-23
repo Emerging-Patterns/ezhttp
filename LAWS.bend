@@ -154,6 +154,7 @@ law parse_needs_blank_line:
     : Http.Reply}
 
 # LAW: when the head did end, parse uses everything before/after the blank line
+# HTTP-CLI-9
 law parse_splits_at_blank_line:
   for +raw: String
   for before: String
@@ -1948,31 +1949,77 @@ law request_plain:
 
 # --- when a response is whole (SPEC.md HTTP-CLI-5) ---
 
+# LAW: a text is read head by head for the request's method, at most as many
+# heads as it has characters
+# HTTP-CLI-5
+law whole_go:
+  for +method: String
+  for +raw: String
+  {Http.whole(method, raw)
+    == Http.whole.go(String.length(raw), String.eq(method, "HEAD"),
+      Http.divide(raw, "\r\n\r\n")) : Bool}
+
+# LAW: a read with no heads left is not whole
+# HTTP-CLI-5
+law whole_fuel:
+  for asked: Bool
+  for c: Http.Cut
+  {Http.whole.go(0n, asked, c) == False{} : Bool}
+
 # LAW (RFC 9112 §2.1): a response whose header section has not ended is not
 # whole
 # HTTP-CLI-5
 law whole_open:
-  for +method: String
-  for raw: String
-  for e: {Http.NoCut{} == Http.divide(raw, "\r\n\r\n") : Http.Cut}
-  {Http.whole(method, raw) == False{} : Bool}
+  for f: Nat
+  for asked: Bool
+  {Http.whole.go(1n+f, asked, Http.NoCut{}) == False{} : Bool}
 
-# LAW (RFC 9112 §6.3): once the header section has ended, a response is whole
-# exactly when its body is, under the framing its head and the request's
-# method give
+# LAW (RFC 9110 §15.2): after an interim (1xx) head, the response is whole
+# exactly when the text after that head is
+# HTTP-CLI-5
+law whole_interim:
+  for f: Nat
+  for +asked: Bool
+  for +before: String
+  for +after: String
+  for e: {True{} == Http.status.interim(Http.status.of(String.lines(before)))
+    : Bool}
+  {Http.whole.go(1n+f, asked, Http.Cut{before, after})
+    == Http.whole.go(f, asked, Http.divide(after, "\r\n\r\n")) : Bool}
+
+# LAW (RFC 9112 §6.3): once a final header section has ended, a response is
+# whole exactly when its body is, under the framing its head and the
+# request's method give
 # HTTP-CLI-5
 law whole_head:
-  for +method: String
-  for raw: String
+  for f: Nat
+  for +asked: Bool
   for +before: String
-  for after: String
-  for e: {Http.Cut{before, after} == Http.divide(raw, "\r\n\r\n") : Http.Cut}
-  {Http.whole(method, raw)
-    == Http.whole.of(Http.frame(Bool.or(String.eq(method, "HEAD"),
+  for +after: String
+  for e: {False{} == Http.status.interim(Http.status.of(String.lines(before)))
+    : Bool}
+  {Http.whole.go(1n+f, asked, Http.Cut{before, after})
+    == Http.whole.of(Http.frame(Bool.or(asked,
       Http.status.bare(Http.status.of(String.lines(before)))),
       Http.head.go(String.lines(before), "transfer-encoding"),
       Http.head.values(String.lines(before), "content-length")), after)
     : Bool}
+
+# LAW (RFC 9110 §15.2): a status is interim exactly when it is 100 to 199
+# HTTP-CLI-5
+# HTTP-CLI-9
+law status_interim_some:
+  for +n: U32
+  {Http.status.interim(Some{n})
+    == Bool.and(U32.is_le(100, n), U32.is_lt(n, 200)) : Bool}
+
+# LAW: a status line that does not parse is not interim
+# HTTP-CLI-5
+# HTTP-CLI-9
+law status_interim_none:
+  for m: Maybe<&2, U32>
+  for e: {None{} == m : Maybe<&2, U32>}
+  {Http.status.interim(m) == False{} : Bool}
 
 # LAW (RFC 9112 §4): a status line's code is its second word, as a number
 # HTTP-CLI-5
@@ -2151,6 +2198,132 @@ law chunk_ready:
   {Http.chunks.ready(after, n)
     == Bool.and(Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
       String.starts_with(Http.utf8.drop(after, n), "\r\n")) : Bool}
+
+# --- the response, read by the request's method (SPEC.md HTTP-CLI-9) ---
+
+# LAW: a response is read head by head for the request's method, at most as
+# many heads as the text has characters
+# HTTP-CLI-9
+law reply_to:
+  for +method: String
+  for +raw: String
+  {Http.parse.to(method, raw)
+    == Http.parse.to.go(String.length(raw), String.eq(method, "HEAD"),
+      Http.divide(raw, "\r\n\r\n")) : Http.Reply}
+
+# LAW: a read with no heads left found no final head
+# HTTP-CLI-9
+law reply_fuel:
+  for head: Bool
+  for c: Http.Cut
+  {Http.parse.to.go(0n, head, c)
+    == Http.Torn{"the response head has no blank line after it"}
+    : Http.Reply}
+
+# LAW (RFC 9112 §2.1): a head that never ends is torn
+# HTTP-CLI-9
+law reply_open:
+  for f: Nat
+  for head: Bool
+  {Http.parse.to.go(1n+f, head, Http.NoCut{})
+    == Http.Torn{"the response head has no blank line after it"}
+    : Http.Reply}
+
+# LAW (RFC 9110 §15.2): an interim head with text after it is skipped, and the
+# text after it is read in its place
+# HTTP-CLI-9
+law reply_interim:
+  for f: Nat
+  for +head: Bool
+  for +before: String
+  for +after: String
+  for e: {True{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  {Http.parse.to.go(1n+f, head, Http.Cut{before, after})
+    == Http.parse.to.go(f, head, Http.divide(after, "\r\n\r\n")) : Http.Reply}
+
+# LAW (RFC 9110 §6.4.1, §9.3.2; RFC 9112 §6.3 item 1): a final response to
+# HEAD, or with a 1xx, 204 or 304 status, has its status, its fields and no
+# body, whatever its framing fields say
+# HTTP-CLI-9
+law reply_bare:
+  for f: Nat
+  for +head: Bool
+  for +before: String
+  for +after: String
+  for e1: {False{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  for e2: {True{} == Bool.or(head,
+    Http.status.empty(Http.status.of(String.lines(before)))) : Bool}
+  for n: U32
+  for e3: {Some{n} == Http.status.of(String.lines(before)) : Maybe<&2, U32>}
+  {Http.parse.to.go(1n+f, head, Http.Cut{before, after})
+    == Http.Reply{n, Http.head.list(String.lines(before)), ""} : Http.Reply}
+
+# LAW (RFC 9112 §4): a final head with no status code is torn
+# HTTP-CLI-9
+law reply_bare_none:
+  for f: Nat
+  for +head: Bool
+  for +before: String
+  for +after: String
+  for e1: {False{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  for e2: {True{} == Bool.or(head,
+    Http.status.empty(Http.status.of(String.lines(before)))) : Bool}
+  for e3: {None{} == Http.status.of(String.lines(before)) : Maybe<&2, U32>}
+  {Http.parse.to.go(1n+f, head, Http.Cut{before, after})
+    == Http.Torn{"the response has no status line"} : Http.Reply}
+
+# LAW: any other final response is read as parse_response reads that head and
+# the text after it
+# HTTP-CLI-9
+law reply_framed:
+  for f: Nat
+  for +head: Bool
+  for +before: String
+  for +after: String
+  for e1: {False{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  for e2: {False{} == Bool.or(head,
+    Http.status.empty(Http.status.of(String.lines(before)))) : Bool}
+  {Http.parse.to.go(1n+f, head, Http.Cut{before, after})
+    == Http.parse.head(String.lines(before), after) : Http.Reply}
+
+# LAW (RFC 9110 §15.2): a head is skipped exactly when it is interim and text
+# follows it
+# HTTP-CLI-9
+law interim_skip:
+  for m: Maybe<&2, U32>
+  for after: String
+  {Http.interim.skip(m, after)
+    == Bool.and(Http.status.interim(m), Bool.not(String.is_empty(after)))
+    : Bool}
+
+# LAW (RFC 9110 §6.4.1): a 1xx, 204 or 304 status has no body
+# HTTP-CLI-9
+law status_empty:
+  for +m: Maybe<&2, U32>
+  {Http.status.empty(m)
+    == Bool.or(Http.status.interim(m), Http.status.bare(m)) : Bool}
+
+# LAW: a successful exchange's text is read by the request's method
+# HTTP-CLI-9
+law heard_ok:
+  for +method: String
+  for +text: String
+  {Spec.wire.heard(method, "0\n" ++ text) == Http.parse.to(method, text)
+    : Http.Reply}
+
+# LAW: a failed exchange is torn with the reason it is reported with
+# HTTP-CLI-9
+law heard_fail:
+  for +method: String
+  for +raw: String
+  for e: {False{} == Spec.wire.ok(raw) : Bool}
+  {Spec.wire.heard(method, raw)
+    == Http.Torn{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
+    : Http.Reply}
 
 # --- reading until the response is whole (SPEC.md HTTP-CLI-6) ---
 

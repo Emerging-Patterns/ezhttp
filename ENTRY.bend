@@ -39,6 +39,13 @@ law parse_response_is_http_parse:
   for raw: String
   {Ez.parse_response(raw) == Http.parse(raw) : Http.Reply}
 
+# LAW: parse_response_to is Http.parse.to
+law parse_response_to_is_parse_to:
+  for method: String
+  for raw: String
+  {Ez.parse_response_to(method, raw) == Http.parse.to(method, raw)
+    : Http.Reply}
+
 # LAW: parse_request is Http.ask
 law parse_request_is_ask:
   for raw: String
@@ -171,6 +178,10 @@ def quote_component_is_pct_quote(_s):
 
 # parse_response_is_http_parse holds by unfolding the re-export
 def parse_response_is_http_parse(_raw):
+  {==}
+
+# parse_response_to_is_parse_to holds by unfolding the re-export
+def parse_response_to_is_parse_to(_method, _raw):
   {==}
 
 # parse_request_is_ask holds by unfolding the re-export

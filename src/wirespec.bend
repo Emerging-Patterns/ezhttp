@@ -267,3 +267,17 @@ def wire.read.next(+method: String, acc: String, +got: String) -> Read:
 # the answer when the reads run out before the response ends
 def wire.spent() -> String:
   "56\nthe answer did not end within 65536 reads"
+
+# the response an exchange's answer holds, read by the request's method
+# (SPEC.md HTTP-CLI-9); a failed exchange is torn with the reason it is
+# reported with (wire.why)
+def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
+  match ok:
+    case False{}:
+      Http.Torn{wire.why(wire.code(raw), wire.text(raw))}
+    case True{}:
+      Http.parse.to(method, wire.text(raw))
+
+# the response an exchange's answer holds
+def wire.heard(+method: String, +raw: String) -> Http.Reply:
+  wire.heard.of(method, raw, wire.ok(raw))

@@ -33,6 +33,12 @@ def quote_component(text: String) -> String:
 def parse_response(raw: String) -> Http.Reply:
   Http.parse(raw)
 
+# a response as the client reads it for a request with this method: interim
+# 1xx heads skipped, and no body for HEAD or a 1xx, 204 or 304 status,
+# whatever Content-Length says (SPEC.md HTTP-CLI-9)
+def parse_response_to(method: String, raw: String) -> Http.Reply:
+  Http.parse.to(method, raw)
+
 # request parse re-export (server inbound)
 def parse_request(raw: String) -> Http.Request:
   Http.ask(raw)
