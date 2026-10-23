@@ -12,6 +12,7 @@ import ./src/url.bend as Url
 import ./src/pct.bend as Pct
 import ./src/html.bend as Html
 import ./src/body.bend as Body
+import ./src/form.bend as Form
 import ./src/auth.bend as Auth
 import ./src/cookie.bend as Cookie
 import ./src/cache.bend as Cache
@@ -38,6 +39,35 @@ law quote_component_is_pct_quote:
 law parse_response_is_http_parse:
   for raw: String
   {Ez.parse_response(raw) == Http.parse(raw) : Http.Reply}
+
+# LAW: parse_response_to is Http.parse.to
+law parse_response_to_is_parse_to:
+  for method: String
+  for raw: String
+  {Ez.parse_response_to(method, raw) == Http.parse.to(method, raw)
+    : Http.Reply}
+
+# LAW: form_field is Form.form.field
+law form_field_is_field:
+  for name: String
+  for value: String
+  {Ez.form_field(name, value) == Form.form.field(name, value) : Form.Part}
+
+# LAW: form_file is Form.form.file
+law form_file_is_file:
+  for name: String
+  for filename: String
+  for ctype: String
+  for bytes: List<&2, U32>
+  {Ez.form_file(name, filename, ctype, bytes)
+    == Form.form.file(name, filename, ctype, bytes) : Form.Part}
+
+# LAW: form_body is Form.form.body
+law form_body_is_body:
+  for boundary: String
+  for parts: List<&2, Form.Part>
+  {Ez.form_body(boundary, parts) == Form.form.body(boundary, parts)
+    : Form.Form}
 
 # LAW: parse_request is Http.ask
 law parse_request_is_ask:
@@ -171,6 +201,22 @@ def quote_component_is_pct_quote(_s):
 
 # parse_response_is_http_parse holds by unfolding the re-export
 def parse_response_is_http_parse(_raw):
+  {==}
+
+# parse_response_to_is_parse_to holds by unfolding the re-export
+def parse_response_to_is_parse_to(_method, _raw):
+  {==}
+
+# form_field_is_field holds by unfolding the re-export
+def form_field_is_field(_name, _value):
+  {==}
+
+# form_file_is_file holds by unfolding the re-export
+def form_file_is_file(_name, _filename, _ctype, _bytes):
+  {==}
+
+# form_body_is_body holds by unfolding the re-export
+def form_body_is_body(_boundary, _parts):
   {==}
 
 # parse_request_is_ask holds by unfolding the re-export

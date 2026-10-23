@@ -12,6 +12,7 @@
 import Base
 import ./http.bend as Http
 import ./url.bend as Url
+import ./body.bend as Body
 
 # the word the effect reads for a scheme that wants TLS
 def wire.scheme(secure: Bool) -> String:
@@ -164,6 +165,40 @@ def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
       +secure = String.eq(scheme, "https")
       wire.exchange.at(method, secure, host, port, path, headers, body)
 
+# a request with n octets of body to a URL that came apart: the request text
+# ends at the blank line, and the octets go after it as the tail (wire.tail)
+def wire.exchange.octets(+method: String, l: Url.Loc,
+  headers: List<&2, Http.Header>, n: Nat) -> Exchange:
+  match l:
+    case Url.Bad{why}:
+      NoUrl{why}
+    case Url.Loc{scheme, +host, +port, path}:
+      +secure = String.eq(scheme, "https")
+      Exchange{secure, host, port, method,
+        Http.request.head.at(method, secure, host, port, path, headers, n)}
+
+# a request with this body to a URL that came apart: text inside the request
+# text as UTF-8, octets after it (SPEC.md HTTP-CLI-10)
+def wire.exchange.body(method: String, l: Url.Loc,
+  headers: List<&2, Http.Header>, b: Body.Body) -> Exchange:
+  match b:
+    case Body.Empty{}:
+      wire.exchange(method, l, headers, "")
+    case Body.Plain{text}:
+      wire.exchange(method, l, headers, text)
+    case Body.Octets{bytes}:
+      wire.exchange.octets(method, l, headers, List.length(&2, U32, bytes))
+
+# the octets sent after the request text: an octet body's, else none
+def wire.tail(b: Body.Body) -> List<&2, U32>:
+  match b:
+    case Body.Empty{}:
+      []
+    case Body.Plain{text}:
+      []
+    case Body.Octets{bytes}:
+      bytes
+
 # --- what is heard ---
 
 # an answer's status: the number on its first line, if it is one
@@ -267,3 +302,17 @@ def wire.read.next(+method: String, acc: String, +got: String) -> Read:
 # the answer when the reads run out before the response ends
 def wire.spent() -> String:
   "56\nthe answer did not end within 65536 reads"
+
+# the response an exchange's answer holds, read by the request's method
+# (SPEC.md HTTP-CLI-9); a failed exchange is torn with the reason it is
+# reported with (wire.why)
+def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
+  match ok:
+    case False{}:
+      Http.Torn{wire.why(wire.code(raw), wire.text(raw))}
+    case True{}:
+      Http.parse.to(method, wire.text(raw))
+
+# the response an exchange's answer holds
+def wire.heard(+method: String, +raw: String) -> Http.Reply:
+  wire.heard.of(method, raw, wire.ok(raw))

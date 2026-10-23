@@ -536,14 +536,14 @@ def fields.or(given: List<&2, Header>, dflt: List<&2, Header>)
     case h <> t:
       h <> t
 
-# a request's header fields: Host, User-Agent and Accept (the caller's, or
-# the default), Connection: close, the caller's other fields, Content-Length.
+# a request's header fields for a body of n octets: Host, User-Agent and
+# Accept (the caller's, or the default), Connection: close, the caller's other
+# fields, Content-Length.
 # A caller's Connection or Content-Length is not sent: Connection: close lets
 # the connection end frame the body when no Content-Length / chunked framing
 # applies (RFC 9112 §9.6 / §6.3), and the body's length is computed.
-def request.fields(host: String, +hs: List<&2, Header>, +body: String)
+def request.fields.n(host: String, +hs: List<&2, Header>, +n: Nat)
   -> List<&2, Header>:
-  +n = utf8.len(body)
   List.append(&2, Header, fields.or(fields.of(FHost{}, hs), [H{"Host", host}]),
     List.append(&2, Header,
       fields.or(fields.of(FAgent{}, hs), [H{"User-Agent", "ezhttp"}]),
@@ -552,6 +552,11 @@ def request.fields(host: String, +hs: List<&2, Header>, +body: String)
         H{"Connection", "close"}
           <> List.append(&2, Header, fields.of(FOther{}, hs),
             clen.field(n, Nat.is_eq(n, 0n))))))
+
+# a request's header fields for a text body: the fields for its UTF-8 octets
+def request.fields(host: String, +hs: List<&2, Header>, +body: String)
+  -> List<&2, Header>:
+  request.fields.n(host, hs, utf8.len(body))
 
 # a request-line and headers (RFC 9112 §3, §5). Absolute-path request-target
 # (RFC 9112 §3.2.1); the fields are request.fields'.
@@ -588,6 +593,19 @@ def authority(secure: Bool, host: String, +port: U32) -> String:
 def request.at(method: String, secure: Bool, host: String, port: U32,
   path: String, headers: List<&2, Header>, body: String) -> String:
   request(method, authority(secure, host, port), path, headers, body)
+
+# the request text for a body of n octets that is sent after it as its own
+# octets: the request line, the fields for n octets, and the blank line
+def request.head(method: String, host: String, path: String,
+  headers: List<&2, Header>, +n: Nat) -> String:
+  method ++ " " ++ path ++ " HTTP/1.1\r\n"
+    ++ headers.lines(request.fields.n(host, headers, n))
+    ++ "\r\n"
+
+# the request text a client sends to host and port ahead of n octets
+def request.head.at(method: String, secure: Bool, host: String, port: U32,
+  path: String, headers: List<&2, Header>, n: Nat) -> String:
+  request.head(method, authority(secure, host, port), path, headers, n)
 
 # GET with optional headers
 def get_req(host: String, path: String, headers: List<&2, Header>) -> String:
@@ -1051,6 +1069,15 @@ def status.bare(m: Maybe<&2, U32>) -> Bool:
     case Some{n}:
       status.nocontent(n)
 
+# a 1xx status is an interim response (RFC 9110 §15.2); a status line that
+# did not parse is not
+def status.interim(m: Maybe<&2, U32>) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{+n}:
+      Bool.and(U32.is_le(100, n), U32.is_lt(n, 200))
+
 # a Content-Length that reads as a number, or the close when none does
 def frame.sized(m: Maybe<&2, Nat>) -> Frame:
   match m:
@@ -1144,18 +1171,98 @@ def whole.of(f: Frame, +body: String) -> Bool:
     case Closed{}:
       False{}
 
+# a head that is interim: whole when what follows is; else whole under the
+# framing it gives
+def whole.step(asked: Bool, +ls: List<&2, String>, +after: String,
+  interim: Bool, rest: Cut -> Bool) -> Bool:
+  match interim:
+    case True{}:
+      rest(divide(after, "\r\n\r\n"))
+    case False{}:
+      whole.of(frame(Bool.or(asked, status.bare(status.of(ls))),
+        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
+        after)
+
 # a response whose head has ended, or not yet
-def whole.cut(asked: Bool, c: Cut) -> Bool:
+def whole.at(asked: Bool, c: Cut, rest: Cut -> Bool) -> Bool:
   match c:
     case NoCut{}:
       False{}
     case Cut{before, after}:
       +ls = String.lines(before)
-      whole.of(frame(Bool.or(asked, status.bare(status.of(ls))),
-        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
-        after)
+      whole.step(asked, ls, after, status.interim(status.of(ls)), rest)
+
+# the heads in turn, at most `fuel` of them
+def whole.go(fuel: Nat, +asked: Bool, c: Cut) -> Bool:
+  match fuel:
+    case 0n:
+      False{}
+    case 1n+f:
+      whole.at(asked, c, cut => whole.go(f, asked, cut))
 
 # whether the text received so far is a whole response to a request with
-# this method (RFC 9112 §6.3); a response framed by the close never is
-def whole(+method: String, raw: String) -> Bool:
-  whole.cut(String.eq(method, "HEAD"), divide(raw, "\r\n\r\n"))
+# this method (RFC 9112 §6.3), interim 1xx heads read past (RFC 9110 §15.2);
+# a response framed by the close never is
+def whole(+method: String, +raw: String) -> Bool:
+  whole.go(String.length(raw), String.eq(method, "HEAD"),
+    divide(raw, "\r\n\r\n"))
+
+# --- a response read by the request's method (RFC 9110 §15.2, §6.4.1) ---
+
+# a 1xx, 204 or 304 response has no body (RFC 9110 §6.4.1)
+def status.empty(+m: Maybe<&2, U32>) -> Bool:
+  Bool.or(status.interim(m), status.bare(m))
+
+# an interim head is skipped when more text follows it
+def interim.skip(m: Maybe<&2, U32>, after: String) -> Bool:
+  Bool.and(status.interim(m), Bool.not(String.is_empty(after)))
+
+# the final head with no body: its status and fields, an empty body
+def parse.to.bare(m: Maybe<&2, U32>, ls: List<&2, String>) -> Reply:
+  match m:
+    case None{}:
+      Torn{"the response has no status line"}
+    case Some{n}:
+      Reply{n, head.list(ls), ""}
+
+# the final head: with no body, or framed as parse frames it
+def parse.to.final(m: Maybe<&2, U32>, +ls: List<&2, String>, after: String,
+  bare: Bool) -> Reply:
+  match bare:
+    case True{}:
+      parse.to.bare(m, ls)
+    case False{}:
+      parse.status(m, ls, after)
+
+# an interim head is skipped, any other is the final one
+def parse.to.step(head: Bool, +ls: List<&2, String>, +m: Maybe<&2, U32>,
+  +after: String, skip: Bool, rest: Cut -> Reply) -> Reply:
+  match skip:
+    case True{}:
+      rest(divide(after, "\r\n\r\n"))
+    case False{}:
+      parse.to.final(m, ls, after, Bool.or(head, status.empty(m)))
+
+# a head that has ended, or the reason it has not
+def parse.to.at(head: Bool, c: Cut, rest: Cut -> Reply) -> Reply:
+  match c:
+    case NoCut{}:
+      Torn{"the response head has no blank line after it"}
+    case Cut{before, +after}:
+      +ls = String.lines(before)
+      +m = status.of(ls)
+      parse.to.step(head, ls, m, after, interim.skip(m, after), rest)
+
+# the heads in turn, at most `fuel` of them
+def parse.to.go(fuel: Nat, +head: Bool, c: Cut) -> Reply:
+  match fuel:
+    case 0n:
+      Torn{"the response head has no blank line after it"}
+    case 1n+f:
+      parse.to.at(head, c, cut => parse.to.go(f, head, cut))
+
+# the response to a request with this method (RFC 9112 §6.3): interim 1xx
+# heads skipped, and no body for HEAD or a 1xx, 204 or 304 final status
+def parse.to(+method: String, +raw: String) -> Reply:
+  parse.to.go(String.length(raw), String.eq(method, "HEAD"),
+    divide(raw, "\r\n\r\n"))

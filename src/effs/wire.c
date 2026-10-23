@@ -8,7 +8,11 @@
 // asking.
 //
 // The spec arrives as four parts: the scheme, the host, the port, each on its
-// own line, and the rest of the string is the request verbatim. The scheme
+// own line, and the rest of the string is the request verbatim, written as
+// the runtime writes any String, in UTF-8. A second argument, the tail, is a
+// list of octets (0..255) written after the request byte for byte: that is
+// how a body of octets (a file, a multipart form) reaches the wire unchanged,
+// since a String's code points 128..255 would go out as two bytes each. The scheme
 // line may carry a timeout after a space, in milliseconds, as 32 binary
 // digits least significant first (wirespec.bend); without one it is 60000.
 // The timeout bounds the connect, every send and every receive on its own,
@@ -369,9 +373,16 @@ static EzwireConn ezwire_conns[EZWIRE_CONNS];
 Term ezwire_open_run(Env e, Term* f, IoWork* w) {
   uint64_t n = 0;
   char* spec = io_cstr(e, f[0], &n);
+  uint64_t tn = 0;
+  char* tail = io_cbuf(e, f[1], &tn, CID(Con));
+  if (tail == NULL) {
+    free(spec);
+    return ezwire_say_back(e, 22, "a body octet is past 255", 24);
+  }
   char* part[4];
   if (!ezwire_split(spec, (size_t)n, part)) {
     free(spec);
+    free(tail);
     return ezwire_say_back(e, 22, "a malformed request spec", 24);
   }
   int slot = -1;
@@ -382,12 +393,14 @@ Term ezwire_open_run(Env e, Term* f, IoWork* w) {
   }
   if (slot < 0) {
     free(spec);
+    free(tail);
     return ezwire_say_back(e, 24, "too many open exchanges", 23);
   }
   int secure = strncmp(part[0], "tls", 3) == 0
     && (part[0][3] == '\0' || part[0][3] == ' ');
   if (secure && ezwire_tls_ready() != 1) {
     free(spec);
+    free(tail);
     char why[512];
     int wn = snprintf(why, sizeof(why), "could not load libssl at run time "
       "(%s); install openssl or point EZ_LIBSSL at the library",
@@ -406,6 +419,7 @@ Term ezwire_open_run(Env e, Term* f, IoWork* w) {
         part[1], part[2]);
     Term miss = ezwire_say_back(e, late ? EZWIRE_LATE : 6, why, (size_t)wn);
     free(spec);
+    free(tail);
     return miss;
   }
   void* ssl = secure ? ezwire_shake(fd, part[1], &late) : NULL;
@@ -418,11 +432,13 @@ Term ezwire_open_run(Env e, Term* f, IoWork* w) {
         part[1]);
     Term miss = ezwire_say_back(e, late ? EZWIRE_LATE : 35, why, (size_t)wn);
     free(spec);
+    free(tail);
     return miss;
   }
   /* remaining bytes after the third newline — not strlen, so a body may hold NUL */
   size_t req_len = (size_t)n - (size_t)(part[3] - spec);
-  if (ezwire_say(fd, ssl, part[3], req_len, &late) != 0) {
+  if (ezwire_say(fd, ssl, part[3], req_len, &late) != 0
+    || ezwire_say(fd, ssl, tail, (size_t)tn, &late) != 0) {
     int wn = late
       ? snprintf(why, sizeof(why), "sending the request to %s took over %ld ms",
         part[1], ms)
@@ -435,8 +451,10 @@ Term ezwire_open_run(Env e, Term* f, IoWork* w) {
     }
     close(fd);
     free(spec);
+    free(tail);
     return miss;
   }
+  free(tail);
   EzwireConn* c = &ezwire_conns[slot];
   memset(c, 0, sizeof(*c));
   c->used = 1;
