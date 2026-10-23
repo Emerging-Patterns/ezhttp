@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.16.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.15.0...v0.16.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **client:** Client.Response{status, headers, body} is now Client.Response{status, headers, body, reason}; a pattern match on it needs the fourth field (`_reason`).
+
+### Features
+
+* **client:** name the cause of a failed connection; expose the reason phrase ([#43](https://github.com/Emerging-Patterns/ezhttp/issues/43)) ([208f3d5](https://github.com/Emerging-Patterns/ezhttp/commit/208f3d5a441492947e5a3023a0a18c886a83205f))
+
 ## [0.15.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.14.0...v0.15.0) (2026-10-23)
 
 
