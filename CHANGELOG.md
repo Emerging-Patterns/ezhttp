@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.13.0...v0.14.0) (2026-10-23)
+
+
+### Features
+
+* **client:** multipart/form-data bodies sent byte for byte; read responses by request method ([#40](https://github.com/Emerging-Patterns/ezhttp/issues/40)) ([6252588](https://github.com/Emerging-Patterns/ezhttp/commit/62525882935dbbd6e52c75a3405921ff1a3799e6))
+
 ## [0.13.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.12.0...v0.13.0) (2026-10-23)
 
 
