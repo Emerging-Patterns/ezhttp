@@ -2,8 +2,8 @@
 # This module is the only one that imports ezjson. Request, Reply, and the
 # client Response do not.
 import Base
-import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
-import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as Value
+import 0xa81e161008ecc2f297c0a3065cb9b188/main.bend as Ezjson
+import 0xa81e161008ecc2f297c0a3065cb9b188/src/value.bend as Value
 import ./body.bend as Body
 
 # a JSON value as a UTF-8 text body

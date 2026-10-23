@@ -224,8 +224,8 @@ def cross(cfg: Cors.Cfg, req: Msg.Request, reply: Msg.Reply) -> Msg.Reply:
 ```
 
 ```
-import emerging-ezjson@1.1.0.0/main.bend as Ezjson
-import emerging-ezjson@1.1.0.0/src/value.bend as Value
+import emerging-ezjson@1.2.0.0/main.bend as Ezjson
+import emerging-ezjson@1.2.0.0/src/value.bend as Value
 
 def read.of(got: Maybe<&2, Value.Json>) -> Maybe<&2, String>:
   match got:

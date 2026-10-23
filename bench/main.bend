@@ -7,7 +7,7 @@ import ../src/http.bend as Msg
 import ../src/body.bend as Body
 import ../src/client.bend as Client
 import ../src/json.bend as Json
-import 0x81c67699424929b5c44cd8577e18117f/src/value.bend as V
+import 0xa81e161008ecc2f297c0a3065cb9b188/src/value.bend as V
 import ./fix.bend as Fix
 
 # unwrap a parsed U32, or zero when parse fails
