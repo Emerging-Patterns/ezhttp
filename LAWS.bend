@@ -5246,6 +5246,7 @@ law octets_headers_nil:
 
 # LAW: a request is handed on as text, each part decoded
 # HTTP-SRV-2
+# HTTP-SRV-9
 law step_text:
   for method: String
   for target: String
@@ -5260,3 +5261,166 @@ law step_text:
 law step_text_bad:
   for why: String
   {Step.step.text(Http.Bad{why}) == Http.Bad{why} : Http.Request}
+
+# --- the concurrent server's replies and accepts (SPEC.md HTTP-SRV-4, 6 to 9) ---
+
+# LAW: an accept whose deadline passed (ETIMEDOUT) is not a lost connection
+# HTTP-SRV-4
+law accept_idle:
+  for -A: Type
+  for +code: U32
+  for e: {True{} == U32.is_eq(code, 110) : Bool}
+  for why: String
+  {Step.step.accepted(A, Fail{(code, why)}) == Step.Idle{} : Step.Accept<A>}
+
+# LAW: any other failed accept is lost with the line `ezhttp: accept: <why>`
+# HTTP-SRV-4
+law accept_missed:
+  for -A: Type
+  for +code: U32
+  for e: {False{} == U32.is_eq(code, 110) : Bool}
+  for why: String
+  {Step.step.accepted(A, Fail{(code, why)})
+    == Step.Missed{"ezhttp: accept: " ++ why} : Step.Accept<A>}
+
+# LAW: an accept that brought a connection hands it on unchanged
+# HTTP-SRV-4
+law accept_took:
+  for -A: Type
+  for value: A
+  {Step.step.accepted(A, Done{value}) == Step.Took{value} : Step.Accept<A>}
+
+# LAW (RFC 9112 §4, §6.3): the head of a reply of n octets
+# HTTP-SRV-6
+law respond_head:
+  for +status: U32
+  for hs: List<&2, Http.Header>
+  for +n: Nat
+  {Http.respond.head(status, hs, n)
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n"
+      ++ Http.headers.lines(hs)
+      ++ Http.clen.line(n, Nat.is_eq(n, 0n))
+      ++ "\r\n" ++ "" : String}
+
+# LAW: a text reply is the head of its UTF-8 octets onto the body
+# HTTP-SRV-6
+law respond_text_is:
+  for +status: U32
+  for hs: List<&2, Http.Header>
+  for +body: String
+  {Http.respond(status, hs, body)
+    == Http.respond.head.onto(status, hs, Http.utf8.len(body), body) : String}
+
+# LAW: the head written onto what follows it is the head, then that
+# HTTP-SRV-6
+law respond_head_onto:
+  for +status: U32
+  for hs: List<&2, Http.Header>
+  for +n: Nat
+  for rest: String
+  {Http.respond.head.onto(status, hs, n, rest)
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n"
+      ++ Http.headers.lines(hs)
+      ++ Http.clen.line(n, Nat.is_eq(n, 0n))
+      ++ "\r\n" ++ rest : String}
+
+# LAW (RFC 9112 §7.1): a streamed reply with a body is chunked
+# HTTP-SRV-7
+law stream_head:
+  for +status: U32
+  for e: {False{} == Http.status.nocontent(status) : Bool}
+  for hs: List<&2, Http.Header>
+  {Http.respond.stream(status, hs)
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ "Transfer-Encoding: chunked\r\n" ++ "\r\n" : String}
+
+# LAW (RFC 9112 §6.1): a streamed 204 or 304 sends no Transfer-Encoding
+# HTTP-SRV-7
+law stream_head_bare:
+  for +status: U32
+  for e: {True{} == Http.status.nocontent(status) : Bool}
+  for hs: List<&2, Http.Header>
+  {Http.respond.stream(status, hs)
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n" ++ Http.headers.lines(hs) ++ ""
+      ++ "\r\n" : String}
+
+# LAW: a chunk's size line is its 8 hex digits, high first, then CRLF
+# HTTP-SRV-7
+law chunk_line:
+  for +n: U32
+  {Http.chunk.line(n)
+    == SCon{Http.hex.at(n, 28n), SCon{Http.hex.at(n, 24n),
+      SCon{Http.hex.at(n, 20n), SCon{Http.hex.at(n, 16n),
+      SCon{Http.hex.at(n, 12n), SCon{Http.hex.at(n, 8n),
+      SCon{Http.hex.at(n, 4n), SCon{Http.hex.at(n, 0n), "\r\n"}}}}}}}}
+    : String}
+
+# LAW: a hex digit is the 4 bits at its shift, 0-9 then lowercase a-f
+# HTTP-SRV-7
+law hex_at:
+  for +n: U32
+  for k: Nat
+  {Http.hex.at(n, k) == Http.hex.nib(U32.and(U32.shrn(n, k), 15)) : Char}
+
+# LAW: a value below 10 is its decimal digit, any other `a` onwards
+# HTTP-SRV-7
+law hex_nib:
+  for +v: U32
+  {Http.hex.nib(v) == Char.from_u32(Bool.pick(U32, U32.is_lt(v, 10),
+    U32.add(v, 48), U32.add(v, 87))) : Char}
+
+# LAW: an empty chunk is not written
+# HTTP-SRV-7
+law chunk_empty:
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 0) : Bool}
+  {Http.chunk.frame(n) == Http.NoChunk{} : Http.Chunk}
+
+# LAW: any other chunk is written after its size line
+# HTTP-SRV-7
+law chunk_some:
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 0) : Bool}
+  {Http.chunk.frame(n) == Http.Chunk{Http.chunk.line(n)} : Http.Chunk}
+
+# LAW (RFC 9112 §7.1): the body ends with the last chunk and no trailer
+# HTTP-SRV-7
+law chunk_end:
+  for s: String
+  for e: {"" == s : String}
+  {Http.chunk.end() ++ s == "0\r\n\r\n" : String}
+
+# LAW (RFC 9110 §9.3.2): a reply to HEAD is written bare
+# HTTP-SRV-8
+law bare_head:
+  for +status: U32
+  {Step.step.bare("HEAD", status) == True{} : Bool}
+
+# LAW: a reply to any other method is bare exactly when its status is 204
+# or 304
+# HTTP-SRV-8
+law bare_other:
+  for +method: String
+  for e: {False{} == String.eq(method, "HEAD") : Bool}
+  for +status: U32
+  {Step.step.bare(method, status) == Http.status.nocontent(status) : Bool}
+
+# LAW: a 204 or 304 is exactly what nocontent names
+# HTTP-SRV-8
+law nocontent_is:
+  for +code: U32
+  {Http.status.nocontent(code)
+    == Bool.or(U32.is_eq(code, 204), U32.is_eq(code, 304)) : Bool}
+
+# LAW: the handler gets the body octets of the request as they arrived
+# HTTP-SRV-9
+law step_octets:
+  for method: String
+  for target: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Step.step.octets(Http.Request{method, target, hs, body}) == body : String}

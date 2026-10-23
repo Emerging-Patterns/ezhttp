@@ -347,6 +347,62 @@ def http.serve_io(
 ) -> IO(Unit):
   Server.server.serve_forever(handle, host, port)
 
+# listen on host:port and serve up to `limit` connections, each on its own
+# fork and at most `max` at once (0: no limit), calling a pure handler with
+# `ctx` and the request (Server.Req: text, and its body's octets); returns
+# once every connection is closed (SPEC.md HTTP-SRV, HTTP-TRUST-2)
+def http.serve_with(
+  ~C: Data,
+  ~handle: C -> Server.Req -> Server.Answer,
+  ctx: C,
+  host: String,
+  port: U32,
+  limit: U32,
+  max: U32
+) -> IO(Unit):
+  Server.server.serve_with(~C, handle, ctx, host, port, limit, max)
+
+# the same with a handler that does IO
+def http.serve_io_with(
+  ~C: Data,
+  ~handle: C -> Server.Req -> IO(Server.Answer),
+  ctx: C,
+  host: String,
+  port: U32,
+  limit: U32,
+  max: U32
+) -> IO(Unit):
+  Server.server.serve_io_with(~C, handle, ctx, host, port, limit, max)
+
+# the same with no limit: it serves until the process is stopped
+@unsafe def http.serve_forever_with(
+  ~C: Data,
+  ~handle: C -> Server.Req -> IO(Server.Answer),
+  ctx: C,
+  host: String,
+  port: U32,
+  max: U32
+) -> IO(Unit):
+  Server.server.serve_forever_with(~C, handle, ctx, host, port, max)
+
+# a reply with a text body, written as UTF-8
+def text_reply(  # noqa: L001 constructor of Server.Answer, which holds Bytes
+  status: U32, headers: List<&2, Http.Header>, body: String) -> Server.Answer:
+  Server.TextReply{status, headers, body}
+
+# a reply whose body is packed octets, written unchanged
+def octets_reply(  # noqa: L001 constructor of Server.Answer, which holds Bytes
+  status: U32, headers: List<&2, Http.Header>, bytes: Bytes.Bytes)
+  -> Server.Answer:
+  Server.OctetsReply{status, headers, bytes}
+
+# a reply streamed chunked: each chunk the channel gives is written as it
+# comes, and the body ends when the channel is closed
+def stream_reply(  # noqa: L001 constructor of Server.Answer, which holds a channel
+  status: U32, headers: List<&2, Http.Header>, chunks: Chan(Bytes.Bytes))
+  -> Server.Answer:
+  Server.StreamReply{status, headers, chunks}
+
 # listen on host:port, serve one connection, then stop
 def http.serve_once(
   ~handle: Http.Request -> Http.Reply,
