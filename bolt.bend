@@ -34,3 +34,7 @@ def closed() -> String:
 # bolt 1.8.0 coverage: warn until the findings are fixed (see the tracking issue)
 def coverage() -> String:
   "warn"
+
+# SPEC.md rows and law tags agree (HTTP-SRV)
+def trace() -> String:
+  "error"

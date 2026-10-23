@@ -14,6 +14,7 @@ import ./src/cookie.bend as Cookie
 import ./src/cache.bend as Cache
 import ./src/cors.bend as Cors
 import ./src/json.bend as Json
+import ./src/step.bend as Step
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -1203,3 +1204,100 @@ law cors_preflight_star:
       Http.H{"Access-Control-Allow-Headers", ""},
       Http.H{"Access-Control-Max-Age", "0"}
     ], ""} : Http.Reply}
+
+# --- the server's decisions (SPEC.md HTTP-SRV) ---
+
+# LAW: a request that does not parse is answered 400 with its reason, and
+# the handler is not called
+# HTTP-SRV-1
+law step_bad:
+  for why: String
+  {Step.step.of(Http.Bad{why}) == Step.Answer{Http.Reply{400, [], why}}
+    : Step.Step}
+
+# LAW: a request that parses goes to the handler exactly as it was parsed
+# HTTP-SRV-2
+law step_call:
+  for method: String
+  for target: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Step.step.of(Http.Request{method, target, hs, body})
+    == Step.Call{Http.Request{method, target, hs, body}} : Step.Step}
+
+# LAW (RFC 9110 §9.3.2): a reply to HEAD loses its body and keeps the rest
+# HTTP-SRV-3
+law shape_head:
+  for status: U32
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Http.reply.for("HEAD", Http.Reply{status, hs, body})
+    == Http.Reply{status, hs, ""} : Http.Reply}
+
+# LAW: a reply to any method other than HEAD is left as it is
+# HTTP-SRV-3
+law shape_other:
+  for method: String
+  for e: {False{} == String.eq(method, "HEAD") : Bool}
+  for reply: Http.Reply
+  {Http.reply.for(method, reply) == reply : Http.Reply}
+
+# LAW (RFC 9110 §15.3.5): a 204 is written with no body
+# HTTP-SRV-3
+law respond_204:
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Http.respond.of(Http.Reply{204, hs, body}) == Http.respond(204, hs, "")
+    : String}
+
+# LAW (RFC 9110 §15.4.5): a 304 is written with no body
+# HTTP-SRV-3
+law respond_304:
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Http.respond.of(Http.Reply{304, hs, body}) == Http.respond(304, hs, "")
+    : String}
+
+# LAW: any other status is written with its headers and body as they are
+# HTTP-SRV-3
+law respond_other:
+  for +status: U32
+  for e: {False{} == Http.status.nocontent(status) : Bool}
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Http.respond.of(Http.Reply{status, hs, body})
+    == Http.respond(status, hs, body) : String}
+
+# LAW: a failed accept or recv loses the connection with the line
+# `ezhttp: <phase>: <why>`
+# HTTP-SRV-4
+law lost_failed:
+  for -A: Type
+  for phase: String
+  for code: U32
+  for why: String
+  {Step.step.got(A, phase, Fail{(code, why)})
+    == Step.Lost{"ezhttp: " ++ phase ++ ": " ++ why} : Step.Got<A>}
+
+# LAW: an accept or recv that succeeds hands on its value unchanged
+# HTTP-SRV-4
+law lost_kept:
+  for -A: Type
+  for phase: String
+  for value: A
+  {Step.step.got(A, phase, Done{value}) == Step.Kept{value} : Step.Got<A>}
+
+# LAW: a failed send loses the connection with the line `ezhttp: write: <why>`
+# HTTP-SRV-4
+law lost_send:
+  for code: U32
+  for why: String
+  for left: String
+  {Step.step.sent(Fail{((code, why), left)})
+    == Step.Lost{"ezhttp: write: " ++ why} : Step.Got<Unit>}
+
+# LAW: a send that succeeds keeps the connection
+# HTTP-SRV-4
+law lost_sent:
+  for done: Unit
+  {Step.step.sent(Done{done}) == Step.Kept{done} : Step.Got<Unit>}

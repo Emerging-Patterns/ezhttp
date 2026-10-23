@@ -3,6 +3,7 @@ import Base
 import ./src/http.bend as Http
 import ./src/url.bend as Url
 import ./src/body.bend as Body
+import ./src/step.bend as Step
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -985,4 +986,49 @@ def Laws.json_parse_rejects():
   {==}
 
 def Laws.cors_preflight_star():
+  {==}
+
+# --- the server's decisions ---
+
+def Laws.step_bad(_why):
+  {==}
+
+def Laws.step_call(_method, _target, _hs, _body):
+  {==}
+
+def Laws.shape_head(_status, _hs, _body):
+  {==}
+
+def Laws.shape_other(_method, e, reply):
+  match reply:
+    case Http.Torn{why}:
+      %e : {Http.reply.for.pick(Http.Torn{why}, _) == Http.Torn{why}
+        : Http.Reply}
+      {==}
+    case Http.Reply{status, hs, body}:
+      %e : {Http.reply.for.pick(Http.Reply{status, hs, body}, _)
+        == Http.Reply{status, hs, body} : Http.Reply}
+      {==}
+
+def Laws.respond_204(_hs, _body):
+  {==}
+
+def Laws.respond_304(_hs, _body):
+  {==}
+
+def Laws.respond_other(status, e, hs, body):
+  %e : {Http.respond.of.body(status, hs, body, _)
+    == Http.respond(status, hs, body) : String}
+  {==}
+
+def Laws.lost_failed(_a, _phase, _code, _why):
+  {==}
+
+def Laws.lost_kept(_a, _phase, _value):
+  {==}
+
+def Laws.lost_send(_code, _why, _left):
+  {==}
+
+def Laws.lost_sent(_done):
   {==}

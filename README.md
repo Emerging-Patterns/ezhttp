@@ -65,8 +65,20 @@ def create() -> IO(Client.Response):
 `http.serve(handle, host, port, limit)` listens with Base TCP on `host`
 (`"127.0.0.1"` for loopback only, `"0.0.0.0"` for every interface), accepts connections, parses one request
 per connection, calls a pure handler, and writes one response
-(`Connection: close`). `http.serve_once(handle, host, port)` stops after a single client. No TLS
-in v0 for the server. A HEAD response is written with an empty body.
+(`Connection: close`), one connection at a time. `http.serve_once(handle, host, port)` stops
+after a single client. No TLS in v0 for the server. A request that does not parse is answered
+`400` with its reason and never reaches the handler. A response to HEAD, and a 204 or 304, is
+written with an empty body.
+
+A connection that fails (a failed accept, recv or send, such as a client resetting
+mid-request) is closed and logged to stderr as one line, `ezhttp: <phase>: <why>`, and the
+server takes the next connection; it counts toward `limit`. SPEC.md lists these guarantees
+(HTTP-SRV) and what is trusted rather than proved.
+
+A handler that needs IO (a file, a subprocess, an upstream call) goes to
+`http.serve_io(handle, host, port, limit)`, with `handle: Msg.Request -> IO(Msg.Reply)`.
+`http.serve_forever(handle, host, port)` is the same with no limit, for a long-running
+service; it is `@unsafe` recursion, so a program calling it is not proof-clean.
 
 ```
 import emerging-ezhttp@0.8.0.0/main.bend as Http
@@ -81,6 +93,22 @@ def handle(req: Msg.Request) -> Msg.Reply:
 
 def main() -> IO(Unit):
   Http.http.serve(handle, "127.0.0.1", 8080, 1024)
+```
+
+```
+import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
+
+def handle(req: Msg.Request) -> IO(Msg.Reply):
+  match req:
+    case Msg.Bad{why}:
+      IO.pure(Msg.Reply, Msg.Reply{400, [], why})
+    case Msg.Request{method, target, headers, body}:
+      IO.bind(Unit, Msg.Reply, IO.print("served " ++ target),
+        _u => IO.pure(Msg.Reply, Msg.Reply{200, [], "ok"}))
+
+def main() -> IO(Unit):
+  Http.http.serve_io(handle, "127.0.0.1", 8080, 1024)
 ```
 
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
