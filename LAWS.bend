@@ -2443,6 +2443,99 @@ law heard_fail:
     == Http.Torn{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
     : Http.Reply}
 
+# --- a response's reason phrase (SPEC.md HTTP-CLI-11) ---
+
+# LAW: a text's reason phrase is read head by head, at most as many heads as
+# it has characters
+# HTTP-CLI-11
+law phrase_to:
+  for +raw: String
+  {Http.phrase.to(raw)
+    == Http.phrase.to.go(String.length(raw), Http.divide(raw, "\r\n\r\n"))
+    : String}
+
+# LAW: a read with no heads left found no reason
+# HTTP-CLI-11
+law phrase_fuel:
+  for c: Http.Cut
+  {Http.phrase.to.go(0n, c) == "" : String}
+
+# LAW (RFC 9112 §2.1): a head that never ends has no reason
+# HTTP-CLI-11
+law phrase_open:
+  for f: Nat
+  {Http.phrase.to.go(1n+f, Http.NoCut{}) == "" : String}
+
+# LAW (RFC 9110 §15.2): an interim head with text after it is skipped by the
+# same rule HTTP-CLI-9 skips it by, and the reason read from the text after it
+# HTTP-CLI-11
+law phrase_interim:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e: {True{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  {Http.phrase.to.go(1n+f, Http.Cut{before, after})
+    == Http.phrase.to.go(f, Http.divide(after, "\r\n\r\n")) : String}
+
+# LAW: the head HTTP-CLI-9 stops at gives the reason on its status line
+# HTTP-CLI-11
+law phrase_final:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e: {False{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  {Http.phrase.to.go(1n+f, Http.Cut{before, after})
+    == Http.phrase.line(Http.first(String.lines(before))) : String}
+
+# LAW (RFC 9112 §4): a status line `<v> SP <c> SP <r>` whose version and code
+# hold no SP and whose reason holds no CR has reason exactly r
+# HTTP-CLI-11
+law phrase_line:
+  for +v: String
+  for +c: String
+  for +r: String
+  for e1: {True{} == avoids(v, ' ') : Bool}
+  for e2: {True{} == avoids(c, ' ') : Bool}
+  for e3: {True{} == avoids(r, '\r') : Bool}
+  {Http.phrase.line(v ++ SCon{' ', c ++ SCon{' ', r}}) == r : String}
+
+# LAW (RFC 9112 §4): the CR that ends a status line's CRLF is not part of
+# its reason
+# HTTP-CLI-11
+law phrase_line_cr:
+  for +v: String
+  for +c: String
+  for +r: String
+  for e1: {True{} == avoids(v, ' ') : Bool}
+  for e2: {True{} == avoids(c, ' ') : Bool}
+  for e3: {True{} == avoids(r, '\r') : Bool}
+  {Http.phrase.line(v ++ SCon{' ', c ++ SCon{' ', r ++ "\r"}}) == r : String}
+
+# LAW: a status line with one SP has an empty reason
+# HTTP-CLI-11
+law phrase_line_one:
+  for +v: String
+  for +c: String
+  for e1: {True{} == avoids(v, ' ') : Bool}
+  for e2: {True{} == avoids(c, ' ') : Bool}
+  {Http.phrase.line(v ++ SCon{' ', c}) == "" : String}
+
+# LAW: a status line with no SP has an empty reason
+# HTTP-CLI-11
+law phrase_line_none:
+  for +v: String
+  for e: {True{} == avoids(v, ' ') : Bool}
+  {Http.phrase.line(v) == "" : String}
+
+# LAW: the client reads the reason from the same text it reads the response
+# from
+# HTTP-CLI-11
+law phrase_heard:
+  for +text: String
+  {Spec.wire.phrase("0\n" ++ text) == Http.phrase.to(text) : String}
+
 # --- reading until the response is whole (SPEC.md HTTP-CLI-6) ---
 
 # LAW: an open that fails is the exchange's answer as the effect gave it

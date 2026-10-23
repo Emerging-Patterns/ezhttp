@@ -41,7 +41,10 @@ hub package; import ezjson from the hub to read a JSON body (below).
 ### Client
 
 `http.get`, `http.head`, `http.post`, `http.put`, `http.delete`, and
-`http.options` return a structured client `Response` (status, headers, body).
+`http.options` return a structured client `Response` (status, headers, body,
+and the status line's reason phrase), or `Err` with why the exchange failed;
+a connection that could not be made names its cause, such as
+`could not reach 127.0.0.1 port 1: ECONNREFUSED (111)`.
 Pass custom headers: `bearer` writes `Authorization: Bearer …`, and `basic`
 writes `Authorization: Basic …` (RFC 7617, RFC 4648). TLS stays at the
 wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path

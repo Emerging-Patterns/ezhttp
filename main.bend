@@ -40,6 +40,12 @@ def parse_response(raw: String) -> Http.Reply:
 def parse_response_to(method: String, raw: String) -> Http.Reply:
   Http.parse.to(method, raw)
 
+# the reason phrase of a response's status line (RFC 9112 §4), read from the
+# head parse_response_to stops at; empty when there is none (SPEC.md
+# HTTP-CLI-11)
+def reason_phrase(raw: String) -> String:
+  Http.phrase.to(raw)
+
 # request parse re-export (server inbound)
 def parse_request(raw: String) -> Http.Request:
   Http.ask(raw)

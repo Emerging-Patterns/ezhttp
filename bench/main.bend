@@ -136,7 +136,7 @@ def show.resp(r: Client.Response) -> String:
   match r:
     case Client.Err{why}:
       "ERR\n" ++ why
-    case Client.Response{status, headers, body}:
+    case Client.Response{status, headers, body, reason}:
       U32.show(status) ++ "\n" ++ body
 
 # one timing line: MS SUM BY N
@@ -181,7 +181,7 @@ def step.sum(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body}:
+    case Client.Response{status, headers, body, reason}:
       (sum + status + U32.from_nat(String.length(body)) : U32)
 
 # fold a JSON response: status plus printed length
@@ -189,7 +189,7 @@ def step.json(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body}:
+    case Client.Response{status, headers, body, reason}:
       (sum + status + json.touch(body) : U32)
 
 # add the bytes we sent so the encode is used
