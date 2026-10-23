@@ -10,6 +10,18 @@ tag = "v1.2.0"
 root = "."
 narHash = "sha256-bOtXnTBW1oDQOGlFpEKxNklcUY1WmPt5y8HWWQY8sK4="
 entry = "main.bend"
+[deps.bend-kit-wire]
+hash = "0x1afdf90dbe41c30b1df4594db039b02a"
+hub = "bend-kit-wire@0.4.6.1"
+entry = "wire.bend"
+[deps.bend-kit-bytes]
+hash = "0x185ae03c75e3e75be1171471f68b43cb"
+hub = "bend-kit-bytes@0.3.2.0"
+entry = "bytes.bend"
+[deps.bend-kit-dns]
+hash = "0x9bf2c4100bf9328348d215e7ae1657de"
+hub = "bend-kit-dns@0.6.0.2"
+entry = "dns.bend"
 [tools]
 [tools.bolt]
 git = "https://github.com/Emerging-Patterns/bolt"

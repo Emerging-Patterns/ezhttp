@@ -360,18 +360,6 @@ law url_https_explicit_port:
   {Url.parse("https://example.com:8443/a")
     == Url.Loc{"https", "example.com", 8443, "/a"} : Url.Loc}
 
-# --- RFC 2818: https selects the TLS path at the wire ---
-
-# LAW (RFC 2818): a secure exchange is labeled tls, on the given port
-law wire_https_is_tls:
-  {Spec.wire.spec(True{}, "example.com", 443, "GET / HTTP/1.1\r\n\r\n")
-    == "tls\nexample.com\n443\nGET / HTTP/1.1\r\n\r\n" : String}
-
-# LAW: a cleartext exchange is labeled tcp
-law wire_http_is_tcp:
-  {Spec.wire.spec(False{}, "example.com", 80, "GET / HTTP/1.1\r\n\r\n")
-    == "tcp\nexample.com\n80\nGET / HTTP/1.1\r\n\r\n" : String}
-
 # --- RFC 9112 request and response writers ---
 
 # LAW (RFC 9112 §4, §9.6): a response status-line is HTTP/1.1 plus the
@@ -1379,6 +1367,7 @@ law reason_phrases:
 
 # LAW: a list with no entries gives every status the empty phrase
 # HTTP-SRV-5
+# HTTP-CLI-14
 law reason_in_nil:
   for +code: U32
   {Http.reason.in([], code) == "" : String}
@@ -1386,6 +1375,7 @@ law reason_in_nil:
 # LAW: a list gives a status its first entry's phrase when that entry is for
 # that status
 # HTTP-SRV-5
+# HTTP-CLI-14
 law reason_in_hit:
   for +code: U32
   for c: U32
@@ -1396,6 +1386,7 @@ law reason_in_hit:
 
 # LAW: and the rest's phrase when it is for another status
 # HTTP-SRV-5
+# HTTP-CLI-14
 law reason_in_miss:
   for +code: U32
   for c: U32
@@ -1628,54 +1619,32 @@ law frame_quote:
   for +e: {nibbles(slash, str) == True{} : Bool}
   {framed(slash, Pct.quote(slash, str), 0n) == True{} : Bool}
 
-# --- the client's timeout (SPEC.md HTTP-CLI) ---
+# --- the client's deadline (SPEC.md HTTP-CLI-1, 2) ---
 
-# LAW: a timed spec carries exactly the timeout it was given: the effect reads
-# back the same number of milliseconds
+# LAW: an exchange made with no timeout gives every call 60000 ms
 # HTTP-CLI-1
-law spec_timed_ms:
-  for +secure: Bool
-  for ms: U32
-  for +host: String
-  for +port: U32
-  for +req: String
-  {Spec.wire.ms(Spec.wire.spec.timed(secure, ms, host, port, req)) == ms
-    : U32}
+law ms_none:
+  for m: Maybe<&2, U32>
+  for e: {None{} == m : Maybe<&2, U32>}
+  {Spec.wire.ms.of(m) == 60000 : U32}
 
-# LAW: the spec every other client call sends carries no timeout, and the
-# effect reads 60000 ms from it
+# LAW: a timeout of 1 ms or more is the deadline every call gets, unchanged
 # HTTP-CLI-1
-law spec_plain_ms:
-  for secure: Bool
-  for host: String
-  for port: U32
-  for req: String
-  {Spec.wire.ms(Spec.wire.spec(secure, host, port, req)) == 60000 : U32}
-
-# LAW: a timed spec is its first line (scheme, a space, the timeout), then
-# host, port and request on the lines the untimed spec puts them
 # HTTP-CLI-2
-law spec_timed_lines:
-  for secure: Bool
-  for ms: U32
-  for host: String
-  for port: U32
-  for req: String
-  {Spec.wire.spec.timed(secure, ms, host, port, req)
-    == (Spec.wire.scheme(secure) ++ " " ++ Spec.wire.ms.text(ms)) ++ "\n"
-      ++ host ++ "\n" ++ U32.show(port) ++ "\n" ++ req : String}
+law ms_given:
+  for +ms: U32
+  for e: {False{} == U32.is_eq(ms, 0) : Bool}
+  {Spec.wire.ms.of(Some{ms}) == ms : U32}
 
-# LAW: the untimed spec is the scheme alone on its first line, then host,
-# port and request
+# LAW: a timeout of 0 is a deadline of 1 ms (bend-kit-wire reads 0 as none)
+# HTTP-CLI-1
 # HTTP-CLI-2
-law spec_plain_lines:
-  for secure: Bool
-  for host: String
-  for port: U32
-  for req: String
-  {Spec.wire.spec(secure, host, port, req)
-    == Spec.wire.scheme(secure) ++ "\n" ++ host ++ "\n" ++ U32.show(port)
-      ++ "\n" ++ req : String}
+law ms_zero:
+  for +ms: U32
+  for e: {True{} == U32.is_eq(ms, 0) : Bool}
+  {Spec.wire.ms.of(Some{ms}) == 1 : U32}
+
+# --- what a failed socket call is reported as (SPEC.md HTTP-CLI-3, 13, 14) ---
 
 # LAW: a failed exchange with status 28 is reported as `timed out: <why>`
 # HTTP-CLI-3
@@ -1702,6 +1671,171 @@ law why_none:
 law why_late_timed_out:
   for why: String
   {Spec.wire.timed_out(Spec.wire.why(Some{28}, why)) == True{} : Bool}
+
+# LAW (HTTP-CLI-13): a resolve that fails is status 6 and names the host and
+# the cause, whatever the error number
+# HTTP-CLI-13
+law fail_resolve:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for why: String
+  {Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why)
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n) : String}
+
+# LAW: a connect that ran out of time is status 28 and says how long it took
+# HTTP-CLI-13
+law fail_connect_late:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Connect{}, host, port, ms, n, why)
+    == "28\nconnecting to " ++ host ++ " port " ++ U32.show(port)
+      ++ " took over " ++ U32.show(ms) ++ " ms" : String}
+
+# LAW: a TLS handshake that ran out of time is status 28
+# HTTP-CLI-13
+law fail_handshake_late:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Handshake{}, host, port, ms, n, why)
+    == "28\nthe TLS handshake with " ++ host ++ " took over "
+      ++ U32.show(ms) ++ " ms" : String}
+
+# LAW: a send that ran out of time is status 28
+# HTTP-CLI-13
+law fail_send_late:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Send{}, host, port, ms, n, why)
+    == "28\nsending the request to " ++ host ++ " took over "
+      ++ U32.show(ms) ++ " ms" : String}
+
+# LAW: a receive that ran out of time is status 28
+# HTTP-CLI-13
+law fail_receive_late:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Receive{}, host, port, ms, n, why)
+    == "28\n" ++ host ++ " sent nothing for " ++ U32.show(ms) ++ " ms"
+    : String}
+
+# LAW: a connect that failed otherwise is status 7 and names host, port and
+# cause
+# HTTP-CLI-13
+law fail_connect:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Connect{}, host, port, ms, n, why)
+    == "7\ncould not reach " ++ host ++ " port " ++ U32.show(port) ++ ": "
+      ++ Spec.wire.cause(n) : String}
+
+# LAW: a TLS handshake that failed otherwise is status 35, with the cause and
+# the reason bend-kit-wire gave
+# HTTP-CLI-13
+law fail_handshake:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Handshake{}, host, port, ms, n, why)
+    == "35\nthe TLS handshake with " ++ host ++ " failed: "
+      ++ Spec.wire.cause(n) ++ ": " ++ why : String}
+
+# LAW: a send that failed otherwise is status 55
+# HTTP-CLI-13
+law fail_send:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Send{}, host, port, ms, n, why)
+    == "55\nthe request to " ++ host ++ " could not be sent: "
+      ++ Spec.wire.cause(n) : String}
+
+# LAW: a receive that failed otherwise is status 56
+# HTTP-CLI-13
+law fail_receive:
+  for host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {False{} == U32.is_eq(n, 110) : Bool}
+  for why: String
+  {Spec.wire.fail(Spec.Receive{}, host, port, ms, n, why)
+    == "56\nthe answer from " ++ host ++ " was cut short: "
+      ++ Spec.wire.cause(n) : String}
+
+# LAW: a cause is the error number's name, then the number in parentheses
+# HTTP-CLI-13
+law cause_is:
+  for +n: U32
+  {Spec.wire.cause(n) == Spec.wire.errno.name(n) ++ " (" ++ U32.show(n) ++ ")"
+    : String}
+
+# the Linux errno symbols HTTP-CLI-14 lists, as the law states them
+def errnos() -> List<&2, Http.Phrase>:
+  [Http.P{1, "EPERM"}, Http.P{2, "ENOENT"}, Http.P{4, "EINTR"},
+    Http.P{5, "EIO"}, Http.P{9, "EBADF"}, Http.P{11, "EAGAIN"},
+    Http.P{12, "ENOMEM"}, Http.P{13, "EACCES"}, Http.P{22, "EINVAL"},
+    Http.P{23, "ENFILE"}, Http.P{24, "EMFILE"}, Http.P{32, "EPIPE"},
+    Http.P{71, "EPROTO"}, Http.P{88, "ENOTSOCK"},
+    Http.P{93, "EPROTONOSUPPORT"}, Http.P{97, "EAFNOSUPPORT"},
+    Http.P{98, "EADDRINUSE"}, Http.P{99, "EADDRNOTAVAIL"},
+    Http.P{100, "ENETDOWN"}, Http.P{101, "ENETUNREACH"},
+    Http.P{103, "ECONNABORTED"}, Http.P{104, "ECONNRESET"},
+    Http.P{105, "ENOBUFS"}, Http.P{106, "EISCONN"},
+    Http.P{107, "ENOTCONN"}, Http.P{110, "ETIMEDOUT"},
+    Http.P{111, "ECONNREFUSED"}, Http.P{112, "EHOSTDOWN"},
+    Http.P{113, "EHOSTUNREACH"}, Http.P{114, "EALREADY"},
+    Http.P{115, "EINPROGRESS"}]
+
+# LAW: an error number's name is the one the table lists for it, or `errno`
+# when the table lists none (reason_in_nil, reason_in_hit, reason_in_miss
+# read the table)
+# HTTP-CLI-14
+law errno_names:
+  for +n: U32
+  {Spec.wire.errno.name(n) == Spec.wire.errno.or(Http.reason.in(errnos(), n))
+    : String}
+
+# LAW: a number the table has no name for is named `errno`
+# HTTP-CLI-14
+law errno_or_none:
+  for s: String
+  for e: {True{} == String.is_empty(s) : Bool}
+  {Spec.wire.errno.or(s) == "errno" : String}
+
+# LAW: a name the table gives is kept as it is
+# HTTP-CLI-14
+law errno_or_named:
+  for s: String
+  for e: {False{} == String.is_empty(s) : Bool}
+  {Spec.wire.errno.or(s) == s : String}
 
 # --- the client's requests (SPEC.md HTTP-CLI-4) ---
 
@@ -2383,6 +2517,23 @@ law tail_empty:
   for e: {Body.Empty{} == b : Body.Body}
   {Spec.wire.tail(b) == [] : List<&2, U32>}
 
+# LAW: an empty request text sends the tail's octets alone
+# HTTP-CLI-10
+law payload_nil:
+  for tail: List<&2, U32>
+  {Spec.wire.payload("", tail) == Body.octets.chars(tail) : String}
+
+# LAW (RFC 3629 §3): every character of the request text is sent as its
+# UTF-8 octets, in order, ahead of the rest
+# HTTP-CLI-10
+law payload_cons:
+  for +cp: U32
+  for t: String
+  for tail: List<&2, U32>
+  {Spec.wire.payload(SCon{Chr{cp}, t}, tail)
+    == Body.octets.chars(Pct.utf8(cp)) ++ Spec.wire.payload(t, tail)
+    : String}
+
 # --- the response, read by the request's method (SPEC.md HTTP-CLI-9) ---
 
 # LAW: a response is read head by head for the request's method, at most as
@@ -2604,22 +2755,7 @@ law phrase_heard:
 
 # --- reading until the response is whole (SPEC.md HTTP-CLI-6) ---
 
-# LAW: an open that fails is the exchange's answer as the effect gave it
-# HTTP-CLI-6
-law opened_fail:
-  for +got: String
-  for e: {False{} == Spec.wire.ok(got) : Bool}
-  {Spec.wire.opened(got) == Spec.Refused{got} : Spec.Opened}
-
-# LAW: an open that succeeds names the connection to read from
-# HTTP-CLI-6
-law opened_conn:
-  for n: U32
-  for +text: String
-  for e: {Some{n} == U32.read(text) : Maybe<&2, U32>}
-  {Spec.wire.opened("0\n" ++ text) == Spec.Open{n} : Spec.Opened}
-
-# LAW: a read that fails is the exchange's answer as the effect gave it
+# LAW: a read that fails is the exchange's answer as it was given
 # HTTP-CLI-6
 law read_fail:
   for st: Spec.Got

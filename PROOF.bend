@@ -497,12 +497,6 @@ def Laws.url_https_default_port():
 def Laws.url_https_explicit_port():
   {==}
 
-def Laws.wire_https_is_tls():
-  {==}
-
-def Laws.wire_http_is_tcp():
-  {==}
-
 def Laws.respond_writes_reason_and_close(_status, _hs, _body):
   {==}
 
@@ -1201,123 +1195,6 @@ def Laws.frame_quote(slash, str, e):
             Laws.nibbles(slash, t), e)))
 
 # --- the client's timeout (SPEC.md HTTP-CLI) ---
-
-# binary digits read back are the word they were written from
-def bits.round(n: Nat, w: Word(n))
-  -> {Spec.wire.bits.read(n, Spec.wire.bits(n, w)) == w : Word(n)}:
-  match n:
-    case 0n:
-      match w:
-        case WNil{}:
-          {==}
-    case 1n+p:
-      match w:
-        case WCon{b, t}:
-          match b:
-            case True{}:
-              Equal.cong(Word(p), Word(1n+p), x => WCon{True{}, x},
-                Spec.wire.bits.read(p, Spec.wire.bits(p, t)), t,
-                bits.round(p, t))
-            case False{}:
-              Equal.cong(Word(p), Word(1n+p), x => WCon{False{}, x},
-                Spec.wire.bits.read(p, Spec.wire.bits(p, t)), t,
-                bits.round(p, t))
-
-# binary digits hold no character other than 0 and 1
-def bits.avoid(n: Nat, w: Word(n), +c: Char,
-  +e0: {False{} == Char.is_eq('0', c) : Bool},
-  +e1: {False{} == Char.is_eq('1', c) : Bool})
-  -> {Laws.avoids(Spec.wire.bits(n, w), c) == True{} : Bool}:
-  match n:
-    case 0n:
-      match w:
-        case WNil{}:
-          {==}
-    case 1n+p:
-      match w:
-        case WCon{b, t}:
-          match b:
-            case True{}:
-              %e1 : {Bool.and(Bool.not(_), Laws.avoids(Spec.wire.bits(p, t), c))
-                == True{} : Bool}
-              bits.avoid(p, t, c, e0, e1)
-            case False{}:
-              %e0 : {Bool.and(Bool.not(_), Laws.avoids(Spec.wire.bits(p, t), c))
-                == True{} : Bool}
-              bits.avoid(p, t, c, e0, e1)
-
-# the first line of a timed spec holds no newline
-def head.avoid(secure: Bool, w: Word(32n))
-  -> {Laws.avoids(Spec.wire.head(secure, U32{w}), '\n') == True{} : Bool}:
-  match secure:
-    case True{}:
-      bits.avoid(32n, w, '\n', {==}, {==})
-    case False{}:
-      bits.avoid(32n, w, '\n', {==}, {==})
-
-# the scheme word holds no space
-def scheme.avoid(secure: Bool)
-  -> {Laws.avoids(Spec.wire.scheme(secure), ' ') == True{} : Bool}:
-  match secure:
-    case True{}:
-      {==}
-    case False{}:
-      {==}
-
-def Laws.spec_timed_ms(secure, ms, host, port, req):
-  match ms:
-    case U32{+w}:
-      Equal.trans(U32,
-        Spec.wire.ms(Spec.wire.spec.timed(secure, U32{w}, host, port, req)),
-        Spec.wire.ms.words(String.split(Spec.wire.head(secure, U32{w}), ' ')),
-        U32{w},
-        Equal.cong(List<&2, String>, U32,
-          ls => Spec.wire.ms.words(String.split(Spec.wire.line(ls), ' ')),
-          String.split(String.append(Spec.wire.head(secure, U32{w}),
-            SCon{'\n', Spec.wire.rest(host, port, req)}), '\n'),
-          Spec.wire.head(secure, U32{w})
-            <> String.split(Spec.wire.rest(host, port, req), '\n'),
-          Laws.split_cut(Spec.wire.head(secure, U32{w}), '\n',
-            Spec.wire.rest(host, port, req), head.avoid(secure, w))),
-        Equal.trans(U32,
-          Spec.wire.ms.words(String.split(Spec.wire.head(secure, U32{w}), ' ')),
-          Spec.wire.ms.words(Spec.wire.scheme(secure)
-            <> String.split(Spec.wire.bits(32n, w), ' ')),
-          U32{w},
-          Equal.cong(List<&2, String>, U32, ls => Spec.wire.ms.words(ls),
-            String.split(String.append(Spec.wire.scheme(secure),
-              SCon{' ', Spec.wire.bits(32n, w)}), ' '),
-            Spec.wire.scheme(secure)
-              <> String.split(Spec.wire.bits(32n, w), ' '),
-            Laws.split_cut(Spec.wire.scheme(secure), ' ',
-              Spec.wire.bits(32n, w), scheme.avoid(secure))),
-          Equal.trans(U32,
-            Spec.wire.ms.words(Spec.wire.scheme(secure)
-              <> String.split(Spec.wire.bits(32n, w), ' ')),
-            U32{Spec.wire.bits.read(32n, Spec.wire.bits(32n, w))},
-            U32{w},
-            Equal.cong(List<&2, String>, U32,
-              ls => Spec.wire.ms.words(Spec.wire.scheme(secure) <> ls),
-              String.split(Spec.wire.bits(32n, w), ' '),
-              [Spec.wire.bits(32n, w)],
-              Laws.split_whole(Spec.wire.bits(32n, w), ' ',
-                bits.avoid(32n, w, ' ', {==}, {==}))),
-            Equal.cong(Word(32n), U32, x => U32{x},
-              Spec.wire.bits.read(32n, Spec.wire.bits(32n, w)), w,
-              bits.round(32n, w)))))
-
-def Laws.spec_plain_ms(secure, _host, _port, _req):
-  match secure:
-    case True{}:
-      {==}
-    case False{}:
-      {==}
-
-def Laws.spec_timed_lines(_secure, _ms, _host, _port, _req):
-  {==}
-
-def Laws.spec_plain_lines(_secure, _host, _port, _req):
-  {==}
 
 def Laws.why_late(_why):
   {==}
@@ -2845,22 +2722,12 @@ def Laws.chunk_ready(after, n):
     Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
     has_len(after, Nat.add(n, 2n)))
 
-def Laws.opened_fail(got, e):
-  %e : {Spec.wire.opened.of(got, _) == Spec.Refused{got} : Spec.Opened}
-  {==}
-
 def eq.drop_zero(s: String) -> {String.drop(s, 0n) == s : String}:
   match s:
     case SNil{}:
       {==}
     case SCon{h, t}:
       {==}
-
-def Laws.opened_conn(n, text, e):
-  dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
-  %dz : {Spec.wire.opened.conn(U32.read(_)) == Spec.Open{n} : Spec.Opened}
-  %e : {Spec.wire.opened.conn(_) == Spec.Open{n} : Spec.Opened}
-  {==}
 
 # --- the chunk walk, read by read (SPEC.md HTTP-CLI-12) ---
 
@@ -6101,4 +5968,104 @@ def Laws.cors_preflight_bad(_cfg, _why):
 
 # b64_go_end: go matches the input first
 def Laws.b64_go_end(_phase):
+  {==}
+
+# --- the client's deadline and failures (SPEC.md HTTP-CLI-1, 2, 13, 14) ---
+
+def Laws.ms_none(_m, e):
+  %e : {Spec.wire.ms.of(_) == 60000 : U32}
+  {==}
+
+def Laws.ms_given(ms, e):
+  %e : {Spec.wire.ms.pick(ms, _) == ms : U32}
+  {==}
+
+def Laws.ms_zero(ms, e):
+  %e : {Spec.wire.ms.pick(ms, _) == 1 : U32}
+  {==}
+
+# a resolve's failure reads the same whether it ran out of time or not
+def fail.resolve.any(host: String, +port: U32, +ms: U32, +n: U32, why: String,
+  late: Bool)
+  -> {Spec.wire.fail.of(Spec.Resolve{}, host, port, ms, n, why, late)
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
+    : String}:
+  match late:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.fail_resolve(host, port, ms, n, why):
+  fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110))
+
+# a call that ran out of time is reported by fail.late
+def fail.at.late(p: Spec.Phase, host: String, +port: U32, +ms: U32, +n: U32,
+  why: String, e: {True{} == U32.is_eq(n, 110) : Bool})
+  -> {Spec.wire.fail(p, host, port, ms, n, why)
+    == Spec.wire.fail.late(p, host, port, ms, n) : String}:
+  %e : {Spec.wire.fail.of(p, host, port, ms, n, why, _)
+    == Spec.wire.fail.late(p, host, port, ms, n) : String}
+  {==}
+
+# a call that failed otherwise is reported by fail.other
+def fail.at.other(p: Spec.Phase, host: String, +port: U32, +ms: U32, +n: U32,
+  why: String, e: {False{} == U32.is_eq(n, 110) : Bool})
+  -> {Spec.wire.fail(p, host, port, ms, n, why)
+    == Spec.wire.fail.other(p, host, port, n, why) : String}:
+  %e : {Spec.wire.fail.of(p, host, port, ms, n, why, _)
+    == Spec.wire.fail.other(p, host, port, n, why) : String}
+  {==}
+
+def Laws.fail_connect_late(host, port, ms, n, e, why):
+  fail.at.late(Spec.Connect{}, host, port, ms, n, why, e)
+
+def Laws.fail_handshake_late(host, port, ms, n, e, why):
+  fail.at.late(Spec.Handshake{}, host, port, ms, n, why, e)
+
+def Laws.fail_send_late(host, port, ms, n, e, why):
+  fail.at.late(Spec.Send{}, host, port, ms, n, why, e)
+
+def Laws.fail_receive_late(host, port, ms, n, e, why):
+  fail.at.late(Spec.Receive{}, host, port, ms, n, why, e)
+
+def Laws.fail_connect(host, port, ms, n, e, why):
+  fail.at.other(Spec.Connect{}, host, port, ms, n, why, e)
+
+def Laws.fail_handshake(host, port, ms, n, e, why):
+  fail.at.other(Spec.Handshake{}, host, port, ms, n, why, e)
+
+def Laws.fail_send(host, port, ms, n, e, why):
+  fail.at.other(Spec.Send{}, host, port, ms, n, why, e)
+
+def Laws.fail_receive(host, port, ms, n, e, why):
+  fail.at.other(Spec.Receive{}, host, port, ms, n, why, e)
+
+def Laws.cause_is(_n):
+  {==}
+
+def Laws.errno_names(_n):
+  {==}
+
+def Laws.errno_or_none(s, e):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      eq.bit.absurd(&2, {Spec.wire.errno.or(SCon{h, t}) == "errno" : String},
+        Equal.sym(Bool, True{}, False{}, e))
+
+def Laws.errno_or_named(s, e):
+  match s:
+    case SNil{}:
+      eq.bit.absurd(&2, {Spec.wire.errno.or(SNil{}) == SNil{} : String}, e)
+    case SCon{h, t}:
+      {==}
+
+# --- what is sent (SPEC.md HTTP-CLI-10) ---
+
+def Laws.payload_nil(_tail):
+  {==}
+
+def Laws.payload_cons(_cp, _t, _tail):
   {==}

@@ -46,9 +46,14 @@ and the status line's reason phrase), or `Err` with why the exchange failed;
 a connection that could not be made names its cause, such as
 `could not reach 127.0.0.1 port 1: ECONNREFUSED (111)`.
 Pass custom headers: `bearer` writes `Authorization: Bearer …`, and `basic`
-writes `Authorization: Basic …` (RFC 7617, RFC 4648). TLS stays at the
-wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path
-and port 443.
+writes `Authorization: Basic …` (RFC 7617, RFC 4648). Sockets, TLS and
+name resolution are [bend-kit](https://github.com/paymog/bend-kit)'s
+(bend-kit-wire and bend-kit-dns, pinned by hash): `https` selects the TLS
+path and port 443, and the certificate chain and host name are always
+checked. OpenSSL 3 is loaded at run time; point `BEND_LIBSSL` at `libssl.so.3`
+when it is not where the loader looks (`EZ_LIBSSL` is no longer read). Its
+effects park on the runtime's event loop, so requests made under `IO.fork`
+run side by side.
 
 ```
 import emerging-ezhttp@0.13.0.0/main.bend as Http
@@ -67,7 +72,8 @@ def create() -> IO(Client.Response):
 
 `http.get_opts(url, headers, timeout_ms, follow)` is a GET with a timeout in
 milliseconds that bounds the connect, the TLS handshake and every send and
-receive on its own (as httpx's does; name resolution is not bounded). Every
+receive on its own (as httpx's does; name resolution, and a send over TLS,
+are not bounded; a timeout of 0 is 1 ms). Every
 other client function keeps its 60 s. Every client function stops reading as
 soon as the response is complete by its framing (RFC 9112 §6.3: no body for
 HEAD, 204 and 304, else chunked, else `Content-Length`), so a server that
@@ -318,7 +324,7 @@ laws are stated on the pure definitions under `src/`, and each re-export in
   upper-case hex (§2.1).
 - [RFC 2818](https://www.rfc-editor.org/rfc/rfc2818) HTTP over TLS: scheme
   `https` selects the TLS wire path and port 443. The TLS handshake itself
-  stays in the runtime.
+  is bend-kit-wire's.
 - [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) HTTP Semantics:
   case-insensitive field names (§5.1), optional whitespace trimmed and
   obs-fold rejected (§5.5), `Host` on every HTTP/1.1 client request, with
