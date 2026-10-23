@@ -9,6 +9,7 @@
 import Base
 import ./src/http.bend as Http
 import ./src/url.bend as Url
+import ./src/pct.bend as Pct
 import ./src/body.bend as Body
 import ./src/auth.bend as Auth
 import ./src/cookie.bend as Cookie
@@ -21,6 +22,16 @@ import ./main.bend as Ez
 law parse_url_is_url_parse:
   for url: String
   {Ez.parse_url(url) == Url.parse(url) : Url.Loc}
+
+# LAW: quote_path is the path form of Pct.quote
+law quote_path_is_pct_quote:
+  for s: String
+  {Ez.quote_path(s) == Pct.quote(True{}, s) : String}
+
+# LAW: quote_component is the component form of Pct.quote
+law quote_component_is_pct_quote:
+  for s: String
+  {Ez.quote_component(s) == Pct.quote(False{}, s) : String}
 
 # LAW: parse_response is Http.parse
 law parse_response_is_http_parse:
@@ -129,6 +140,14 @@ law cors_reply_is_on:
 
 # parse_url_is_url_parse holds by unfolding the re-export
 def parse_url_is_url_parse(_url):
+  {==}
+
+# quote_path_is_pct_quote holds by unfolding the re-export
+def quote_path_is_pct_quote(_s):
+  {==}
+
+# quote_component_is_pct_quote holds by unfolding the re-export
+def quote_component_is_pct_quote(_s):
   {==}
 
 # parse_response_is_http_parse holds by unfolding the re-export

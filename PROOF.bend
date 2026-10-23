@@ -4,6 +4,7 @@ import ./src/http.bend as Http
 import ./src/url.bend as Url
 import ./src/body.bend as Body
 import ./src/step.bend as Step
+import ./src/pct.bend as Pct
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -1032,3 +1033,174 @@ def Laws.lost_send(_code, _why, _left):
 
 def Laws.lost_sent(_done):
   {==}
+
+# --- percent-encoding (SPEC.md HTTP-URL) ---
+
+def Laws.quote_nil(_slash):
+  {==}
+
+def Laws.quote_cons(_slash, _c, _t):
+  {==}
+
+def Laws.one_unreserved(slash, c, e, rest):
+  %e : {Pct.one.of(c, rest, Bool.or(_, Bool.and(U32.is_eq(c, 47), slash)))
+    == SCon{Chr{c}, rest} : String}
+  {==}
+
+def Laws.one_escaped(_slash, c, e, rest):
+  %e : {Pct.one.of(c, rest, _) == Pct.pct(Pct.utf8(c), rest) : String}
+  {==}
+
+def Laws.pct_nil(_rest):
+  {==}
+
+def Laws.pct_cons(_b, _bs, _rest):
+  {==}
+
+def Laws.hex_digit(n, e):
+  %e : {Chr{Bool.pick(U32, _, U32.add(48, n), U32.add(55, n))}
+    == Chr{U32.add(48, n)} : Char}
+  {==}
+
+def Laws.hex_letter(n, e):
+  %e : {Chr{Bool.pick(U32, _, U32.add(48, n), U32.add(55, n))}
+    == Chr{U32.add(55, n)} : Char}
+  {==}
+
+def Laws.utf8_one(c, e):
+  %e : {Pct.utf8.one(c, _) == [c] : List<&2, U32>}
+  {==}
+
+def Laws.utf8_two(c, e1, e2):
+  %e1 : {Pct.utf8.one(c, _) == [U32.or(192, U32.shrn(c, 6n)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  %e2 : {Pct.utf8.two(c, _) == [U32.or(192, U32.shrn(c, 6n)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  {==}
+
+def Laws.utf8_three(c, e1, e2, e3):
+  %e1 : {Pct.utf8.one(c, _) == [U32.or(224, U32.shrn(c, 12n)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  %e2 : {Pct.utf8.two(c, _) == [U32.or(224, U32.shrn(c, 12n)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  %e3 : {Pct.utf8.three(c, _) == [U32.or(224, U32.shrn(c, 12n)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  {==}
+
+def Laws.utf8_four(c, e1, e2, e3):
+  %e1 : {Pct.utf8.one(c, _) == [U32.or(240, U32.shrn(c, 18n)),
+    U32.or(128, U32.and(U32.shrn(c, 12n), 63)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  %e2 : {Pct.utf8.two(c, _) == [U32.or(240, U32.shrn(c, 18n)),
+    U32.or(128, U32.and(U32.shrn(c, 12n), 63)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  %e3 : {Pct.utf8.three(c, _) == [U32.or(240, U32.shrn(c, 18n)),
+    U32.or(128, U32.and(U32.shrn(c, 12n), 63)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+  {==}
+
+def Laws.path_keeps_slash(_rest):
+  {==}
+
+def Laws.component_escapes_slash(_rest):
+  {==}
+
+def Laws.component_is_path_elsewhere(c, e, rest):
+  %e : {Pct.one.of(c, rest, Bool.or(Pct.unreserved(c), Bool.and(_, False{})))
+    == Pct.one.of(c, rest, Bool.or(Pct.unreserved(c), Bool.and(_, True{})))
+    : String}
+  {==}
+
+def Laws.frame_kept(slash, c, e, rest):
+  %e : {Laws.framed(slash, Pct.one.of(c, rest, _), 0n)
+    == Laws.framed(slash, rest, 0n) : Bool}
+  %e : {Bool.and(Bool.or(_, U32.is_eq(c, 37)),
+    Laws.framed(slash, rest,
+      Bool.pick(Nat, _, 0n, Bool.pick(Nat, U32.is_eq(c, 37), 2n, 0n))))
+    == Laws.framed(slash, rest, 0n) : Bool}
+  {==}
+
+# LAW: one %XX triple whose nibbles are hex digits stays in the frame
+law frame_bytes.step:
+  for +slash: Bool
+  for +b: U32
+  for t: List<&2, U32>
+  for +rest: String
+  for e1: {True{} == Laws.hexdig(Pct.hex(U32.shrn(b, 4n))) : Bool}
+  for e2: {True{} == Laws.hexdig(Pct.hex(U32.and(b, 15))) : Bool}
+  for ih: {Laws.framed(slash, Pct.pct(t, rest), 0n)
+    == Laws.framed(slash, rest, 0n) : Bool}
+  {Laws.framed(slash, Pct.pct(b <> t, rest), 0n)
+    == Laws.framed(slash, rest, 0n) : Bool}
+
+def frame_bytes.step(slash, b, t, rest, e1, e2, ih):
+  %e1 : {Bool.and(_, Bool.and(Laws.hexdig(Pct.hex(U32.and(b, 15))),
+    Laws.framed(slash, Pct.pct(t, rest), 0n)))
+    == Laws.framed(slash, rest, 0n) : Bool}
+  %e2 : {Bool.and(_, Laws.framed(slash, Pct.pct(t, rest), 0n))
+    == Laws.framed(slash, rest, 0n) : Bool}
+  ih
+
+def Laws.frame_bytes(slash, bs, e, rest):
+  match bs:
+    case []:
+      {==}
+    case +b <> +t:
+      frame_bytes.step(slash, b, t, rest,
+        Equal.sym(Bool, Laws.hexdig(Pct.hex(U32.shrn(b, 4n))), True{},
+          eq.and.left(Laws.hexdig(Pct.hex(U32.shrn(b, 4n))),
+            Bool.and(Laws.hexdig(Pct.hex(U32.and(b, 15))), Laws.hexes(t)), e)),
+        Equal.sym(Bool, Laws.hexdig(Pct.hex(U32.and(b, 15))), True{},
+          eq.and.left(Laws.hexdig(Pct.hex(U32.and(b, 15))), Laws.hexes(t),
+            eq.and.right(Laws.hexdig(Pct.hex(U32.shrn(b, 4n))),
+              Bool.and(Laws.hexdig(Pct.hex(U32.and(b, 15))), Laws.hexes(t)),
+              e))),
+        Laws.frame_bytes(slash, t,
+          eq.and.right(Laws.hexdig(Pct.hex(U32.and(b, 15))), Laws.hexes(t),
+            eq.and.right(Laws.hexdig(Pct.hex(U32.shrn(b, 4n))),
+              Bool.and(Laws.hexdig(Pct.hex(U32.and(b, 15))), Laws.hexes(t)),
+              e)),
+          rest))
+
+# LAW: one character stays in the frame, kept or escaped
+law frame_char:
+  for +slash: Bool
+  for +c: U32
+  for +k: Bool
+  for +ek: {k == Pct.safe(slash, c) : Bool}
+  for +h: {Bool.or(k, Laws.hexes(Pct.utf8(c))) == True{} : Bool}
+  for +rest: String
+  {Laws.framed(slash, Pct.one(slash, c, rest), 0n)
+    == Laws.framed(slash, rest, 0n) : Bool}
+
+def frame_char(slash, c, k, ek, h, rest):
+  match k:
+    case True{}:
+      Laws.frame_kept(slash, c, ek, rest)
+    case False{}:
+      %ek : {Laws.framed(slash, Pct.one.of(c, rest, _), 0n)
+        == Laws.framed(slash, rest, 0n) : Bool}
+      Laws.frame_bytes(slash, Pct.utf8(c), h, rest)
+
+def Laws.frame_quote(slash, str, e):
+  match str:
+    case SNil{}:
+      {==}
+    case SCon{Chr{+c}, +t}:
+      Equal.trans(Bool,
+        Laws.framed(slash, Pct.one(slash, c, Pct.quote(slash, t)), 0n),
+        Laws.framed(slash, Pct.quote(slash, t), 0n),
+        True{},
+        frame_char(slash, c, Pct.safe(slash, c), {==},
+          eq.and.left(Bool.or(Pct.safe(slash, c), Laws.hexes(Pct.utf8(c))),
+            Laws.nibbles(slash, t), e),
+          Pct.quote(slash, t)),
+        Laws.frame_quote(slash, t,
+          eq.and.right(Bool.or(Pct.safe(slash, c), Laws.hexes(Pct.utf8(c))),
+            Laws.nibbles(slash, t), e)))

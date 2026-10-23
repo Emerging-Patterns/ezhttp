@@ -147,6 +147,19 @@ def read(text: String) -> Maybe<&2, String>:
   read.of(Ezjson.parse(text))
 ```
 
+`quote_path` and `quote_component` percent-encode text for a URL (RFC 3986
+§2.1) the way Python's `urllib.parse.quote(s)` and `quote(s, safe="")` do:
+unreserved characters stay, every other character becomes `%XX` per UTF-8
+byte in upper-case hex, and `/` stays in a path but is `%2F` in a component.
+SPEC.md lists these guarantees (HTTP-URL). They are new after ezhttp 0.9.0.
+
+```
+import emerging-ezhttp@0.8.0.0/main.bend as Http
+
+def search(q: String) -> String:
+  "https://example.com/search?q=" ++ Http.quote_component(q)
+```
+
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
 `cache_control` reads `no-store`, `no-cache`, `max-age`, `public`, and
 `private`. `cors_reply` answers a simple request or an OPTIONS preflight from
@@ -168,7 +181,9 @@ the list of defs that rely on foreign code as its only error. The laws target:
   explicit port, a non-numeric port uses the scheme default (§3.2.2, §3.2.3),
   path always absolute, trailing slash kept (§3.3), query kept including a
   later `?`, fragment dropped even when it holds `?` (§3.4, §3.5), default
-  ports 80 / 443.
+  ports 80 / 443. Percent-encoding: unreserved characters (§2.3) written
+  as themselves, everything else as `%XX` per UTF-8 byte (RFC 3629 §3),
+  upper-case hex (§2.1).
 - [RFC 2818](https://www.rfc-editor.org/rfc/rfc2818) HTTP over TLS: scheme
   `https` selects the TLS wire path and port 443. The TLS handshake itself
   stays in the runtime.
