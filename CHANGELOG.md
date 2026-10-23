@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.10.0...v0.11.0) (2026-10-23)
+
+
+### Features
+
+* **client:** GET timeout and redirect following, and html_escape (HTTP-CLI, HTTP-REDIR, HTTP-HTML) ([#33](https://github.com/Emerging-Patterns/ezhttp/issues/33)) ([e1d0223](https://github.com/Emerging-Patterns/ezhttp/commit/e1d02233752832ec3562bae80b998e8918f820ce))
+
 ## [0.10.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.9.0...v0.10.0) (2026-10-23)
 
 
