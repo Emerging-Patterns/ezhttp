@@ -3,12 +3,12 @@ name = "ezhttp"
 entry = "main.bend"
 [deps]
 [deps.ezjson]
-hash = "0x81c67699424929b5c44cd8577e18117f"
+hash = "0xa81e161008ecc2f297c0a3065cb9b188"
 git = "https://github.com/Emerging-Patterns/ezjson"
-rev = "f35ea6ce89962d338cdc0735cc7724ed82d47594"
-tag = "v1.1.0"
+rev = "fbae34db74596ddca4ec29409825926246d22cec"
+tag = "v1.2.0"
 root = "."
-narHash = "sha256-yHxl1aW4luf2bdPqOUcULhOEZLlcaTOWjTrPJys4CMI="
+narHash = "sha256-bOtXnTBW1oDQOGlFpEKxNklcUY1WmPt5y8HWWQY8sK4="
 entry = "main.bend"
 [tools]
 [tools.bolt]

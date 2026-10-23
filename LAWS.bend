@@ -19,7 +19,7 @@ import ./src/pct.bend as Pct
 import ./src/html.bend as Html
 import ./src/redirect.bend as Redirect
 import ./src/form.bend as Form
-import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
+import 0xa81e161008ecc2f297c0a3065cb9b188/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
 # URL comes apart into is always absolute. The request-target is an
