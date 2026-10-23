@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.11.0...v0.12.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* Host with port, complete-response reads, relative redirects, reason-phrases ([#36](https://github.com/Emerging-Patterns/ezhttp/issues/36)) ([4f90e37](https://github.com/Emerging-Patterns/ezhttp/commit/4f90e377f1bf0a0a4f55d9e49fb6df8198e1a650))
+
 ## [0.11.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.10.0...v0.11.0) (2026-10-23)
 
 
