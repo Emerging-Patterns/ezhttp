@@ -347,30 +347,25 @@ def Laws.second_is_next_word(w, r, e):
 
 def Laws.request_names_method(method, host, path, hs, body):
   eq.starts_append(method,
-    " " ++ path ++ " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n"
-      ++ "User-Agent: ezhttp\r\n" ++ "Accept: */*\r\n"
-      ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n))
+    " " ++ path ++ " HTTP/1.1\r\n"
+      ++ Http.headers.lines(Http.request.fields(host, hs, body))
       ++ "\r\n" ++ body)
 
 def Laws.get_req_names_path(host, path, hs):
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(0n, True{}) ++ "\r\n")
+    " HTTP/1.1\r\n" ++ Http.headers.lines(Http.request.fields(host, hs, ""))
+      ++ "\r\n")
 
 def Laws.head_req_names_path(host, path, hs):
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(0n, True{}) ++ "\r\n")
+    " HTTP/1.1\r\n" ++ Http.headers.lines(Http.request.fields(host, hs, ""))
+      ++ "\r\n")
 
 def Laws.post_req_names_path(host, path, hs, body):
   +payload = Body.body.payload(body)
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(Http.utf8.len(payload), Nat.is_eq(Http.utf8.len(payload), 0n))
+    " HTTP/1.1\r\n"
+      ++ Http.headers.lines(Http.request.fields(host, hs, payload))
       ++ "\r\n" ++ payload)
 
 def Laws.parse_needs_blank_line(_raw, e):
@@ -503,35 +498,27 @@ def Laws.wire_https_is_tls():
 def Laws.wire_http_is_tcp():
   {==}
 
-def Laws.request_frames_host_and_close(_method, _host, _path, _hs, _body):
-  {==}
-
 def Laws.respond_writes_reason_and_close(_status, _hs, _body):
   {==}
 
 def Laws.put_req_names_path(host, path, hs, body):
   +payload = Body.body.payload(body)
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(Http.utf8.len(payload),
-        Nat.is_eq(Http.utf8.len(payload), 0n))
+    " HTTP/1.1\r\n"
+      ++ Http.headers.lines(Http.request.fields(host, hs, payload))
       ++ "\r\n" ++ payload)
 
 def Laws.delete_req_names_path(host, path, hs, body):
   +payload = Body.body.payload(body)
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(Http.utf8.len(payload),
-        Nat.is_eq(Http.utf8.len(payload), 0n))
+    " HTTP/1.1\r\n"
+      ++ Http.headers.lines(Http.request.fields(host, hs, payload))
       ++ "\r\n" ++ payload)
 
 def Laws.options_req_names_path(host, path, hs):
   eq.starts_append(path,
-    " HTTP/1.1\r\n" ++ "Host: " ++ host ++ "\r\n" ++ "User-Agent: ezhttp\r\n"
-      ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
-      ++ Http.clen.line(0n, True{}) ++ "\r\n")
+    " HTTP/1.1\r\n" ++ Http.headers.lines(Http.request.fields(host, hs, ""))
+      ++ "\r\n")
 
 def Laws.method_tokens_are_case_sensitive():
   {==}
@@ -1599,6 +1586,1027 @@ def Laws.exchange_bad(_method, _why, _hs, _body):
 
 def Laws.exchange_loc(_method, _scheme, _host, _port, _path, _hs, _body):
   {==}
+
+# --- the request's header fields (SPEC.md HTTP-CLI-8) ---
+
+def Laws.field_host(_name, e):
+  %e : {Http.field.of(_) == Http.FHost{} : Http.Field}
+  {==}
+
+def Laws.field_agent(_name, e):
+  %e : {Http.field.of(_) == Http.FAgent{} : Http.Field}
+  {==}
+
+def Laws.field_accept(_name, e):
+  %e : {Http.field.of(_) == Http.FAccept{} : Http.Field}
+  {==}
+
+def Laws.field_conn(_name, e):
+  %e : {Http.field.of(_) == Http.FConn{} : Http.Field}
+  {==}
+
+def Laws.field_clen(_name, e):
+  %e : {Http.field.of(_) == Http.FClen{} : Http.Field}
+  {==}
+
+def Laws.field_other(name, eh, ea, ec, en, el):
+  %eh : {Http.field.of.host(_, String.to_lower(name)) == Http.FOther{}
+    : Http.Field}
+  %ea : {Http.field.of.agent(_, String.to_lower(name)) == Http.FOther{}
+    : Http.Field}
+  %ec : {Http.field.of.accept(_, String.to_lower(name)) == Http.FOther{}
+    : Http.Field}
+  %en : {Http.field.of.conn(_, String.to_lower(name)) == Http.FOther{}
+    : Http.Field}
+  %el : {Http.field.of.clen(_) == Http.FOther{} : Http.Field}
+  {==}
+
+def Laws.request_text(_method, _host, _path, _hs, _body):
+  {==}
+
+# two fields field.same calls the same are the same
+def hd.same_sound(+a: Http.Field, +b: Http.Field,
+  +e: {True{} == Http.field.same(a, b) : Bool}) -> {a == b : Http.Field}:
+  match a:
+    case Http.FHost{}:
+      match b:
+        case Http.FHost{}:
+          {==}
+        case Http.FAgent{}:
+          eq.bit.absurd(&2, {Http.FHost{} == Http.FAgent{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAccept{}:
+          eq.bit.absurd(&2, {Http.FHost{} == Http.FAccept{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FConn{}:
+          eq.bit.absurd(&2, {Http.FHost{} == Http.FConn{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FClen{}:
+          eq.bit.absurd(&2, {Http.FHost{} == Http.FClen{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FOther{}:
+          eq.bit.absurd(&2, {Http.FHost{} == Http.FOther{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+    case Http.FAgent{}:
+      match b:
+        case Http.FHost{}:
+          eq.bit.absurd(&2, {Http.FAgent{} == Http.FHost{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAgent{}:
+          {==}
+        case Http.FAccept{}:
+          eq.bit.absurd(&2, {Http.FAgent{} == Http.FAccept{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FConn{}:
+          eq.bit.absurd(&2, {Http.FAgent{} == Http.FConn{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FClen{}:
+          eq.bit.absurd(&2, {Http.FAgent{} == Http.FClen{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FOther{}:
+          eq.bit.absurd(&2, {Http.FAgent{} == Http.FOther{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+    case Http.FAccept{}:
+      match b:
+        case Http.FHost{}:
+          eq.bit.absurd(&2, {Http.FAccept{} == Http.FHost{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAgent{}:
+          eq.bit.absurd(&2, {Http.FAccept{} == Http.FAgent{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAccept{}:
+          {==}
+        case Http.FConn{}:
+          eq.bit.absurd(&2, {Http.FAccept{} == Http.FConn{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FClen{}:
+          eq.bit.absurd(&2, {Http.FAccept{} == Http.FClen{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FOther{}:
+          eq.bit.absurd(&2, {Http.FAccept{} == Http.FOther{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+    case Http.FConn{}:
+      match b:
+        case Http.FHost{}:
+          eq.bit.absurd(&2, {Http.FConn{} == Http.FHost{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAgent{}:
+          eq.bit.absurd(&2, {Http.FConn{} == Http.FAgent{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAccept{}:
+          eq.bit.absurd(&2, {Http.FConn{} == Http.FAccept{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FConn{}:
+          {==}
+        case Http.FClen{}:
+          eq.bit.absurd(&2, {Http.FConn{} == Http.FClen{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FOther{}:
+          eq.bit.absurd(&2, {Http.FConn{} == Http.FOther{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+    case Http.FClen{}:
+      match b:
+        case Http.FHost{}:
+          eq.bit.absurd(&2, {Http.FClen{} == Http.FHost{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAgent{}:
+          eq.bit.absurd(&2, {Http.FClen{} == Http.FAgent{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAccept{}:
+          eq.bit.absurd(&2, {Http.FClen{} == Http.FAccept{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FConn{}:
+          eq.bit.absurd(&2, {Http.FClen{} == Http.FConn{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FClen{}:
+          {==}
+        case Http.FOther{}:
+          eq.bit.absurd(&2, {Http.FClen{} == Http.FOther{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+    case Http.FOther{}:
+      match b:
+        case Http.FHost{}:
+          eq.bit.absurd(&2, {Http.FOther{} == Http.FHost{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAgent{}:
+          eq.bit.absurd(&2, {Http.FOther{} == Http.FAgent{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FAccept{}:
+          eq.bit.absurd(&2, {Http.FOther{} == Http.FAccept{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FConn{}:
+          eq.bit.absurd(&2, {Http.FOther{} == Http.FConn{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FClen{}:
+          eq.bit.absurd(&2, {Http.FOther{} == Http.FClen{} : Http.Field},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.FOther{}:
+          {==}
+
+# a list's tail after an empty append is the list
+def hd.app_nil(+xs: List<&2,
+  Http.Header>) -> {List.append(&2, Http.Header, xs, []) == xs : List<&2,
+  Http.Header>}:
+  match xs:
+    case []:
+      {==}
+    case h <> t:
+      Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>, x => h <> x,
+        List.append(&2, Http.Header, t, []), t,
+        hd.app_nil(t))
+
+# one step of of_app: the head kept or not
+def hd.of_app.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
+  Http.Header>, +b: List<&2, Http.Header>,
+  +ih: {Http.fields.of(f, List.append(&2, Http.Header, t, b))
+    == List.append(&2, Http.Header, Http.fields.of(f, t),
+    Http.fields.of(f, b)) : List<&2, Http.Header>})
+  -> {Http.fields.put(k, h,
+    Http.fields.of(f, List.append(&2, Http.Header, t, b)))
+    == List.append(&2, Http.Header,
+      Http.fields.put(k, h, Http.fields.of(f, t)),
+      Http.fields.of(f, b)) : List<&2, Http.Header>}:
+  match k:
+    case True{}:
+      Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>, x => h <> x,
+        Http.fields.of(f, List.append(&2, Http.Header, t, b)),
+        List.append(&2, Http.Header, Http.fields.of(f, t),
+          Http.fields.of(f, b)), ih)
+    case False{}:
+      ih
+
+# the fields of a name in an append are the ones in each part
+def hd.of_app(+f: Http.Field, +a: List<&2, Http.Header>, +b: List<&2,
+  Http.Header>)
+  -> {Http.fields.of(f, List.append(&2, Http.Header, a, b))
+    == List.append(&2, Http.Header, Http.fields.of(f, a),
+    Http.fields.of(f, b)) : List<&2, Http.Header>}:
+  match a:
+    case []:
+      {==}
+    case h <> t:
+      hd.of_app.put(f, Http.field.same(f, Http.header.field(h)), h, t, b,
+        hd.of_app(f, t, b))
+
+# of_app, the other way round
+def hd.of_app.r(+f: Http.Field, +a: List<&2, Http.Header>, +b: List<&2,
+  Http.Header>)
+  -> {List.append(&2, Http.Header, Http.fields.of(f, a), Http.fields.of(f, b))
+    == Http.fields.of(f, List.append(&2, Http.Header, a, b)) : List<&2,
+    Http.Header>}:
+  Equal.sym(List<&2, Http.Header>,
+    Http.fields.of(f, List.append(&2, Http.Header, a, b)),
+    List.append(&2, Http.Header, Http.fields.of(f, a), Http.fields.of(f, b)),
+    hd.of_app(f, a, b))
+
+# one step of idem
+def hd.idem.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
+  Http.Header>,
+  +ek: {k == Http.field.same(f, Http.header.field(h)) : Bool},
+  +ih: {Http.fields.of(f, Http.fields.of(f, t))
+    == Http.fields.of(f, t) : List<&2, Http.Header>})
+  -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(f, t)))
+    == Http.fields.put(k, h, Http.fields.of(f, t)) : List<&2, Http.Header>}:
+  match k:
+    case True{}:
+      %ek : {Http.fields.put(_, h, Http.fields.of(f, Http.fields.of(f, t)))
+        == h <> Http.fields.of(f, t) : List<&2, Http.Header>}
+      Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>, x => h <> x,
+        Http.fields.of(f, Http.fields.of(f, t)), Http.fields.of(f, t),
+        ih)
+    case False{}:
+      ih
+
+# the fields of a name among the fields of that name are all of them
+def hd.idem(+f: Http.Field, +hs: List<&2, Http.Header>)
+  -> {Http.fields.of(f, Http.fields.of(f, hs))
+    == Http.fields.of(f, hs) : List<&2, Http.Header>}:
+  match hs:
+    case []:
+      {==}
+    case h <> t:
+      hd.idem.put(f, Http.field.same(f, Http.header.field(h)), h, t, {==},
+        hd.idem(f, t))
+
+# one step of disj
+def hd.disj.put(+f: Http.Field, +g: Http.Field,
+  +efg: {False{} == Http.field.same(f, g) : Bool}, +k: Bool, +h: Http.Header,
+  +t: List<&2, Http.Header>,
+    +ek: {k == Http.field.same(g, Http.header.field(h)) : Bool},
+  +ih: {Http.fields.of(f, Http.fields.of(g, t)) == [] : List<&2, Http.Header>})
+  -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(g, t)))
+    == [] : List<&2, Http.Header>}:
+  match k:
+    case True{}:
+      %Equal.trans(Bool, False{}, Http.field.same(f, g),
+        Http.field.same(f, Http.header.field(h)), efg,
+        Equal.cong(Http.Field, Bool, y => Http.field.same(f, y), g,
+          Http.header.field(h), hd.same_sound(g, Http.header.field(h), ek)))
+        : {Http.fields.put(_, h, Http.fields.of(f, Http.fields.of(g, t)))
+          == [] : List<&2, Http.Header>}
+      ih
+    case False{}:
+      ih
+
+# the fields of one name among the fields of another are none
+def hd.disj(+f: Http.Field, +g: Http.Field,
+  +efg: {False{} == Http.field.same(f, g) : Bool}, +hs: List<&2, Http.Header>)
+  -> {Http.fields.of(f, Http.fields.of(g, hs)) == [] : List<&2, Http.Header>}:
+  match hs:
+    case []:
+      {==}
+    case h <> t:
+      hd.disj.put(f, g, efg, Http.field.same(g, Http.header.field(h)), h, t,
+        {==}, hd.disj(f, g, efg, t))
+
+# a slot holds none of a name when neither the caller's list nor the default
+# does
+def hd.or_gone(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
+  Http.Header>,
+  +eg: {Http.fields.of(f, given) == [] : List<&2, Http.Header>},
+    +ed: {Http.fields.of(f, d) == [] : List<&2, Http.Header>})
+  -> {[] == Http.fields.of(f, Http.fields.or(given, d)) : List<&2,
+    Http.Header>}:
+  match given:
+    case []:
+      Equal.sym(List<&2, Http.Header>, Http.fields.of(f, d), [], ed)
+    case h <> t:
+      Equal.sym(List<&2, Http.Header>, Http.fields.of(f, h <> t), [], eg)
+
+# a slot holds itself when the caller's list and the default are all of a
+# name
+def hd.or_keep(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
+  Http.Header>,
+  +eg: {Http.fields.of(f, given) == given : List<&2, Http.Header>},
+    +ed: {Http.fields.of(f, d) == d : List<&2, Http.Header>})
+  -> {Http.fields.or(given, d)
+    == Http.fields.of(f, Http.fields.or(given, d)) : List<&2, Http.Header>}:
+  match given:
+    case []:
+      Equal.sym(List<&2, Http.Header>, Http.fields.of(f, d), d, ed)
+    case h <> t:
+      Equal.sym(List<&2, Http.Header>, Http.fields.of(f, h <> t), h <> t, eg)
+
+# a computed Content-Length is no other field
+def hd.clen_gone(+f: Http.Field,
+  +efc: {False{} == Http.field.same(f, Http.FClen{}) : Bool}, +n: Nat,
+  +e: Bool) -> {[] == Http.fields.of(f, Http.clen.field(n, e)) : List<&2,
+    Http.Header>}:
+  match e:
+    case True{}:
+      {==}
+    case False{}:
+      %efc : {[]
+        == Http.fields.put(_, Http.H{"Content-Length", Nat.show(n)}, [])
+        : List<&2, Http.Header>}
+      {==}
+
+# a computed Content-Length is a Content-Length field
+def hd.clen_self(+n: Nat, +e: Bool)
+  -> {Http.clen.field(n, e)
+    == Http.fields.of(Http.FClen{}, Http.clen.field(n, e)) : List<&2,
+    Http.Header>}:
+  match e:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+# the fields of a name in a request's fields, slot by slot
+def hd.of_fields(+f: Http.Field, +s1: List<&2, Http.Header>, +s2: List<&2,
+  Http.Header>, +s3: List<&2, Http.Header>, +o: List<&2, Http.Header>,
+  +c: List<&2, Http.Header>,
+  +r1: List<&2, Http.Header>, +r2: List<&2, Http.Header>, +r3: List<&2,
+    Http.Header>, +ro: List<&2, Http.Header>, +rc: List<&2, Http.Header>,
+  +e1: {r1 == Http.fields.of(f, s1) : List<&2, Http.Header>},
+    +e2: {r2 == Http.fields.of(f, s2) : List<&2, Http.Header>},
+  +e3: {r3 == Http.fields.of(f, s3) : List<&2, Http.Header>},
+    +eo: {ro == Http.fields.of(f, o) : List<&2, Http.Header>},
+  +ec: {rc == Http.fields.of(f, c) : List<&2, Http.Header>})
+  -> {Http.fields.of(f,
+    List.append(&2, Http.Header, s1,
+    List.append(&2, Http.Header, s2,
+    List.append(&2, Http.Header, s3, Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, o, c)))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}:
+  %hd.of_app.r(f, s1,
+    List.append(&2, Http.Header, s2,
+    List.append(&2, Http.Header, s3, Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, o, c)))) : {_
+    == List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2,
+    List.append(&2, Http.Header, r3,
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %hd.of_app.r(f, s2,
+    List.append(&2, Http.Header, s3, Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, o, c))) : {List.append(&2, Http.Header,
+    Http.fields.of(f, s1), _)
+    == List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2,
+    List.append(&2, Http.Header, r3,
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %hd.of_app.r(f, s3, Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, o, c))
+    : {List.append(&2, Http.Header, Http.fields.of(f, s1),
+      List.append(&2, Http.Header, Http.fields.of(f, s2), _))
+      == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %hd.of_app.r(f, o, c)
+    : {List.append(&2, Http.Header, Http.fields.of(f, s1),
+      List.append(&2, Http.Header, Http.fields.of(f, s2),
+      List.append(&2, Http.Header, Http.fields.of(f, s3),
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"}, _))))
+      == List.append(&2, Http.Header, r1,
+        List.append(&2, Http.Header, r2,
+        List.append(&2, Http.Header, r3,
+        Http.fields.put(Http.field.same(f,
+        Http.header.field(Http.H{"Connection", "close"})),
+        Http.H{"Connection", "close"},
+        List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %e1 : {List.append(&2, Http.Header, _,
+    List.append(&2, Http.Header, Http.fields.of(f, s2),
+    List.append(&2, Http.Header, Http.fields.of(f, s3),
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, Http.fields.of(f, o), Http.fields.of(f, c))))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %e2 : {List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, _,
+    List.append(&2, Http.Header, Http.fields.of(f, s3),
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, Http.fields.of(f, o), Http.fields.of(f, c))))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %e3 : {List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2,
+    List.append(&2, Http.Header, _,
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, Http.fields.of(f, o), Http.fields.of(f, c))))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %eo : {List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2,
+    List.append(&2, Http.Header, r3,
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"},
+    List.append(&2, Http.Header, _, Http.fields.of(f, c))))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  %ec : {List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2,
+    List.append(&2, Http.Header, r3,
+    Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})),
+    Http.H{"Connection", "close"}, List.append(&2, Http.Header, ro, _)))))
+    == List.append(&2, Http.Header, r1,
+      List.append(&2, Http.Header, r2,
+      List.append(&2, Http.Header, r3,
+      Http.fields.put(Http.field.same(f,
+      Http.header.field(Http.H{"Connection", "close"})),
+      Http.H{"Connection", "close"},
+      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}
+  {==}
+
+def Laws.fields_host_caller(host, hs, body, h, t, e):
+  Equal.trans(List<&2, Http.Header>,
+    Http.fields.of(Http.FHost{}, Http.request.fields(host, hs, body)),
+    List.append(&2, Http.Header, h <> t, []), h <> t,
+    hd.of_fields(Http.FHost{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      h <> t, [], [], [], [],
+      Equal.trans(List<&2, Http.Header>, h <> t,
+        Http.fields.or(Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}]),
+        Http.fields.of(Http.FHost{},
+          Http.fields.or(Http.fields.of(Http.FHost{}, hs),
+          [Http.H{"Host", host}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"Host", host}]), h <> t,
+          Http.fields.of(Http.FHost{}, hs),
+            Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FHost{}, hs),
+            h <> t, e)),
+        hd.or_keep(Http.FHost{}, Http.fields.of(Http.FHost{}, hs),
+          [Http.H{"Host", host}], hd.idem(Http.FHost{}, hs), {==})),
+      hd.or_gone(Http.FHost{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FHost{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FHost{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FHost{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FHost{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FHost{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FHost{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))),
+    hd.app_nil(h <> t))
+
+def Laws.fields_host_dflt(host, hs, body, e):
+  hd.of_fields(Http.FHost{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [Http.H{"Host", host}], [], [], [], [],
+      Equal.trans(List<&2, Http.Header>, [Http.H{"Host", host}],
+        Http.fields.or(Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}]),
+        Http.fields.of(Http.FHost{},
+          Http.fields.or(Http.fields.of(Http.FHost{}, hs),
+          [Http.H{"Host", host}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"Host", host}]), [],
+          Http.fields.of(Http.FHost{}, hs),
+            Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FHost{}, hs),
+            [], e)),
+        hd.or_keep(Http.FHost{}, Http.fields.of(Http.FHost{}, hs),
+          [Http.H{"Host", host}], hd.idem(Http.FHost{}, hs), {==})),
+      hd.or_gone(Http.FHost{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FHost{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FHost{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FHost{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FHost{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FHost{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FHost{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))
+
+def Laws.fields_agent_caller(host, hs, body, h, t, e):
+  Equal.trans(List<&2, Http.Header>,
+    Http.fields.of(Http.FAgent{}, Http.request.fields(host, hs, body)),
+    List.append(&2, Http.Header, h <> t, []), h <> t,
+    hd.of_fields(Http.FAgent{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], h <> t, [], [], [],
+      hd.or_gone(Http.FAgent{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FAgent{}, Http.FHost{}, {==}, hs), {==}),
+      Equal.trans(List<&2, Http.Header>, h <> t,
+        Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+        Http.fields.of(Http.FAgent{},
+          Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+          [Http.H{"User-Agent", "ezhttp"}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"User-Agent", "ezhttp"}]), h <> t,
+          Http.fields.of(Http.FAgent{}, hs),
+            Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FAgent{}, hs),
+            h <> t, e)),
+        hd.or_keep(Http.FAgent{}, Http.fields.of(Http.FAgent{}, hs),
+          [Http.H{"User-Agent", "ezhttp"}], hd.idem(Http.FAgent{}, hs), {==})),
+      hd.or_gone(Http.FAgent{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FAgent{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FAgent{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FAgent{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FAgent{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))),
+    hd.app_nil(h <> t))
+
+def Laws.fields_agent_dflt(host, hs, body, e):
+  hd.of_fields(Http.FAgent{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [Http.H{"User-Agent", "ezhttp"}], [], [], [],
+      hd.or_gone(Http.FAgent{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FAgent{}, Http.FHost{}, {==}, hs), {==}),
+      Equal.trans(List<&2, Http.Header>, [Http.H{"User-Agent", "ezhttp"}],
+        Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+        Http.fields.of(Http.FAgent{},
+          Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+          [Http.H{"User-Agent", "ezhttp"}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"User-Agent", "ezhttp"}]), [],
+          Http.fields.of(Http.FAgent{}, hs),
+            Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FAgent{}, hs),
+            [], e)),
+        hd.or_keep(Http.FAgent{}, Http.fields.of(Http.FAgent{}, hs),
+          [Http.H{"User-Agent", "ezhttp"}], hd.idem(Http.FAgent{}, hs), {==})),
+      hd.or_gone(Http.FAgent{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FAgent{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FAgent{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FAgent{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FAgent{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))
+
+def Laws.fields_accept_caller(host, hs, body, h, t, e):
+  Equal.trans(List<&2, Http.Header>,
+    Http.fields.of(Http.FAccept{}, Http.request.fields(host, hs, body)),
+    List.append(&2, Http.Header, h <> t, []), h <> t,
+    hd.of_fields(Http.FAccept{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [], h <> t, [], [],
+      hd.or_gone(Http.FAccept{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FAccept{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FAccept{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FAccept{}, Http.FAgent{}, {==}, hs), {==}),
+      Equal.trans(List<&2, Http.Header>, h <> t,
+        Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+        Http.fields.of(Http.FAccept{},
+          Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+          [Http.H{"Accept", "*/*"}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"Accept", "*/*"}]), h <> t,
+          Http.fields.of(Http.FAccept{}, hs),
+            Equal.sym(List<&2, Http.Header>,
+            Http.fields.of(Http.FAccept{}, hs), h <> t, e)),
+        hd.or_keep(Http.FAccept{}, Http.fields.of(Http.FAccept{}, hs),
+          [Http.H{"Accept", "*/*"}], hd.idem(Http.FAccept{}, hs), {==})),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FAccept{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FAccept{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FAccept{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))),
+    hd.app_nil(h <> t))
+
+def Laws.fields_accept_dflt(host, hs, body, e):
+  hd.of_fields(Http.FAccept{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [], [Http.H{"Accept", "*/*"}], [], [],
+      hd.or_gone(Http.FAccept{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FAccept{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FAccept{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FAccept{}, Http.FAgent{}, {==}, hs), {==}),
+      Equal.trans(List<&2, Http.Header>, [Http.H{"Accept", "*/*"}],
+        Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+        Http.fields.of(Http.FAccept{},
+          Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+          [Http.H{"Accept", "*/*"}])),
+        Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>,
+          x => Http.fields.or(x, [Http.H{"Accept", "*/*"}]), [],
+          Http.fields.of(Http.FAccept{}, hs),
+            Equal.sym(List<&2, Http.Header>,
+            Http.fields.of(Http.FAccept{}, hs), [], e)),
+        hd.or_keep(Http.FAccept{}, Http.fields.of(Http.FAccept{}, hs),
+          [Http.H{"Accept", "*/*"}], hd.idem(Http.FAccept{}, hs), {==})),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FAccept{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FAccept{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FAccept{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))
+
+def Laws.fields_conn(host, hs, body):
+  hd.of_fields(Http.FConn{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [], [], [], [],
+      hd.or_gone(Http.FConn{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FConn{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FConn{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FConn{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FConn{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FConn{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FConn{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FConn{}, Http.FOther{}, {==}, hs)),
+      hd.clen_gone(Http.FConn{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))
+
+def Laws.fields_clen(host, hs, body):
+  hd.of_fields(Http.FClen{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [], [], [],
+        Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n)),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FClen{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FClen{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FClen{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FClen{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FClen{}, Http.FOther{}, {==}, hs)),
+      hd.clen_self(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)))
+
+def Laws.fields_other(host, hs, body):
+  Equal.trans(List<&2, Http.Header>,
+    Http.fields.of(Http.FOther{}, Http.request.fields(host, hs, body)),
+    List.append(&2, Http.Header, Http.fields.of(Http.FOther{}, hs), []),
+      Http.fields.of(Http.FOther{}, hs),
+    hd.of_fields(Http.FOther{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n)),
+      [], [], [], Http.fields.of(Http.FOther{}, hs), [],
+      hd.or_gone(Http.FOther{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FOther{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FOther{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FOther{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FOther{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FOther{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FOther{}, Http.fields.of(Http.FOther{}, hs)),
+        Http.fields.of(Http.FOther{}, hs),
+        hd.idem(Http.FOther{}, hs)),
+      hd.clen_gone(Http.FOther{}, {==}, Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))),
+    hd.app_nil(Http.fields.of(Http.FOther{}, hs)))
+
+# string append is associative
+def eq.app_assoc(+a: String, +b: String, +c: String)
+  -> {String.append(String.append(a, b), c)
+    == String.append(a, String.append(b, c)) : String}:
+  match a:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      Equal.cong(String, String, x => SCon{h, x},
+        String.append(String.append(t, b), c),
+        String.append(t, String.append(b, c)), eq.app_assoc(t, b, c))
+
+# the lines of an append are the lines of each part
+def hd.lines_app(+a: List<&2, Http.Header>, +b: List<&2, Http.Header>)
+  -> {Http.headers.lines(List.append(&2, Http.Header, a, b))
+    == String.append(Http.headers.lines(a), Http.headers.lines(b)) : String}:
+  match a:
+    case []:
+      {==}
+    case +h <> +t:
+      Equal.trans(String,
+        String.append(Http.header.line(h),
+          Http.headers.lines(List.append(&2, Http.Header, t, b))),
+        String.append(Http.header.line(h),
+          String.append(Http.headers.lines(t), Http.headers.lines(b))),
+        String.append(String.append(Http.header.line(h),
+          Http.headers.lines(t)), Http.headers.lines(b)),
+        Equal.cong(String, String, x => String.append(Http.header.line(h), x),
+          Http.headers.lines(List.append(&2, Http.Header, t, b)),
+            String.append(Http.headers.lines(t), Http.headers.lines(b)),
+            hd.lines_app(t, b)),
+        Equal.sym(String,
+          String.append(String.append(Http.header.line(h),
+          Http.headers.lines(t)), Http.headers.lines(b)),
+          String.append(Http.header.line(h),
+            String.append(Http.headers.lines(t), Http.headers.lines(b))),
+          eq.app_assoc(Http.header.line(h), Http.headers.lines(t),
+            Http.headers.lines(b))))
+
+# with none of Host, User-Agent, Accept from the caller and only other
+# fields, the request's fields are the defaults, the caller's, Content-Length
+def hd.plain_fields(+host: String, +hs: List<&2, Http.Header>, +body: String,
+  +eh: {Http.fields.of(Http.FHost{}, hs) == [] : List<&2, Http.Header>},
+  +ea: {Http.fields.of(Http.FAgent{}, hs) == [] : List<&2, Http.Header>},
+  +ec: {Http.fields.of(Http.FAccept{}, hs) == [] : List<&2, Http.Header>},
+  +eo: {Http.fields.of(Http.FOther{}, hs) == hs : List<&2, Http.Header>})
+  -> {Http.request.fields(host, hs, body) == Http.H{"Host", host}
+    <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+    <> Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, hs,
+    Http.clen.field(Http.utf8.len(body),
+    Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}:
+  %Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FHost{}, hs), [], eh)
+    : {List.append(&2, Http.Header, Http.fields.or(_, [Http.H{"Host", host}]),
+      List.append(&2, Http.Header,
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+      [Http.H{"User-Agent", "ezhttp"}]),
+      List.append(&2, Http.Header,
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+      [Http.H{"Accept", "*/*"}]), Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))))) == Http.H{"Host", host}
+      <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+      <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}
+  %Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FAgent{}, hs), [], ea)
+    : {List.append(&2, Http.Header, Http.fields.or([], [Http.H{"Host", host}]),
+      List.append(&2, Http.Header,
+      Http.fields.or(_, [Http.H{"User-Agent", "ezhttp"}]),
+      List.append(&2, Http.Header,
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+      [Http.H{"Accept", "*/*"}]), Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))))) == Http.H{"Host", host}
+      <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+      <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}
+  %Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FAccept{}, hs), [], ec)
+    : {List.append(&2, Http.Header, Http.fields.or([], [Http.H{"Host", host}]),
+      List.append(&2, Http.Header,
+      Http.fields.or([], [Http.H{"User-Agent", "ezhttp"}]),
+      List.append(&2, Http.Header,
+      Http.fields.or(_, [Http.H{"Accept", "*/*"}]),
+      Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))))) == Http.H{"Host", host}
+      <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+      <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}
+  %Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FOther{}, hs), hs, eo)
+    : {List.append(&2, Http.Header, Http.fields.or([], [Http.H{"Host", host}]),
+      List.append(&2, Http.Header,
+      Http.fields.or([], [Http.H{"User-Agent", "ezhttp"}]),
+      List.append(&2, Http.Header,
+      Http.fields.or([], [Http.H{"Accept", "*/*"}]),
+      Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, _,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))))) == Http.H{"Host", host}
+      <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+      <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}
+  {==}
+
+# the plain request's text after `Host: `
+def hd.plain_tail(+host: String, +hs: List<&2, Http.Header>, +body: String)
+  -> {String.append(String.append(String.append(host, "\r\n"),
+    Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+    <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, hs,
+    Http.clen.field(Http.utf8.len(body),
+    Nat.is_eq(Http.utf8.len(body), 0n))))), "\r\n" ++ body)
+    == String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
+    ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
+    ++ String.append(Http.headers.lines(hs),
+    String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+    Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))) : String}:
+  Equal.trans(String,
+    String.append(String.append(String.append(host, "\r\n"),
+    Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+    <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+    <> List.append(&2, Http.Header, hs,
+    Http.clen.field(Http.utf8.len(body),
+    Nat.is_eq(Http.utf8.len(body), 0n))))), "\r\n" ++ body),
+    String.append(String.append(host, "\r\n"),
+      String.append(Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+      <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body)),
+    String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n" ++ "Accept: */*\r\n"
+      ++ "Connection: close\r\n"
+      ++ String.append(Http.headers.lines(hs),
+      String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))),
+    eq.app_assoc(String.append(host, "\r\n"),
+      Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+      <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body),
+    Equal.trans(String,
+      String.append(String.append(host, "\r\n"),
+      String.append(Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+      <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body)),
+      String.append(host,
+        String.append("\r\n",
+        String.append(Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+        <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+        <> List.append(&2, Http.Header, hs,
+        Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body))),
+      String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
+        ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
+        ++ String.append(Http.headers.lines(hs),
+        String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))),
+      eq.app_assoc(host, "\r\n",
+        String.append(Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+        <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+        <> List.append(&2, Http.Header, hs,
+        Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body)),
+      Equal.cong(String, String,
+        x => String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
+        ++ "Accept: */*\r\n" ++ "Connection: close\r\n" ++ x),
+        String.append(Http.headers.lines(List.append(&2, Http.Header, hs,
+          Http.clen.field(Http.utf8.len(body),
+          Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body),
+        String.append(Http.headers.lines(hs),
+          String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+          Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body)),
+        Equal.trans(String,
+          String.append(Http.headers.lines(List.append(&2, Http.Header, hs,
+          Http.clen.field(Http.utf8.len(body),
+          Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body),
+          String.append(String.append(Http.headers.lines(hs),
+            Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+            Nat.is_eq(Http.utf8.len(body), 0n)))), "\r\n" ++ body),
+          String.append(Http.headers.lines(hs),
+            String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+            Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body)),
+          Equal.cong(String, String, y => String.append(y, "\r\n" ++ body),
+            Http.headers.lines(List.append(&2, Http.Header, hs,
+            Http.clen.field(Http.utf8.len(body),
+            Nat.is_eq(Http.utf8.len(body), 0n)))),
+            String.append(Http.headers.lines(hs),
+              Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+              Nat.is_eq(Http.utf8.len(body), 0n)))),
+              hd.lines_app(hs,
+              Http.clen.field(Http.utf8.len(body),
+              Nat.is_eq(Http.utf8.len(body), 0n)))),
+          eq.app_assoc(Http.headers.lines(hs),
+            Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+            Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body)))))
+
+def Laws.request_plain(method, host, path, hs, body, eh, ea, ec, eo):
+  Equal.trans(String,
+    Http.request(method, host, path, hs, body),
+    method ++ " " ++ path ++ " HTTP/1.1\r\n"
+      ++ Http.headers.lines(Http.H{"Host", host}
+      <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+      <> Http.H{"Connection", "close"}
+      <> List.append(&2, Http.Header, hs,
+      Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n)))) ++ "\r\n" ++ body,
+    method ++ " " ++ path ++ " HTTP/1.1\r\n" ++ "Host: "
+      ++ String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
+      ++ String.append(Http.headers.lines(hs),
+      String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+      Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))),
+    Equal.cong(List<&2, Http.Header>, String,
+      z => method ++ " " ++ path ++ " HTTP/1.1\r\n" ++ Http.headers.lines(z)
+        ++ "\r\n" ++ body,
+      Http.request.fields(host, hs, body), Http.H{"Host", host}
+        <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
+        <> Http.H{"Connection", "close"}
+        <> List.append(&2, Http.Header, hs,
+        Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n))),
+      hd.plain_fields(host, hs, body, eh, ea, ec, eo)),
+    Equal.cong(String, String,
+      x => method ++ " " ++ path ++ " HTTP/1.1\r\n" ++ "Host: " ++ x,
+      String.append(String.append(String.append(host, "\r\n"),
+        Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+        <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
+        <> List.append(&2, Http.Header, hs,
+        Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n))))), "\r\n" ++ body),
+        String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
+        ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
+        ++ String.append(Http.headers.lines(hs),
+        String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+        Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))),
+        hd.plain_tail(host, hs, body)))
 
 def Laws.whole_open(method, _raw, e):
   %e : {Http.whole.cut(String.eq(method, "HEAD"), _) == False{} : Bool}
