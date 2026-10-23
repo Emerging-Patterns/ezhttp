@@ -154,6 +154,24 @@ def http.serve(
 ) -> IO(Unit):
   Server.server.serve(handle, host, port, limit)
 
+# listen on host:port and serve up to `limit` connections with a handler that
+# does IO; a failed connection is logged and the next one is served
+def http.serve_io(
+  ~handle: Http.Request -> IO(Http.Reply),
+  host: String,
+  port: U32,
+  limit: U32
+) -> IO(Unit):
+  Server.server.serve_io(handle, host, port, limit)
+
+# listen on host:port and serve with an IO handler until the process stops
+@unsafe def http.serve_forever(
+  ~handle: Http.Request -> IO(Http.Reply),
+  host: String,
+  port: U32
+) -> IO(Unit):
+  Server.server.serve_forever(handle, host, port)
+
 # listen on host:port, serve one connection, then stop
 def http.serve_once(
   ~handle: Http.Request -> Http.Reply,
