@@ -8,15 +8,10 @@
     url = "github:bendlang/bend/042e797ebd1cfc060603e2682879909fe86fa8c2";
     inputs.nixpkgs.follows = "nixpkgs";
   };
-  # Interim: ez 1.5.0 does not build on 2.0.38 yet, so ez and bolt stay on
-  # the bend ez's own flake.lock records (2.0.36). The package, its proofs
-  # and the entry check build on this flake's bend (2.0.38). A tooling pass
-  # puts `inputs.bend.follows = "bend"` and ez.mkProofs back once ez
-  # releases on 2.0.38.
   inputs.ez = {
     url = "github:Emerging-Patterns/ez";
     inputs.nixpkgs.follows = "nixpkgs";
-    inputs.bend.url = "github:bendlang/bend/eebc18cd04daeade06c3f68c3c96c1faefd3462f";
+    inputs.bend.follows = "bend";
   };
 
   outputs = { self, nixpkgs, ... }@inputs:
@@ -27,7 +22,7 @@
       ez = inputs.ez.lib.${system};
       ezBin = inputs.ez.packages.${system}.default;
       bend = inputs.bend.packages.${system}.default;
-      bolt = ez.toolPackage { name = "bolt"; src = self; wrapFlags = [ "--gpu" "off" ]; };
+      bolt = ez.toolPackage { name = "bolt"; src = self; inherit bend; wrapFlags = ez.rtsFlags bend [ "--gpu" "off" ]; };
       bend-cc = ez.bend-cc;
 
       bench = import ./bench {
@@ -44,21 +39,7 @@
       apps.${system} = bench.apps;
 
       checks.${system} = {
-        # every PROOF.bend checks on this flake's bend (interim stand-in for
-        # ez.mkProofs, whose `ez prove` runs on ez's bend)
-        proofs = pkgs.runCommand "ezhttp-proofs" {
-          nativeBuildInputs = [ bend ];
-          BEND_LIB = ez.bendLib ./ez.lock.toml;
-        } ''
-          export HOME=$TMPDIR
-          cp -r ${self} src && chmod -R u+w src && cd src
-          for p in $(find . -name PROOF.bend -not -path './.ez/*' | sort); do
-            first=$(cd "$(dirname "$p")" && bend "$(basename "$p")" | head -n 1)
-            echo "$p: $first"
-            [ "$first" = "ALL PROOFS CHECK" ] || exit 1
-          done
-          touch $out
-        '';
+        proofs = ez.mkProofs { ez = ezBin; src = self; };
         # ENTRY.bend states the laws on main.bend and client.bend, which
         # reach the wire effect, so its verdict is SOME PROOFS FAIL; its only
         # error may be the list of defs relying on unsafe or foreign code
