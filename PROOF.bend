@@ -9,6 +9,10 @@ import ./src/wirespec.bend as Spec
 import ./src/html.bend as Html
 import ./src/redirect.bend as Redirect
 import ./src/form.bend as Form
+import ./src/qs.bend as Qs
+import ./src/unescape.bend as Ref
+import ./src/entities.bend as Ents
+import ./src/echo.bend as Echo
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -5106,3 +5110,945 @@ def Laws.phrase_heard(text):
   dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
   %dz : {Http.phrase.to(_) == Http.phrase.to(text) : String}
   {==}
+
+# --- percent-decoding and query strings (SPEC.md HTTP-QS) ---
+
+def Laws.qs_unquote(_s):
+  {==}
+
+def Laws.qs_unquote_plus(_s):
+  {==}
+
+def Laws.qs_toks_nil(_plus, _st):
+  {==}
+
+def Laws.qs_toks_cons(_c, _t, _plus, _st):
+  {==}
+
+def Laws.qs_tok_wide(plus, c, k, e):
+  %e : {Qs.tok.wide(plus, c, k, _) == Qs.W{c} <> k(Qs.Plain{})
+    : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_open(plus, c, k, e1, e2):
+  %e1 : {Qs.tok.wide(plus, c, k, _) == k(Qs.Pct{}) : List<&2, Qs.Tok>}
+  %e2 : {Qs.tok.ascii(plus, c, k, _) == k(Qs.Pct{}) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_byte(plus, c, k, e1, e2):
+  %e1 : {Qs.tok.wide(plus, c, k, _)
+    == Qs.B{Qs.tok.byte(plus, c)} <> k(Qs.Plain{}) : List<&2, Qs.Tok>}
+  %e2 : {Qs.tok.ascii(plus, c, k, _)
+    == Qs.B{Qs.tok.byte(plus, c)} <> k(Qs.Plain{}) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_byte_plus(c, e):
+  %e : {Bool.pick(U32, Bool.and(True{}, _), 32, Char.to_u32(c)) == 32 : U32}
+  {==}
+
+def Laws.qs_byte_other(_plus, c, e):
+  %e : {Bool.pick(U32, _, 32, Char.to_u32(c)) == Char.to_u32(c) : U32}
+  {==}
+
+def Laws.qs_tok_pct_hex(plus, c, k, e):
+  %e : {Qs.tok.pct(plus, c, k, _) == k(Qs.Pct1{c}) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_pct_other(plus, c, k, e):
+  %e : {Qs.tok.pct(plus, c, k, _)
+    == Qs.B{37} <> Qs.tok.step(plus, Qs.Plain{}, c, k) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_pct1_hex(plus, d, c, k, e):
+  %e : {Qs.tok.pct1(plus, d, c, k, _)
+    == Qs.B{U32.add(U32.mul(Http.hex.val(d), 16), Http.hex.val(c))}
+      <> k(Qs.Plain{}) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_pct1_other(plus, d, c, k, e):
+  %e : {Qs.tok.pct1(plus, d, c, k, _)
+    == Qs.B{37} <> (Qs.B{Char.to_u32(d)}
+      <> Qs.tok.step(plus, Qs.Plain{}, c, k)) : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_end_plain(_st, e):
+  %e : {Qs.tok.end(_) == [] : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_end_pct(_st, e):
+  %e : {Qs.tok.end(_) == [Qs.B{37}] : List<&2, Qs.Tok>}
+  {==}
+
+def Laws.qs_tok_end_pct1(_d):
+  {==}
+
+def Laws.qs_tok_hex(_c):
+  {==}
+
+def Laws.qs_hexval_dec(u, e):
+  %e : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)),
+      U32.sub(u, 87),
+      Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+        U32.sub(u, 55), 16))) == U32.sub(u, 48) : U32}
+  {==}
+
+def Laws.qs_hexval_upper(u, e1, e2, e3):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)),
+      U32.sub(u, 87),
+      Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+        U32.sub(u, 55), 16))) == U32.sub(u, 55) : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 87),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+      U32.sub(u, 55), 16)) == U32.sub(u, 55) : U32}
+  %e3 : {Bool.pick(U32, _, U32.sub(u, 55), 16) == U32.sub(u, 55) : U32}
+  {==}
+
+def Laws.qs_hexval_lower(u, e1, e2):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)),
+      U32.sub(u, 87),
+      Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+        U32.sub(u, 55), 16))) == U32.sub(u, 87) : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 87),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+      U32.sub(u, 55), 16)) == U32.sub(u, 87) : U32}
+  {==}
+
+def Laws.qs_hexval_none(u, e1, e2, e3):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)),
+      U32.sub(u, 87),
+      Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+        U32.sub(u, 55), 16))) == 16 : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 87),
+    Bool.pick(U32, Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)),
+      U32.sub(u, 55), 16)) == 16 : U32}
+  %e3 : {Bool.pick(U32, _, U32.sub(u, 55), 16) == 16 : U32}
+  {==}
+
+def Laws.qs_dec_nil(_st):
+  {==}
+
+def Laws.qs_dec_cons(_t, _rest, _st):
+  {==}
+
+def Laws.qs_end_idle(_st, e):
+  %e : {Qs.utf.end(_) == "" : String}
+  {==}
+
+def Laws.qs_end_need(_cp, _left, _lo, _hi):
+  {==}
+
+def Laws.qs_idle_wide(_c, _k):
+  {==}
+
+def Laws.qs_idle_byte(_b, _k):
+  {==}
+
+def Laws.qs_lead_on_ascii(_b, _k):
+  {==}
+
+def Laws.qs_lead_on_bad(_b, _k):
+  {==}
+
+def Laws.qs_lead_on_opens(_b, _k, _cp, _left, _lo, _hi):
+  {==}
+
+def Laws.qs_lead_ascii(b, e):
+  %e : {Qs.lead.ascii(b, _) == Qs.Ascii{} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_low(b, e1, e2):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Bad{} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Bad{} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_two(b, e1, e2, e3):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{U32.and(b, 31), 0n, 128, 191}
+    : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{U32.and(b, 31), 0n, 128, 191}
+    : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{U32.and(b, 31), 0n, 128, 191}
+    : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_e0(b, e1, e2, e3, e4):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{0, 1n, 160, 191} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{0, 1n, 160, 191} : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{0, 1n, 160, 191} : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{0, 1n, 160, 191} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_e1(b, e1, e2, e3, e4, e5):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_ed(b, e1, e2, e3, e4, e5, e6):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_ee(b, e1, e2, e3, e4, e5, e6, e7):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  %e7 : {Qs.lead.ee(b, _) == Qs.Opens{U32.and(b, 15), 1n, 128, 191}
+    : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_f0(b, e1, e2, e3, e4, e5, e6, e7, e8):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e7 : {Qs.lead.ee(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  %e8 : {Qs.lead.f0(b, _) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_f1(b, e1, e2, e3, e4, e5, e6, e7, e8, e9):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e7 : {Qs.lead.ee(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e8 : {Qs.lead.f0(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  %e9 : {Qs.lead.f1(b, _) == Qs.Opens{U32.and(b, 7), 2n, 128, 191}
+    : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_f4(b, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e7 : {Qs.lead.ee(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e8 : {Qs.lead.f0(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e9 : {Qs.lead.f1(b, _) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  %e10 : {Qs.lead.f4(_) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+  {==}
+
+def Laws.qs_lead_high(b, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10):
+  %e1 : {Qs.lead.ascii(b, _) == Qs.Bad{} : Qs.Lead}
+  %e2 : {Qs.lead.low(b, _) == Qs.Bad{} : Qs.Lead}
+  %e3 : {Qs.lead.two(b, _) == Qs.Bad{} : Qs.Lead}
+  %e4 : {Qs.lead.e0(b, _) == Qs.Bad{} : Qs.Lead}
+  %e5 : {Qs.lead.e1(b, _) == Qs.Bad{} : Qs.Lead}
+  %e6 : {Qs.lead.ed(b, _) == Qs.Bad{} : Qs.Lead}
+  %e7 : {Qs.lead.ee(b, _) == Qs.Bad{} : Qs.Lead}
+  %e8 : {Qs.lead.f0(b, _) == Qs.Bad{} : Qs.Lead}
+  %e9 : {Qs.lead.f1(b, _) == Qs.Bad{} : Qs.Lead}
+  %e10 : {Qs.lead.f4(_) == Qs.Bad{} : Qs.Lead}
+  {==}
+
+def Laws.qs_need_wide(_cp, _left, _lo, _hi, _c, _k):
+  {==}
+
+def Laws.qs_need_last(cp, _lo, _hi, b, k, e):
+  %e : {Qs.utf.byte(cp, 0n, b, k, _)
+    == SCon{Chr{Qs.utf.add(cp, b)}, k(Qs.Idle{})} : String}
+  {==}
+
+def Laws.qs_need_more(cp, l, _lo, _hi, b, k, e):
+  %e : {Qs.utf.byte(cp, 1n+l, b, k, _)
+    == k(Qs.Need{Qs.utf.add(cp, b), l, 128, 191}) : String}
+  {==}
+
+def Laws.qs_need_miss(cp, left, _lo, _hi, b, k, e):
+  %e : {Qs.utf.byte(cp, left, b, k, _)
+    == SCon{Chr{65533}, Qs.utf.lead(b, k, Qs.lead(b))} : String}
+  {==}
+
+def Laws.qs_add(_cp, _b):
+  {==}
+
+def Laws.qs_qp_nil(_s, e):
+  %e : {Qs.quote.plus(_) == "" : String}
+  {==}
+
+def Laws.qs_qp_space(_t):
+  {==}
+
+def Laws.qs_qp_other(cp, t, e):
+  %e : {Qs.plus.one(cp, Qs.quote.plus(t), _)
+    == Pct.one(False{}, cp, Qs.quote.plus(t)) : String}
+  {==}
+
+def Laws.qs_ue_nil(_ps, e):
+  %e : {Qs.urlencode(_) == "" : String}
+  {==}
+
+def Laws.qs_ue_cons(_name, _value, _t):
+  {==}
+
+def Laws.qs_more_nil(_ps, e):
+  %e : {Qs.form.more(_) == "" : String}
+  {==}
+
+def Laws.qs_more_cons(_name, _value, _t):
+  {==}
+
+def Laws.qs_pair(_name, _value):
+  {==}
+
+def Laws.qs_parse(_text):
+  {==}
+
+def Laws.qs_fields_nil(_ps, e):
+  %e : {Qs.fields(_) == [] : List<&2, Qs.Kv()>}
+  {==}
+
+def Laws.qs_fields_skip(_t):
+  {==}
+
+def Laws.qs_fields_keep(p, t, e):
+  %e : {Qs.fields.put(p, Qs.fields(t), _) == Qs.field(p) <> Qs.fields(t)
+    : List<&2, Qs.Kv()>}
+  {==}
+
+def Laws.qs_field(_piece):
+  {==}
+
+def Laws.qs_field_none(_whole):
+  {==}
+
+def Laws.qs_field_some(_name, _value, _whole):
+  {==}
+
+def Laws.qs_cut_found(s, r, e):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{+h, +t}:
+      ne = Equal.sym(Bool, Char.is_eq(h, '='), False{},
+        eq.not.true(Char.is_eq(h, '='),
+          eq.and.left(Bool.not(Char.is_eq(h, '=')), Laws.avoids(t, '='), e)))
+      ih = Equal.sym(Maybe<&2, Qs.Kv()>,
+        Qs.cut(String.append(t, SCon{'=', r})), Some{(t, r)},
+        Laws.qs_cut_found(t, r,
+          eq.and.right(Bool.not(Char.is_eq(h, '=')), Laws.avoids(t, '='), e)))
+      %ne : {Qs.cut.at(h, String.append(t, SCon{'=', r}), _,
+        _u => Qs.cut(String.append(t, SCon{'=', r})))
+        == Some{(SCon{h, t}, r)} : Maybe<&2, Qs.Kv()>}
+      %ih : {Qs.cut.push(h, _) == Some{(SCon{h, t}, r)}
+        : Maybe<&2, Qs.Kv()>}
+      {==}
+
+def Laws.qs_cut_none(s, e):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{+h, +t}:
+      ne = Equal.sym(Bool, Char.is_eq(h, '='), False{},
+        eq.not.true(Char.is_eq(h, '='),
+          eq.and.left(Bool.not(Char.is_eq(h, '=')), Laws.avoids(t, '='), e)))
+      ih = Equal.sym(Maybe<&2, Qs.Kv()>, Qs.cut(t), None{},
+        Laws.qs_cut_none(t,
+          eq.and.right(Bool.not(Char.is_eq(h, '=')), Laws.avoids(t, '='), e)))
+      %ne : {Qs.cut.at(h, t, _, _u => Qs.cut(t)) == None{}
+        : Maybe<&2, Qs.Kv()>}
+      %ih : {Qs.cut.push(h, _) == None{} : Maybe<&2, Qs.Kv()>}
+      {==}
+
+def Laws.qs_get_nil(_name):
+  {==}
+
+def Laws.qs_get_later(key, value, _t, name, x, e):
+  %e : {Qs.get.pick(_, value, String.eq(key, name)) == Some{x}
+    : Maybe<&2, String>}
+  {==}
+
+def Laws.qs_get_here(key, value, _t, name, e1, e2):
+  %e1 : {Qs.get.pick(_, value, String.eq(key, name)) == Some{value}
+    : Maybe<&2, String>}
+  %e2 : {Qs.get.pick(None{}, value, _) == Some{value} : Maybe<&2, String>}
+  {==}
+
+def Laws.qs_get_miss(key, value, _t, name, e1, e2):
+  %e1 : {Qs.get.pick(_, value, String.eq(key, name)) == None{}
+    : Maybe<&2, String>}
+  %e2 : {Qs.get.pick(None{}, value, _) == None{} : Maybe<&2, String>}
+  {==}
+
+# --- HTML character references (SPEC.md HTTP-REF) ---
+
+def Laws.ref_unescape(_s):
+  {==}
+
+def Laws.ref_scan_nil(_st):
+  {==}
+
+def Laws.ref_scan_cons(_c, _t, _st):
+  {==}
+
+def Laws.ref_text_amp(c, k, e):
+  %e : {Ref.text.of(c, k, _) == k(Ref.Amp{}) : String}
+  {==}
+
+def Laws.ref_text_other(c, k, e):
+  %e : {Ref.text.of(c, k, _) == SCon{c, k(Ref.Txt{})} : String}
+  {==}
+
+def Laws.ref_amp_hash(c, k, e):
+  %e : {Ref.amp(c, k, _) == k(Ref.Hash{}) : String}
+  {==}
+
+def Laws.ref_amp_name(c, k, e1, e2):
+  %e1 : {Ref.amp(c, k, _) == k(Ref.Name{SCon{c, ""}, 1n}) : String}
+  %e2 : {Ref.amp.name(c, k, _) == k(Ref.Name{SCon{c, ""}, 1n}) : String}
+  {==}
+
+def Laws.ref_amp_other(c, k, e1, e2):
+  %e1 : {Ref.amp(c, k, _) == SCon{'&', Ref.step(Ref.Txt{}, c, k)} : String}
+  %e2 : {Ref.amp.name(c, k, _) == SCon{'&', Ref.step(Ref.Txt{}, c, k)}
+    : String}
+  {==}
+
+def Laws.ref_hash_dec(c, k, e):
+  %e : {Ref.hash.dec(c, k, Ref.digit(False{}, c), _)
+    == k(Ref.Num{False{}, Ref.digit(False{}, c)}) : String}
+  {==}
+
+def Laws.ref_hash_x(c, k, e1, e2):
+  %e1 : {Ref.hash.dec(c, k, Ref.digit(False{}, c), _) == k(Ref.HashX{c})
+    : String}
+  %e2 : {Ref.hash.x(c, k, _) == k(Ref.HashX{c}) : String}
+  {==}
+
+def Laws.ref_hash_other(c, k, e1, e2):
+  %e1 : {Ref.hash.dec(c, k, Ref.digit(False{}, c), _)
+    == "&#" ++ Ref.step(Ref.Txt{}, c, k) : String}
+  %e2 : {Ref.hash.x(c, k, _) == "&#" ++ Ref.step(Ref.Txt{}, c, k) : String}
+  {==}
+
+def Laws.ref_hashx_digit(x, c, k, e):
+  %e : {Ref.hash.hex.of(x, c, k, Ref.digit(True{}, c), _)
+    == k(Ref.Num{True{}, Ref.digit(True{}, c)}) : String}
+  {==}
+
+def Laws.ref_hashx_other(x, c, k, e):
+  %e : {Ref.hash.hex.of(x, c, k, Ref.digit(True{}, c), _)
+    == SCon{'&', SCon{'#', SCon{x, Ref.step(Ref.Txt{}, c, k)}}} : String}
+  {==}
+
+def Laws.ref_num_digit(hex, n, c, k, e):
+  %e : {Ref.num(hex, n, c, k, Ref.digit(hex, c), _)
+    == k(Ref.Num{hex, Ref.grow(hex, n, Ref.digit(hex, c))}) : String}
+  {==}
+
+def Laws.ref_num_semi(hex, n, c, k, e1, e2):
+  %e1 : {Ref.num(hex, n, c, k, Ref.digit(hex, c), _)
+    == Ref.code(n) ++ k(Ref.Txt{}) : String}
+  %e2 : {Ref.num.end(n, c, k, _) == Ref.code(n) ++ k(Ref.Txt{}) : String}
+  {==}
+
+def Laws.ref_num_other(hex, n, c, k, e1, e2):
+  %e1 : {Ref.num(hex, n, c, k, Ref.digit(hex, c), _)
+    == Ref.code(n) ++ Ref.step(Ref.Txt{}, c, k) : String}
+  %e2 : {Ref.num.end(n, c, k, _) == Ref.code(n) ++ Ref.step(Ref.Txt{}, c, k)
+    : String}
+  {==}
+
+def Laws.ref_name_semi(s, len, c, k, e):
+  %e : {Ref.name(s, len, c, k, _) == Ref.named(s ++ ";") ++ k(Ref.Txt{})
+    : String}
+  {==}
+
+def Laws.ref_name_join(s, len, c, k, e1, e2):
+  %e1 : {Ref.name(s, len, c, k, _)
+    == k(Ref.Name{s ++ SCon{c, ""}, 1n+len}) : String}
+  %e2 : {Ref.name.more(s, len, c, k, _)
+    == k(Ref.Name{s ++ SCon{c, ""}, 1n+len}) : String}
+  {==}
+
+def Laws.ref_name_stop(s, len, c, k, e1, e2):
+  %e1 : {Ref.name(s, len, c, k, _)
+    == Ref.named(s) ++ Ref.step(Ref.Txt{}, c, k) : String}
+  %e2 : {Ref.name.more(s, len, c, k, _)
+    == Ref.named(s) ++ Ref.step(Ref.Txt{}, c, k) : String}
+  {==}
+
+def Laws.ref_end_text(_st, e):
+  %e : {Ref.end(_) == "" : String}
+  {==}
+
+def Laws.ref_end_amp(_st, e):
+  %e : {Ref.end(_) == "&" : String}
+  {==}
+
+def Laws.ref_end_hash(_st, e):
+  %e : {Ref.end(_) == "&#" : String}
+  {==}
+
+def Laws.ref_end_hashx(_x):
+  {==}
+
+def Laws.ref_end_num(_hex, _n):
+  {==}
+
+def Laws.ref_end_name(_s, _len):
+  {==}
+
+def Laws.ref_name_char(_c):
+  {==}
+
+def Laws.ref_digit_dec(u, e):
+  %e : {Bool.pick(U32, _, U32.sub(u, 48), 16) == U32.sub(u, 48) : U32}
+  {==}
+
+def Laws.ref_digit_dec_none(u, e):
+  %e : {Bool.pick(U32, _, U32.sub(u, 48), 16) == 16 : U32}
+  {==}
+
+def Laws.ref_digit_hex_dec(u, e):
+  %e : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_le(65, u), U32.is_le(u, 70)),
+      U32.sub(u, 55),
+      Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+        U32.sub(u, 87), 16))) == U32.sub(u, 48) : U32}
+  {==}
+
+def Laws.ref_digit_hex_upper(u, e1, e2):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_le(65, u), U32.is_le(u, 70)),
+      U32.sub(u, 55),
+      Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+        U32.sub(u, 87), 16))) == U32.sub(u, 55) : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 55),
+    Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+      U32.sub(u, 87), 16)) == U32.sub(u, 55) : U32}
+  {==}
+
+def Laws.ref_digit_hex_lower(u, e1, e2, e3):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_le(65, u), U32.is_le(u, 70)),
+      U32.sub(u, 55),
+      Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+        U32.sub(u, 87), 16))) == U32.sub(u, 87) : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 55),
+    Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+      U32.sub(u, 87), 16)) == U32.sub(u, 87) : U32}
+  %e3 : {Bool.pick(U32, _, U32.sub(u, 87), 16) == U32.sub(u, 87) : U32}
+  {==}
+
+def Laws.ref_digit_hex_none(u, e1, e2, e3):
+  %e1 : {Bool.pick(U32, _, U32.sub(u, 48),
+    Bool.pick(U32, Bool.and(U32.is_le(65, u), U32.is_le(u, 70)),
+      U32.sub(u, 55),
+      Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+        U32.sub(u, 87), 16))) == 16 : U32}
+  %e2 : {Bool.pick(U32, _, U32.sub(u, 55),
+    Bool.pick(U32, Bool.and(U32.is_le(97, u), U32.is_le(u, 102)),
+      U32.sub(u, 87), 16)) == 16 : U32}
+  %e3 : {Bool.pick(U32, _, U32.sub(u, 87), 16) == 16 : U32}
+  {==}
+
+def Laws.ref_grow(_hex, _n, _d):
+  {==}
+
+def Laws.ref_code(_n):
+  {==}
+
+def Laws.ref_code_zero(n, e):
+  %e : {Ref.code.zero(n, _) == SCon{Chr{65533}, ""} : String}
+  {==}
+
+def Laws.ref_code_cr(n, e1, e2):
+  %e1 : {Ref.code.zero(n, _) == "\r" : String}
+  %e2 : {Ref.code.cr(n, _) == "\r" : String}
+  {==}
+
+def Laws.ref_code_c1(n, e1, e2, e3):
+  %e1 : {Ref.code.zero(n, _)
+    == SCon{Chr{Ref.nth(Ref.w1252(), U32.to_nat(U32.sub(n, 128)))}, ""}
+    : String}
+  %e2 : {Ref.code.cr(n, _)
+    == SCon{Chr{Ref.nth(Ref.w1252(), U32.to_nat(U32.sub(n, 128)))}, ""}
+    : String}
+  %e3 : {Ref.code.c1(n, _)
+    == SCon{Chr{Ref.nth(Ref.w1252(), U32.to_nat(U32.sub(n, 128)))}, ""}
+    : String}
+  {==}
+
+def Laws.ref_code_bad(n, e1, e2, e3, e4):
+  %e1 : {Ref.code.zero(n, _) == SCon{Chr{65533}, ""} : String}
+  %e2 : {Ref.code.cr(n, _) == SCon{Chr{65533}, ""} : String}
+  %e3 : {Ref.code.c1(n, _) == SCon{Chr{65533}, ""} : String}
+  %e4 : {Ref.code.range(n, _) == SCon{Chr{65533}, ""} : String}
+  {==}
+
+def Laws.ref_code_dropped(n, e1, e2, e3, e4, e5):
+  %e1 : {Ref.code.zero(n, _) == "" : String}
+  %e2 : {Ref.code.cr(n, _) == "" : String}
+  %e3 : {Ref.code.c1(n, _) == "" : String}
+  %e4 : {Ref.code.range(n, _) == "" : String}
+  %e5 : {Ref.code.kept(n, _) == "" : String}
+  {==}
+
+def Laws.ref_code_kept(n, e1, e2, e3, e4, e5):
+  %e1 : {Ref.code.zero(n, _) == SCon{Chr{n}, ""} : String}
+  %e2 : {Ref.code.cr(n, _) == SCon{Chr{n}, ""} : String}
+  %e3 : {Ref.code.c1(n, _) == SCon{Chr{n}, ""} : String}
+  %e4 : {Ref.code.range(n, _) == SCon{Chr{n}, ""} : String}
+  %e5 : {Ref.code.kept(n, _) == SCon{Chr{n}, ""} : String}
+  {==}
+
+def Laws.ref_dropped(_n):
+  {==}
+
+def Laws.ref_named(_s):
+  {==}
+
+def Laws.ref_named_none(_s):
+  {==}
+
+def Laws.ref_named_some(_name, _first, _second, _s):
+  {==}
+
+def Laws.ref_best_nil(_s, _sofar):
+  {==}
+
+def Laws.ref_best_cons(_r, _t, _s, _sofar):
+  {==}
+
+def Laws.ref_step(_sofar, _name, _first, _second, _s):
+  {==}
+
+def Laws.ref_hit_miss(_sofar, _r, _name):
+  {==}
+
+def Laws.ref_hit_take(_sofar, _r, _name):
+  {==}
+
+def Laws.ref_take_longer(_sofar, _r):
+  {==}
+
+def Laws.ref_take_keep(_sofar, _r):
+  {==}
+
+def Laws.ref_len_none(_m, e):
+  %e : {Ref.best.len(_) == 0n : Nat}
+  {==}
+
+def Laws.ref_len_some(_name, _first, _second):
+  {==}
+
+def Laws.ref_chars_one(first, second, e):
+  %e : {SCon{Chr{first}, Bool.pick(String, _, "", SCon{Chr{second}, ""})}
+    == SCon{Chr{first}, ""} : String}
+  {==}
+
+def Laws.ref_chars_two(first, second, e):
+  %e : {SCon{Chr{first}, Bool.pick(String, _, "", SCon{Chr{second}, ""})}
+    == SCon{Chr{first}, SCon{Chr{second}, ""}} : String}
+  {==}
+
+# --- cookies sent back (SPEC.md HTTP-CK) ---
+
+def Laws.ck_pair(_line):
+  {==}
+
+def Laws.ck_pair_none(_u, e):
+  %e : {Echo.pair.cut(_) == None{} : Maybe<&2, Qs.Kv()>}
+  {==}
+
+def Laws.ck_pair_some(_before, _after):
+  {==}
+
+def Laws.ck_named_empty(_name, _value):
+  {==}
+
+def Laws.ck_named_kept(_name, _value):
+  {==}
+
+def Laws.ck_trim(_s):
+  {==}
+
+def Laws.ck_lead_nil(_s, e):
+  %e : {Echo.wsp.lead(_) == "" : String}
+  {==}
+
+def Laws.ck_lead_wsp(h, t, e):
+  %e : {Echo.wsp.lead.if(t, h, _, _u => Echo.wsp.lead(t)) == Echo.wsp.lead(t)
+    : String}
+  {==}
+
+def Laws.ck_lead_other(h, t, e):
+  %e : {Echo.wsp.lead.if(t, h, _, _u => Echo.wsp.lead(t)) == SCon{h, t}
+    : String}
+  {==}
+
+def Laws.ck_wsp(_c):
+  {==}
+
+def Laws.ck_echo(_lines):
+  {==}
+
+def Laws.ck_store_nil(_jar):
+  {==}
+
+def Laws.ck_store_cons(_l, _t, _jar):
+  {==}
+
+def Laws.ck_add_none(_jar):
+  {==}
+
+def Laws.ck_add_some(_jar, _name, _value):
+  {==}
+
+def Laws.ck_put_nil(_name, _value):
+  {==}
+
+def Laws.ck_put_hit(key, old, t, name, value, e):
+  %e : {Echo.put.at(key, old, value, t, _, _u => Echo.put(t, name, value))
+    == (key, value) <> t : List<&2, Qs.Kv()>}
+  {==}
+
+def Laws.ck_put_miss(key, old, t, name, value, e):
+  %e : {Echo.put.at(key, old, value, t, _, _u => Echo.put(t, name, value))
+    == (key, old) <> Echo.put(t, name, value) : List<&2, Qs.Kv()>}
+  {==}
+
+def Laws.ck_line_nil(_jar, e):
+  %e : {Echo.line(_) == "" : String}
+  {==}
+
+def Laws.ck_line_cons(_name, _value, _t):
+  {==}
+
+def Laws.ck_more_nil(_jar, e):
+  %e : {Echo.more(_) == "" : String}
+  {==}
+
+def Laws.ck_more_cons(_name, _value, _t):
+  {==}
+
+def Laws.ck_one(_name, _value):
+  {==}
+
+def Laws.ck_values_nil(_hs, e):
+  %e : {Echo.values(_) == [] : List<&2, String>}
+  {==}
+
+def Laws.ck_values_hit(_name, value, t, e):
+  %e : {Echo.values.put(value, Echo.values(t), _) == value <> Echo.values(t)
+    : List<&2, String>}
+  {==}
+
+def Laws.ck_values_miss(_name, value, t, e):
+  %e : {Echo.values.put(value, Echo.values(t), _) == Echo.values(t)
+    : List<&2, String>}
+  {==}
+
+# --- unescape after escape (SPEC.md HTTP-REF-4) ---
+
+# what a comparison that is not EQ cannot equal
+def eq.cmp.emp(c: Cmp) -> Type:
+  match c:
+    case LT{}:
+      Unit
+    case EQ{}:
+      Empty
+    case GT{}:
+      Unit
+
+def eq.cmp.lt(e: {LT{} == EQ{} : Cmp}) -> Empty:
+  %e : eq.cmp.emp(_)
+  Unit{}
+
+def eq.cmp.gt(e: {GT{} == EQ{} : Cmp}) -> Empty:
+  %e : eq.cmp.emp(_)
+  Unit{}
+
+def eq.bool_cmp_eq(a: Bool, b: Bool, e: {Bool.cmp(a, b) == EQ{} : Cmp})
+  -> {a == b : Bool}:
+  match a b:
+    case False{} False{}:
+      {==}
+    case False{} True{}:
+      eq.bit.gone(&2, {False{} == True{} : Bool}, eq.cmp.lt(e))
+    case True{} False{}:
+      eq.bit.gone(&2, {True{} == False{} : Bool}, eq.cmp.gt(e))
+    case True{} True{}:
+      {==}
+
+def eq.fin.t(ab: Bool, bb: Bool, t: Cmp,
+  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}) -> {t == EQ{} : Cmp}:
+  match t:
+    case LT{}:
+      eq.bit.gone(&2, {LT{} == EQ{} : Cmp}, eq.cmp.lt(e))
+    case EQ{}:
+      {==}
+    case GT{}:
+      eq.bit.gone(&2, {GT{} == EQ{} : Cmp}, eq.cmp.gt(e))
+
+def eq.fin.b(ab: Bool, bb: Bool, t: Cmp,
+  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}) -> {Bool.cmp(ab, bb) == EQ{} : Cmp}:
+  match t:
+    case LT{}:
+      eq.bit.gone(&2, {Bool.cmp(ab, bb) == EQ{} : Cmp}, eq.cmp.lt(e))
+    case EQ{}:
+      e
+    case GT{}:
+      eq.bit.gone(&2, {Bool.cmp(ab, bb) == EQ{} : Cmp}, eq.cmp.gt(e))
+
+def eq.word_cmp_eq(n: Nat, a: Word(n), b: Word(n),
+  +e: {Word.cmp(n, a, b) == EQ{} : Cmp}) -> {a == b : Word(n)}:
+  match n:
+    case 0n:
+      match a b:
+        case WNil{} WNil{}:
+          {==}
+    case 1n+(+p):
+      match a b:
+        case WCon{+ab, +at} WCon{+bb, +bt}:
+          be = eq.bool_cmp_eq(ab, bb, eq.fin.b(ab, bb, Word.cmp(p, at, bt), e))
+          we = eq.word_cmp_eq(p, at, bt, eq.fin.t(ab, bb, Word.cmp(p, at, bt), e))
+          %be : {WCon{ab, at} == WCon{_, bt} : Word(1n+p)}
+          %we : {WCon{ab, at} == WCon{ab, _} : Word(1n+p)}
+          {==}
+
+def eq.cmp_is_eq(t: Cmp, e: {Cmp.is_eq(t) == True{} : Bool})
+  -> {t == EQ{} : Cmp}:
+  match t:
+    case LT{}:
+      eq.bit.absurd(&2, {LT{} == EQ{} : Cmp}, e)
+    case EQ{}:
+      {==}
+    case GT{}:
+      eq.bit.absurd(&2, {GT{} == EQ{} : Cmp}, e)
+
+def eq.char_eq_true(c: Char, d: Char, e: {Char.is_eq(c, d) == True{} : Bool})
+  -> {c == d : Char}:
+  match c d:
+    case Chr{U32{+w}} Chr{U32{+v}}:
+      we = eq.word_cmp_eq(32n, w, v, eq.cmp_is_eq(Word.cmp(32n, w, v), e))
+      %we : {Chr{U32{w}} == Chr{U32{_}} : Char}
+      {==}
+
+# a character that is not `&`, `<`, `>`, `"` or `'` scans as itself
+def rt.other(+c: Char, x: String, e: {False{} == Char.is_eq(c, '&') : Bool})
+  -> {Ref.scan(SCon{c, x}, Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})}
+    : String}:
+  %e : {Ref.text.of(c, st2 => Ref.scan(x, st2), _)
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}
+  {==}
+
+def rt.sq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool, e: {Char.is_eq(c, '\'') == b : Bool})
+  -> {Ref.scan(Html.one.sq(c, x, b), Ref.Txt{})
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+  match b:
+    case True{}:
+      ce = Equal.sym(Char, c, '\'', eq.char_eq_true(c, '\'', e))
+      %ce : {Ref.scan("&#39;" ++ x, Ref.Txt{})
+        == SCon{_, Ref.scan(x, Ref.Txt{})} : String}
+      {==}
+    case False{}:
+      rt.other(c, x, ea)
+
+def rt.dq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool, e: {Char.is_eq(c, '"') == b : Bool})
+  -> {Ref.scan(Html.one.dq(c, x, b), Ref.Txt{})
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+  match b:
+    case True{}:
+      ce = Equal.sym(Char, c, '"', eq.char_eq_true(c, '"', e))
+      %ce : {Ref.scan("&#34;" ++ x, Ref.Txt{})
+        == SCon{_, Ref.scan(x, Ref.Txt{})} : String}
+      {==}
+    case False{}:
+      rt.sq(c, x, ea, Char.is_eq(c, '\''), {==})
+
+def rt.gt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool, e: {Char.is_eq(c, '>') == b : Bool})
+  -> {Ref.scan(Html.one.gt(c, x, b), Ref.Txt{})
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+  match b:
+    case True{}:
+      ce = Equal.sym(Char, c, '>', eq.char_eq_true(c, '>', e))
+      %ce : {Ref.scan("&gt;" ++ x, Ref.Txt{})
+        == SCon{_, Ref.scan(x, Ref.Txt{})} : String}
+      {==}
+    case False{}:
+      rt.dq(c, x, ea, Char.is_eq(c, '"'), {==})
+
+def rt.lt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool, e: {Char.is_eq(c, '<') == b : Bool})
+  -> {Ref.scan(Html.one.lt(c, x, b), Ref.Txt{})
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+  match b:
+    case True{}:
+      ce = Equal.sym(Char, c, '<', eq.char_eq_true(c, '<', e))
+      %ce : {Ref.scan("&lt;" ++ x, Ref.Txt{})
+        == SCon{_, Ref.scan(x, Ref.Txt{})} : String}
+      {==}
+    case False{}:
+      rt.gt(c, x, ea, Char.is_eq(c, '>'), {==})
+
+def rt.amp(+c: Char, x: String, b: Bool, e: {Char.is_eq(c, '&') == b : Bool})
+  -> {Ref.scan(Html.one.amp(c, x, b), Ref.Txt{})
+    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+  match b:
+    case True{}:
+      ce = Equal.sym(Char, c, '&', eq.char_eq_true(c, '&', e))
+      %ce : {Ref.scan("&amp;" ++ x, Ref.Txt{})
+        == SCon{_, Ref.scan(x, Ref.Txt{})} : String}
+      {==}
+    case False{}:
+      rt.lt(c, x, Equal.sym(Bool, Char.is_eq(c, '&'), False{}, e),
+        Char.is_eq(c, '<'), {==})
+
+def rt.go(s: String)
+  -> {Ref.scan(Html.escape.onto(s, ""), Ref.Txt{}) == s : String}:
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{+c, +t}:
+      Equal.trans(String,
+        Ref.scan(Html.one(c, Html.escape.onto(t, "")), Ref.Txt{}),
+        SCon{c, Ref.scan(Html.escape.onto(t, ""), Ref.Txt{})},
+        SCon{c, t},
+        rt.amp(c, Html.escape.onto(t, ""), Char.is_eq(c, '&'), {==}),
+        Equal.cong(String, String, y => SCon{c, y},
+          Ref.scan(Html.escape.onto(t, ""), Ref.Txt{}), t, rt.go(t)))
+
+def Laws.ref_round(s):
+  rt.go(s)

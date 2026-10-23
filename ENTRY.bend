@@ -11,6 +11,9 @@ import ./src/http.bend as Http
 import ./src/url.bend as Url
 import ./src/pct.bend as Pct
 import ./src/html.bend as Html
+import ./src/qs.bend as Qs
+import ./src/unescape.bend as Ref
+import ./src/echo.bend as Echo
 import ./src/body.bend as Body
 import ./src/form.bend as Form
 import ./src/auth.bend as Auth
@@ -191,6 +194,52 @@ law html_escape_is_escape:
   for s: String
   {Ez.html_escape(s) == Html.escape(s) : String}
 
+# LAW: unquote is Qs.unquote
+law unquote_is_qs:
+  for s: String
+  {Ez.unquote(s) == Qs.unquote(s) : String}
+
+# LAW: unquote_plus is Qs.unquote.plus
+law unquote_plus_is_qs:
+  for s: String
+  {Ez.unquote_plus(s) == Qs.unquote.plus(s) : String}
+
+# LAW: quote_plus is Qs.quote.plus
+law quote_plus_is_qs:
+  for s: String
+  {Ez.quote_plus(s) == Qs.quote.plus(s) : String}
+
+# LAW: urlencode is Qs.urlencode
+law urlencode_is_qs:
+  for ps: List<&2, Qs.Kv()>
+  {Ez.urlencode(ps) == Qs.urlencode(ps) : String}
+
+# LAW: parse_query is Qs.parse
+law parse_query_is_qs:
+  for s: String
+  {Ez.parse_query(s) == Qs.parse(s) : List<&2, Qs.Kv()>}
+
+# LAW: query_get is Qs.get
+law query_get_is_qs:
+  for ps: List<&2, Qs.Kv()>
+  for name: String
+  {Ez.query_get(ps, name) == Qs.get(ps, name) : Maybe<&2, String>}
+
+# LAW: html_unescape is Ref.unescape
+law html_unescape_is_unescape:
+  for s: String
+  {Ez.html_unescape(s) == Ref.unescape(s) : String}
+
+# LAW: cookie_from_set_cookies is Echo.echo
+law cookie_from_set_cookies_is_echo:
+  for values: List<&2, String>
+  {Ez.cookie_from_set_cookies(values) == Echo.echo(values) : String}
+
+# LAW: cookie_from_headers is Echo.echo of the Set-Cookie values
+law cookie_from_headers_is_echo:
+  for hs: List<&2, Http.Header>
+  {Ez.cookie_from_headers(hs) == Echo.echo(Echo.values(hs)) : String}
+
 # LAW: a response that came back is never a timeout
 law timed_out_reply:
   for status: U32
@@ -214,6 +263,42 @@ def parse_url_is_url_parse(_url):
 
 # quote_path_is_pct_quote holds by unfolding the re-export
 def quote_path_is_pct_quote(_s):
+  {==}
+
+# unquote_is_qs holds by unfolding the re-export
+def unquote_is_qs(_s):
+  {==}
+
+# unquote_plus_is_qs holds by unfolding the re-export
+def unquote_plus_is_qs(_s):
+  {==}
+
+# quote_plus_is_qs holds by unfolding the re-export
+def quote_plus_is_qs(_s):
+  {==}
+
+# urlencode_is_qs holds by unfolding the re-export
+def urlencode_is_qs(_ps):
+  {==}
+
+# parse_query_is_qs holds by unfolding the re-export
+def parse_query_is_qs(_s):
+  {==}
+
+# query_get_is_qs holds by unfolding the re-export
+def query_get_is_qs(_ps, _name):
+  {==}
+
+# html_unescape_is_unescape holds by unfolding the re-export
+def html_unescape_is_unescape(_s):
+  {==}
+
+# cookie_from_set_cookies_is_echo holds by unfolding the re-export
+def cookie_from_set_cookies_is_echo(_values):
+  {==}
+
+# cookie_from_headers_is_echo holds by unfolding the re-export
+def cookie_from_headers_is_echo(_hs):
   {==}
 
 # quote_component_is_pct_quote holds by unfolding the re-export

@@ -14,6 +14,9 @@ import ./src/cookie.bend as Cookie
 import ./src/cache.bend as Cache
 import ./src/cors.bend as Cors
 import ./src/html.bend as Html
+import ./src/qs.bend as Qs
+import ./src/unescape.bend as Unescape
+import ./src/echo.bend as Echo
 
 # URL parse re-export
 def parse_url(url: String) -> Url.Loc:
@@ -29,6 +32,44 @@ def quote_path(text: String) -> String:
 # urllib.parse.quote(text, safe=""): like quote_path, but "/" becomes %2F
 def quote_component(text: String) -> String:
   Pct.quote(False{}, text)
+
+# percent-decode a string as urllib.parse.unquote: %XX escapes (either case)
+# become bytes, decoded as UTF-8 with U+FFFD for bytes that are not; an escape
+# that is not two hex digits is kept as written, and characters outside ASCII
+# are kept (SPEC.md HTTP-QS)
+def unquote(text: String) -> String:
+  Qs.unquote(text)
+
+# percent-decode as urllib.parse.unquote_plus: `+` is a space, then unquote
+def unquote_plus(text: String) -> String:
+  Qs.unquote.plus(text)
+
+# percent-encode as urllib.parse.quote_plus: as quote_component, but a space
+# is written `+` (so `+` itself is %2B)
+def quote_plus(text: String) -> String:
+  Qs.quote.plus(text)
+
+# a name and a value, reusable: a query field or a cookie, written (k, v)
+def Kv() -> Data:
+  Qs.Kv()
+
+# a query string from name and value pairs, as urllib.parse.urlencode(pairs):
+# `name=value` with both quote_plus'd, joined by `&`, in order
+def urlencode(pairs: List<&2, Qs.Kv()>) -> String:
+  Qs.urlencode(pairs)
+
+# a query string's name and value pairs, as
+# urllib.parse.parse_qsl(text, keep_blank_values=True): split on `&`, empty
+# pieces skipped, each cut at its first `=` (a piece without one is a name
+# with an empty value), both unquote_plus'd. Every pair is kept, in order,
+# duplicate names included; query_get reads the last one
+def parse_query(text: String) -> List<&2, Qs.Kv()>:
+  Qs.parse(text)
+
+# the value of the last pair with this name (names compared exactly), none
+# when no pair has it: last-wins, as a dict(parse_qsl(...)) would be
+def query_get(pairs: List<&2, Qs.Kv()>, name: String) -> Maybe<&2, String>:
+  Qs.get(pairs, name)
 
 # response parse re-export
 def parse_response(raw: String) -> Http.Reply:
@@ -131,6 +172,24 @@ def cors_reply(cfg: Cors.Cfg, req: Http.Request, reply: Http.Reply) -> Http.Repl
 # &amp; &lt; &gt; &#34; &#39;, every other character as itself
 def html_escape(text: String) -> String:
   Html.escape(text)
+
+# HTML character references back to characters, as Python's html.unescape:
+# decimal and hex numeric references (with the HTML Standard's replacements)
+# and the HTML Standard's 2231 named references, the legacy ones also without
+# `;`; anything that is not a reference is kept as written (SPEC.md HTTP-REF)
+def html_unescape(text: String) -> String:
+  Unescape.unescape(text)
+
+# the Cookie header value to send back after these Set-Cookie field values
+# (RFC 6265 §5.2, §5.4): each one's name=value, attributes ignored; a later
+# cookie with the same name replaces the earlier one's value in its place;
+# `name=value` pairs joined by `; ` (SPEC.md HTTP-CK)
+def cookie_from_set_cookies(values: List<&2, String>) -> String:
+  Echo.echo(values)
+
+# the same, from a response's header fields (its Set-Cookie fields, in order)
+def cookie_from_headers(headers: List<&2, Http.Header>) -> String:
+  Echo.echo(Echo.values(headers))
 
 # GET with no extra headers
 def http.get(url: String) -> IO(Client.Response):

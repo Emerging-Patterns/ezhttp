@@ -259,6 +259,39 @@ def search(q: String) -> String:
 `&#39;`, and every other character stays (HTTP-HTML). It is new after ezhttp
 0.10.0.
 
+`unquote` and `unquote_plus` percent-decode text the way Python's
+`urllib.parse.unquote` and `unquote_plus` do: `%XX` (either case) becomes a
+byte, an escape that is not two hex digits stays as written, characters
+outside ASCII stay, and the bytes are read as UTF-8 with U+FFFD for each
+ill-formed part (Python's `errors="replace"`). `quote_plus` is
+`quote_component` with a space as `+`. `urlencode(pairs)` and
+`parse_query(text)` write and read `application/x-www-form-urlencoded` query
+strings as `urlencode` and `parse_qsl(text, keep_blank_values=True)` do: a
+pair is `(name, value)`, `parse_query` keeps every pair in order (duplicates
+and blank values included), and `query_get(pairs, name)` answers the last
+value for a name (HTTP-QS). They are new after ezhttp 0.14.0.
+
+```
+import emerging-ezhttp@0.15.0.0/main.bend as Http
+
+def page(query: String) -> Maybe<&2, String>:
+  Http.query_get(Http.parse_query(query), "page")
+
+def link(q: String) -> String:
+  "/search?" ++ Http.urlencode([("q", q), ("page", "2")])
+```
+
+`html_unescape` turns character references back into characters as Python's
+`html.unescape` does: decimal and hex numeric references with the HTML
+Standard's replacements, and all 2231 of its named references (the legacy
+ones also without `;`, read by longest match). It undoes `html_escape`
+(HTTP-REF). `cookie_from_set_cookies(values)` and
+`cookie_from_headers(headers)` give the `Cookie` header value to send back
+after `Set-Cookie` fields: each one's `name=value` (RFC 6265 §5.2), no
+attributes, a later cookie with the same name replacing the earlier one's
+value in place, joined by `; ` (§5.4) (HTTP-CK). Both are new after
+ezhttp 0.14.0.
+
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
 `cache_control` reads `no-store`, `no-cache`, `max-age`, `public`, and
 `private`. `cors_reply` answers a simple request or an OPTIONS preflight from
