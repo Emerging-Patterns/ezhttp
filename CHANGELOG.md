@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.18.0...v0.19.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* Client.Response is a Type with a new `bytes` field; Body is a Type and Body.Octets holds Bytes (`octets_list_body` takes the old list); form_file takes Bytes and form_field/form_file return Form.Upload; Form.Form is a Type; parse_response reads octets, one character each; post_req/put_req/delete_req take a text body.
+
+### Features
+
+* byte-exact bodies: what arrives is octets, octet bodies are Bytes ([#54](https://github.com/Emerging-Patterns/ezhttp/issues/54)) ([aca9eba](https://github.com/Emerging-Patterns/ezhttp/commit/aca9eba2b4c2143ddf54b50fba1595c8a4b1df2c))
+
 ## [0.18.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.17.0...v0.18.0) (2026-10-23)
 
 
