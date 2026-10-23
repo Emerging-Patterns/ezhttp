@@ -61,6 +61,24 @@ def create() -> IO(Client.Response):
   Http.http.put("https://example.com/items", Http.text_body("hello"))
 ```
 
+`http.get_opts(url, headers, timeout_ms, follow)` is a GET with a timeout in
+milliseconds that bounds the connect, the TLS handshake and every send and
+receive on its own (as httpx's does; name resolution is not bounded). Every
+other client function keeps its 60 s. A timeout comes back as `Err` with a
+reason starting `timed out: `, and `http.timed_out(r)` tells it apart from
+other failures. With `follow` set it follows 301, 302, 303, 307 and 308 for up
+to 10 hops. Each hop is a GET with the same headers and timeout. A
+`Location` may be an absolute `http(s)://` URL or an absolute path, which keeps
+the current scheme, host and port; any other `Location` ends the chain. The
+caller's headers go to every hop, credentials included, so only follow
+redirects from hosts you trust with them. SPEC.md lists these guarantees
+(HTTP-CLI, HTTP-REDIR). They are new after ezhttp 0.10.0.
+
+```
+def probe(url: String) -> IO(Client.Response):
+  Http.http.get_opts(url, [], 5000, True{})
+```
+
 ### Server
 
 `http.serve(handle, host, port, limit)` listens with Base TCP on `host`
@@ -160,6 +178,11 @@ import emerging-ezhttp@0.8.0.0/main.bend as Http
 def search(q: String) -> String:
   "https://example.com/search?q=" ++ Http.quote_component(q)
 ```
+
+`html_escape` escapes text for HTML as markupsafe and Jinja's autoescape do:
+`&`, `<`, `>`, `"` and `'` become `&amp;`, `&lt;`, `&gt;`, `&#34;` and
+`&#39;`, and every other character stays (HTTP-HTML). It is new after ezhttp
+0.10.0.
 
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
 `cache_control` reads `no-store`, `no-cache`, `max-age`, `public`, and

@@ -2,7 +2,7 @@
 
 This is the list of behaviors ezhttp guarantees, each under a stable requirement ID. Every requirement has one of two levels. A **Proved** requirement holds for every input, and is backed by a quantified law (a `for` or `exs` binder) in LAWS.bend that passes the proof gate. A **Trusted** requirement is an assumption ezhttp cannot check from inside its own gate, and it is listed in the trust boundary below. A Proved requirement whose law has not landed yet has status **pending**: we intend to prove it, and until then it is not guaranteed. The proof gate is this check: the first line `bend PROOF.bend` prints is exactly `ALL PROOFS CHECK`. Tests and fixtures are never evidence for a requirement.
 
-This file starts with the server and percent-encoding. ezhttp's other laws (URL parsing, message framing, credentials, cookies, caching, CORS) are not inventoried here yet, so this file promises nothing about them.
+This file starts with the server, percent-encoding, the client's timeout and redirects, and HTML escaping. ezhttp's other laws (URL parsing, message framing, credentials, cookies, caching, CORS) are not inventoried here yet, so this file promises nothing about them.
 
 ## Format
 
@@ -36,6 +36,39 @@ The server's decisions live in `src/step.bend`, which does no IO; `src/server.be
 | HTTP-URL-3 | The path form writes `/` as itself and the component form writes it as `%2F`; on every other character the two forms agree. | Proved | proved | LAWS.bend path_keeps_slash; LAWS.bend component_escapes_slash; LAWS.bend component_is_path_elsewhere |
 | HTTP-URL-4 | For every string, the output holds only unreserved characters, `/` (path form only) and `%HH` triples whose `H` are `0`-`9` or `A`-`F`. | Proved | pending | LAWS.bend frame_kept; LAWS.bend frame_bytes; LAWS.bend frame_quote |
 
+### Client timeout (HTTP-CLI)
+
+`http.get_opts` takes a timeout in milliseconds. It travels to the wire effect in the spec `src/wirespec.bend` writes, where the scheme line may carry it after a space as 32 binary digits, least significant first; the effect honours it (HTTP-TRUST-3). What a failed exchange is reported as is decided in `src/wirespec.bend` too.
+
+| ID | Requirement | Level | Status | Law |
+| :---- | :---- | :---- | :---- | :---- |
+| HTTP-CLI-1 | For every scheme, timeout `ms`, host, port and request, the timeout read back from the timed spec (`wire.ms`, which the effect follows) is exactly `ms`; from the spec every other client function sends, which carries none, it is 60000 ms. | Proved | proved | LAWS.bend spec_timed_ms; LAWS.bend spec_plain_ms |
+| HTTP-CLI-2 | The timed spec differs from the untimed one only in its first line: the timed one's is the scheme, a space and the timeout, the untimed one's the scheme alone, and both then write host, port and request unchanged on the lines after. | Proved | proved | LAWS.bend spec_timed_lines; LAWS.bend spec_plain_lines |
+| HTTP-CLI-3 | For every reason `why`, a failed exchange with wire status 28 (ran out of time) is reported as `Err` with reason exactly `timed out: <why>`, which `http.timed_out` recognizes; a failed exchange with any other status, or none, is reported with `why` unchanged. | Proved | proved | LAWS.bend why_late; LAWS.bend why_other; LAWS.bend why_none; LAWS.bend why_late_timed_out |
+| HTTP-TRUST-3 | The wire effect (`src/effs/wire.c`, `wire.js`) reads the timeout as `wire.ms` does (a timeout of 0 as 1 ms) and bounds the connect, the TLS handshake, every send and every receive by it, each on its own as httpx's timeout does; name resolution is not bounded. It answers status 28 exactly when one of those calls runs out of time, and no reason it gives for another failure begins `timed out: `. | Trusted | | |
+
+### Redirects (HTTP-REDIR)
+
+`http.get_opts` with `follow` set follows redirects. GET is the only method that follows them, so every hop is a GET with the caller's headers and timeout. A chain is at most 10 hops (httpx allows 20); a chain that runs out answers its last response, a redirect. The decisions live in `src/redirect.bend`, which does no IO; `client.follow` in `src/client.bend` acts on them (HTTP-TRUST-4).
+
+| ID | Requirement | Level | Status | Law |
+| :---- | :---- | :---- | :---- | :---- |
+| HTTP-REDIR-1 | For every status 301, 302, 303, 307 or 308 (RFC 9110 §15.4), with hops left, whose Location header (read case-insensitively, empty when absent) has a target, the next hop is a GET to exactly that target; a Location with no target stops the chain. | Proved | proved | LAWS.bend redir_go; LAWS.bend redir_no_target; LAWS.bend redir_plan_location |
+| HTTP-REDIR-2 | Every other status stops the chain, and so does any response when no hops are left. | Proved | proved | LAWS.bend redir_other; LAWS.bend redir_zero |
+| HTTP-REDIR-3 | A Location that starts `http://` or `https://` is its own target; one that starts with a single `/` is the current URL's scheme, `://`, host, `:`, port, then the Location, so scheme, host and port are kept (no target when the current URL does not parse); any other Location (empty, relative, `//host`) has no target. | Proved | proved | LAWS.bend target_absolute; LAWS.bend target_path; LAWS.bend target_path_bad; LAWS.bend target_other |
+| HTTP-TRUST-4 | `client.follow` in `src/client.bend` sends a GET to the URL it is given, asks `redirect.plan` about the response with the hops it has left (10 to start), sends the next GET to a `Go` target with the same headers and timeout and one hop fewer, and answers the response on a `Stop`, on a failed exchange, or when no hops are left. | Trusted | | |
+
+### HTML escaping (HTTP-HTML)
+
+`html_escape(s)` (`src/html.bend`) escapes text for HTML the way markupsafe's `escape` and Jinja's autoescape do.
+
+| ID | Requirement | Level | Status | Law |
+| :---- | :---- | :---- | :---- | :---- |
+| HTTP-HTML-1 | For every string, the escape writes its characters in order, each one independently of the others, and nothing else. | Proved | proved | LAWS.bend html_escape_onto; LAWS.bend html_nil; LAWS.bend html_cons |
+| HTTP-HTML-2 | `&` is written as `&amp;`, `<` as `&lt;`, `>` as `&gt;`, `"` as `&#34;` and `'` as `&#39;`. | Proved | proved | LAWS.bend html_amp; LAWS.bend html_lt; LAWS.bend html_gt; LAWS.bend html_dq; LAWS.bend html_sq |
+| HTTP-HTML-3 | Every other character is written as itself. | Proved | proved | LAWS.bend html_other |
+| HTTP-HTML-4 | For every string, the output holds no `<`, `>`, `"` or `'`, and every `&` in it opens one of `&amp;`, `&lt;`, `&gt;`, `&#34;`, `&#39;`. | Proved | proved | LAWS.bend html_frame |
+
 ### Left to prove
 
 | ID | Proved so far | Missing |
@@ -48,3 +81,5 @@ The server's decisions live in `src/step.bend`, which does no IO; `src/server.be
 | :---- | :---- | :---- |
 | HTTP-TRUST-1 | Base's TCP effects report a failed accept, recv or send as `Fail` and never end the process themselves. | They are foreign C in Bend's runtime (`effs/tcp_*.c`), which no law reaches. |
 | HTTP-TRUST-2 | `src/server.bend` acts on `src/step.bend`'s answers in order, as the requirement states. | It is IO sequencing: Base's effects are foreign, so the checker cannot run an IO program and no law can state what happens after an effect. Every decision it acts on is HTTP-SRV-1 to 4. `http.serve_forever` is also `@unsafe` recursion, outside the termination check. |
+| HTTP-TRUST-3 | The wire effect honours the timeout the spec carries and reports running out of time as status 28, as the requirement states. | It is foreign C and JS (`src/effs/wire.c`, `wire.js`) over sockets and OpenSSL, which no law reaches. What the timeout is (HTTP-CLI-1) and what status 28 is reported as (HTTP-CLI-3) are proved. |
+| HTTP-TRUST-4 | `client.follow` acts on `src/redirect.bend`'s hops in order, as the requirement states. | It is IO sequencing over the wire effect, which no law can state. Every decision it acts on is HTTP-REDIR-1 to 3. |

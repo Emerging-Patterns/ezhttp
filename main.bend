@@ -12,6 +12,7 @@ import ./src/server.bend as Server
 import ./src/cookie.bend as Cookie
 import ./src/cache.bend as Cache
 import ./src/cors.bend as Cors
+import ./src/html.bend as Html
 
 # URL parse re-export
 def parse_url(url: String) -> Url.Loc:
@@ -97,6 +98,11 @@ def fresh(value: String, age: Nat) -> Bool:
 def cors_reply(cfg: Cors.Cfg, req: Http.Request, reply: Http.Reply) -> Http.Reply:
   Cors.cors.on(cfg, req, reply)
 
+# escape text for HTML as markupsafe and Jinja's autoescape do: & < > " ' as
+# &amp; &lt; &gt; &#34; &#39;, every other character as itself
+def html_escape(text: String) -> String:
+  Html.escape(text)
+
 # GET with no extra headers
 def http.get(url: String) -> IO(Client.Response):
   Client.client.get(url, [])
@@ -105,6 +111,21 @@ def http.get(url: String) -> IO(Client.Response):
 def http.get_with(url: String, headers: List<&2, Http.Header>)
   -> IO(Client.Response):
   Client.client.get(url, headers)
+
+# GET with headers and a timeout in milliseconds that bounds connecting,
+# sending and receiving; with `follow`, redirects are followed (GET only, at
+# most 10 hops, see src/redirect.bend)
+def http.get_opts(
+  url: String,
+  headers: List<&2, Http.Header>,
+  timeout_ms: U32,
+  follow: Bool
+) -> IO(Client.Response):
+  Client.client.get.opts(url, headers, timeout_ms, follow)
+
+# whether a response is an exchange that ran out of time
+def http.timed_out(r: Client.Response) -> Bool:
+  Client.client.timed_out(r)
 
 # HEAD with no extra headers
 def http.head(url: String) -> IO(Client.Response):
