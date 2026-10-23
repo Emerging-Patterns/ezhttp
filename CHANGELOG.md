@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.9.0...v0.10.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* the text/plain body constructor `Body.Text{text}` is now `Body.Plain{text}` (body.text, body.encode and Ez.text_body are unchanged). `Step.step.sent` now takes `Result<(U32 & String) & List<&2, U32>, Unit>`, matching Base's new TCP.send. ezhttp now needs bend 2.0.38 or later.
+
+### Features
+
+* port to Bend 2.0.38 ([#31](https://github.com/Emerging-Patterns/ezhttp/issues/31)) ([dc80838](https://github.com/Emerging-Patterns/ezhttp/commit/dc80838d53e0aec692406f66f2a6d6c83e6e9b07))
+* **url:** quote_path and quote_component percent-encoding (HTTP-URL) ([#30](https://github.com/Emerging-Patterns/ezhttp/issues/30)) ([c9bf37c](https://github.com/Emerging-Patterns/ezhttp/commit/c9bf37c0d279b6a2de88767f78da528e0b2339f8))
+
 ## [0.9.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.8.0...v0.9.0) (2026-10-23)
 
 
