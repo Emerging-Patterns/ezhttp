@@ -2780,3 +2780,18 @@ law html_frame:
   for s: String
   {html.framed(Html.escape(s), Out{}) == True{} : Bool}
 
+# --- which requests follow redirects (SPEC.md HTTP-REDIR-6) ---
+
+# LAW: a GET follows redirects exactly when it is asked to
+# HTTP-REDIR-6
+law follows_get:
+  for follow: Bool
+  {Redirect.redirect.follows("GET", follow) == follow : Bool}
+
+# LAW (RFC 9110 §9.1): every other method never follows redirects
+# HTTP-REDIR-6
+law follows_other:
+  for +method: String
+  for e: {False{} == String.eq(method, "GET") : Bool}
+  for follow: Bool
+  {Redirect.redirect.follows(method, follow) == False{} : Bool}

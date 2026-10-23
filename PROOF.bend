@@ -2387,6 +2387,21 @@ def Laws.fields_other(host, hs, body):
       Nat.is_eq(Http.utf8.len(body), 0n))),
     hd.app_nil(Http.fields.of(Http.FOther{}, hs)))
 
+def Laws.follows_get(follow):
+  match follow:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.follows_other(_method, e, follow):
+  match follow:
+    case True{}:
+      %e : {_ == False{} : Bool}
+      {==}
+    case False{}:
+      {==}
+
 # string append is associative
 def eq.app_assoc(+a: String, +b: String, +c: String)
   -> {String.append(String.append(a, b), c)

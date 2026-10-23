@@ -86,6 +86,12 @@ def probe(url: String) -> IO(Client.Response):
   Http.http.get_opts(url, [], 5000, True{})
 ```
 
+`http.request_opts(method, url, headers, body, timeout_ms, follow)` is the
+same for any method, and `http.post_opts`, `http.put_opts` and
+`http.delete_opts(url, headers, body, timeout_ms)` are it for POST, PUT and
+DELETE. Only a GET follows redirects: any other method answers a redirect as
+its response (no 303-to-GET).
+
 Every request carries `Host`, `User-Agent: ezhttp`, `Accept: */*`,
 `Connection: close` and, for a non-empty body, `Content-Length`. A header you
 pass whose name (compared case-insensitively) is `Host`, `User-Agent` or
@@ -99,9 +105,9 @@ length from the body. Every other header is sent as you gave it, in order
 import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
 
 def ingest(url: String, json: String) -> IO(Client.Response):
-  Http.http.post_with(url,
+  Http.http.post_opts(url,
     [Msg.H{"User-Agent", "my-app/1"}, Msg.H{"Content-Type", "application/json"}],
-    Http.text_body(json))
+    Http.text_body(json), 10000)
 ```
 
 ### Server
