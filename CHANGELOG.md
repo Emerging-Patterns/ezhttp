@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.14.0...v0.15.0) (2026-10-23)
+
+
+### Performance Improvements
+
+* **client:** judge chunked responses read by read, in linear time ([#45](https://github.com/Emerging-Patterns/ezhttp/issues/45)) ([c392d73](https://github.com/Emerging-Patterns/ezhttp/commit/c392d73641415e1dc4e5b4bf8ac0c5ee56d0e2b3))
+
 ## [0.14.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.13.0...v0.14.0) (2026-10-23)
 
 
