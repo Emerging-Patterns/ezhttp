@@ -6052,3 +6052,53 @@ def rt.go(s: String)
 
 def Laws.ref_round(s):
   rt.go(s)
+
+# fresh_no_store_any: fresh matches no-store first
+def Laws.fresh_no_store_any(
+  _no_cache,
+  _public,
+  _private,
+  _max_age,
+  _expires,
+  _age
+):
+  {==}
+
+# fresh_no_cache_any: no-store either way, then no-cache
+def Laws.fresh_no_cache_any(
+  no_store,
+  _public,
+  _private,
+  _max_age,
+  _expires,
+  _age
+):
+  match no_store:
+    case False{}:
+      {==}
+    case True{}:
+      {==}
+
+# cookie_age_sets holds by unfolding cookie.age
+def Laws.cookie_age_sets(
+  _name,
+  _value,
+  _expires,
+  _max_age,
+  _domain,
+  _path,
+  _secure,
+  _http_only,
+  _same_site,
+  _host_only,
+  _age
+):
+  {==}
+
+# cors_preflight_bad: preflight_req matches the request first
+def Laws.cors_preflight_bad(_cfg, _why):
+  {==}
+
+# b64_go_end: go matches the input first
+def Laws.b64_go_end(_phase):
+  {==}

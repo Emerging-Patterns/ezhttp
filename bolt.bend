@@ -31,9 +31,12 @@ def laws() -> String:
 def closed() -> String:
   "warn"
 
-# bolt 1.8.0 coverage: warn until the findings are fixed (see the tracking issue)
+# a def no quantified law reaches. main.bend's re-exports, the bench program
+# and src/client.bend's Response type (the wire effect keeps it out of every
+# law file) carry `# noqa: L001` with the reason; dotted defs are helpers,
+# which bolt never grades
 def coverage() -> String:
-  "warn"
+  "error"
 
 # SPEC.md rows and law tags agree (HTTP-SRV)
 def trace() -> String:
