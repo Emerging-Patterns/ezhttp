@@ -3,6 +3,7 @@
 # Shared message types, BYO JSON via encode/decode. TLS for the client stays
 # at the wire/runtime layer.
 import Base
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./src/url.bend as Url
 import ./src/pct.bend as Pct
 import ./src/http.bend as Http
@@ -71,7 +72,8 @@ def parse_query(text: String) -> List<&2, Qs.Kv()>:  # noqa: L001 re-export of Q
 def query_get(pairs: List<&2, Qs.Kv()>, name: String) -> Maybe<&2, String>:  # noqa: L001 re-export of Qs.get
   Qs.get(pairs, name)
 
-# response parse re-export
+# response parse re-export; `raw` is octets, one character each (SPEC.md
+# HTTP-BODY)
 def parse_response(raw: String) -> Http.Reply:  # noqa: L001 re-export of Http.parse
   Http.parse(raw)
 
@@ -104,24 +106,28 @@ def empty_body() -> Body.Body:  # noqa: L001 re-export of Body.body.empty
 def text_body(text: String) -> Body.Body:  # noqa: L001 re-export of Body.body.text
   Body.body.text(text)
 
-# octet-list request body
-def octets_body(bs: List<&2, U32>) -> Body.Body:  # noqa: L001 re-export of Body.body.octets
-  Body.body.octets(bs)
+# packed octets request body (bend-kit-bytes Bytes), sent unchanged
+def octets_body(bytes: Bytes.Bytes) -> Body.Body:  # noqa: L001 re-export of Body.body.octets
+  Body.body.octets(bytes)
+
+# octets request body from a list of octet values (each 0..255)
+def octets_list_body(bs: List<&2, U32>) -> Body.Body:  # noqa: L001 re-export of Body.body.list
+  Body.body.list(bs)
 
 # a multipart/form-data text field (RFC 7578)
-def form_field(name: String, value: String) -> Form.Part:  # noqa: L001 re-export of Form.form.field
+def form_field(name: String, value: String) -> Form.Upload:  # noqa: L001 re-export of Form.form.field
   Form.form.field(name, value)
 
 # a multipart/form-data file part: field name, filename, content type and the
-# file's bytes (each 0..255, as File.read_bytes gives them)
+# file's bytes (packed Bytes, sent unchanged)
 def form_file(name: String, filename: String, ctype: String,  # noqa: L001 re-export of Form.form.file
-  bytes: List<&2, U32>) -> Form.Part:
+  bytes: Bytes.Bytes) -> Form.Upload:
   Form.form.file(name, filename, ctype, bytes)
 
 # a multipart/form-data body (RFC 7578) with this boundary: the Content-Type
 # field value to send and an octet body, or why the boundary cannot be used
 # (SPEC.md HTTP-FORM)
-def form_body(boundary: String, parts: List<&2, Form.Part>) -> Form.Form:  # noqa: L001 re-export of Form.form.body
+def form_body(boundary: String, parts: List<&1, Form.Upload>) -> Form.Form:  # noqa: L001 re-export of Form.form.body
   Form.form.body(boundary, parts)
 
 # BYO JSON (or any codec): encode a value with the caller's to_text

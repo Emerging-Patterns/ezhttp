@@ -24,6 +24,7 @@ import ./src/qs.bend as Qs
 import ./src/unescape.bend as Ref
 import ./src/entities.bend as Ents
 import ./src/echo.bend as Echo
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import 0xa81e161008ecc2f297c0a3065cb9b188/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -38,7 +39,7 @@ law path_absolute:
 law utf8_split:
   for s: String
   for +n: Nat
-  {String.append(Http.utf8.take(s, n), Http.utf8.drop(s, n)) == s : String}
+  {String.append(Http.octs.take(s, n), Http.octs.drop(s, n)) == s : String}
 
 # LAW (RFC 9110 §8.6 / RFC 9112 §6.3): a body whose Content-Length is its own
 # octet count comes back exactly.
@@ -46,17 +47,18 @@ law clen_exact:
   for st: U32
   for hs: List<&2, Http.Header>
   for +body: String
-  {Http.parse.clen(st, hs, Http.utf8.len(body), body)
+  {Http.parse.clen(st, hs, Http.octs.len(body), body)
     == Http.Reply{st, hs, body} : Http.Reply}
 
 # LAW (RFC 9112 §6.3): a body shorter than its Content-Length is torn — a cut
 # connection is not a short file.
+# HTTP-BODY-2
 law clen_short:
   for st: U32
   for hs: List<&2, Http.Header>
   for +n: Nat
   for +body: String
-  for e: {True{} == Nat.is_lt(Http.utf8.len(body), n) : Bool}
+  for e: {True{} == Nat.is_lt(Http.octs.len(body), n) : Bool}
   {Http.parse.clen(st, hs, n, body)
     == Http.Torn{"the response body stopped before its Content-Length"}
     : Http.Reply}
@@ -152,7 +154,7 @@ law post_req_names_path:
   for +host: String
   for +path: String
   for hs: List<&2, Http.Header>
-  for +body: Body.Body
+  for +body: String
   {String.starts_with(Http.post_req(host, path, hs, body), "POST " ++ path)
     == True{} : Bool}
 
@@ -243,7 +245,7 @@ law ask_clen_exact:
   for +target: String
   for hs: List<&2, Http.Header>
   for +body: String
-  {Http.ask.clen(method, target, hs, Http.utf8.len(body), body)
+  {Http.ask.clen(method, target, hs, Http.octs.len(body), body)
     == Http.Request{method, target, hs, body} : Http.Request}
 
 # LAW: a request body shorter than Content-Length is bad
@@ -253,7 +255,7 @@ law ask_clen_short:
   for hs: List<&2, Http.Header>
   for +n: Nat
   for +body: String
-  for e: {True{} == Nat.is_lt(Http.utf8.len(body), n) : Bool}
+  for e: {True{} == Nat.is_lt(Http.octs.len(body), n) : Bool}
   {Http.ask.clen(method, target, hs, n, body)
     == Http.Bad{"the request body stopped before its Content-Length"}
     : Http.Request}
@@ -383,7 +385,7 @@ law put_req_names_path:
   for +host: String
   for +path: String
   for hs: List<&2, Http.Header>
-  for +body: Body.Body
+  for +body: String
   {String.starts_with(Http.put_req(host, path, hs, body), "PUT " ++ path)
     == True{} : Bool}
 
@@ -392,7 +394,7 @@ law delete_req_names_path:
   for +host: String
   for +path: String
   for hs: List<&2, Http.Header>
-  for +body: Body.Body
+  for +body: String
   {String.starts_with(Http.delete_req(host, path, hs, body), "DELETE " ++ path)
     == True{} : Bool}
 
@@ -2318,7 +2320,7 @@ law whole_sized:
   for n: Nat
   for +body: String
   {Http.whole.of(Http.Sized{n}, body)
-    == Bool.not(Nat.is_lt(Http.utf8.len(body), n)) : Bool}
+    == Bool.not(Nat.is_lt(Http.octs.len(body), n)) : Bool}
 
 # LAW (RFC 9112 §7.1): a chunked body is whole once it reaches the end of its
 # last chunk, read from its first chunk header
@@ -2381,7 +2383,7 @@ law ended_next:
   for e2: {False{} == Nat.is_eq(Http.hexlen(before), 0n) : Bool}
   for e3: {True{} == Http.chunks.ready(after, Http.hexlen(before)) : Bool}
   {Http.chunks.ended(1n+f, Http.Cut{before, after})
-    == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+    == Http.chunks.ended(f, Http.divide(Http.octs.drop(after,
       Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
 
 # LAW (RFC 9112 §7.1): a chunk that has not all arrived has not ended
@@ -2410,8 +2412,8 @@ law chunk_ready:
   for +after: String
   for +n: Nat
   {Http.chunks.ready(after, n)
-    == Bool.and(Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
-      String.starts_with(Http.utf8.drop(after, n), "\r\n")) : Bool}
+    == Bool.and(Bool.not(Nat.is_lt(Http.octs.len(after), Nat.add(n, 2n))),
+      String.starts_with(Http.octs.drop(after, n), "\r\n")) : Bool}
 
 # --- octet bodies on the wire (SPEC.md HTTP-CLI-10) ---
 
@@ -2422,7 +2424,8 @@ law exchange_body_text:
   for l: Url.Loc
   for hs: List<&2, Http.Header>
   for text: String
-  {Spec.wire.exchange.body(method, l, hs, Body.Plain{text})
+  {Spec.wire.exchange.body(method, l, hs,
+    Pair.fst(Body.Shape, Bytes.Bytes, Body.body.shape(Body.Plain{text})))
     == Spec.wire.exchange(method, l, hs, text) : Spec.Exchange}
 
 # LAW: an empty body is sent as the empty text body
@@ -2431,7 +2434,8 @@ law exchange_body_empty:
   for method: String
   for l: Url.Loc
   for hs: List<&2, Http.Header>
-  {Spec.wire.exchange.body(method, l, hs, Body.Empty{})
+  {Spec.wire.exchange.body(method, l, hs,
+    Pair.fst(Body.Shape, Bytes.Bytes, Body.body.shape(Body.Empty{})))
     == Spec.wire.exchange(method, l, hs, "") : Spec.Exchange}
 
 # LAW: an octet body's request text is built for its number of octets
@@ -2440,9 +2444,12 @@ law exchange_body_octets:
   for method: String
   for l: Url.Loc
   for hs: List<&2, Http.Header>
-  for +bytes: List<&2, U32>
-  {Spec.wire.exchange.body(method, l, hs, Body.Octets{bytes})
-    == Spec.wire.exchange.octets(method, l, hs, List.length(&2, U32, bytes))
+  for +n: U32
+  for buf: Array<U32>
+  {Spec.wire.exchange.body(method, l, hs,
+    Pair.fst(Body.Shape, Bytes.Bytes,
+      Body.body.shape(Body.Octets{Bytes.Bytes{n, buf}})))
+    == Spec.wire.exchange.octets(method, l, hs, U32.to_nat(n))
     : Spec.Exchange}
 
 # LAW: a URL that does not parse sends nothing and keeps its reason
@@ -2511,30 +2518,17 @@ law fields_clen_n:
   {Http.fields.of(Http.FClen{}, Http.request.fields.n(host, hs, n))
     == Http.clen.field(n, Nat.is_eq(n, 0n)) : List<&2, Http.Header>}
 
-# LAW: an octet body's octets are the tail sent after the request text
+# LAW: what is sent ahead of the body's octets is the request text's octets
 # HTTP-CLI-10
-law tail_octets:
-  for bytes: List<&2, U32>
-  {Spec.wire.tail(Body.Octets{bytes}) == bytes : List<&2, U32>}
+law payload_is:
+  for req: String
+  {Spec.wire.payload(req) == Spec.wire.payload.text(req, "") : String}
 
-# LAW: a text body has no tail
-# HTTP-CLI-10
-law tail_text:
-  for text: String
-  {Spec.wire.tail(Body.Plain{text}) == [] : List<&2, U32>}
-
-# LAW: an empty body has no tail
-# HTTP-CLI-10
-law tail_empty:
-  for b: Body.Body
-  for e: {Body.Empty{} == b : Body.Body}
-  {Spec.wire.tail(b) == [] : List<&2, U32>}
-
-# LAW: an empty request text sends the tail's octets alone
+# LAW: an empty request text writes no octets ahead of what follows it
 # HTTP-CLI-10
 law payload_nil:
-  for tail: List<&2, U32>
-  {Spec.wire.payload("", tail) == Body.octets.chars(tail) : String}
+  for rest: String
+  {Spec.wire.payload.text("", rest) == rest : String}
 
 # LAW (RFC 3629 §3): every character of the request text is sent as its
 # UTF-8 octets, in order, ahead of the rest
@@ -2542,9 +2536,9 @@ law payload_nil:
 law payload_cons:
   for +cp: U32
   for t: String
-  for tail: List<&2, U32>
-  {Spec.wire.payload(SCon{Chr{cp}, t}, tail)
-    == Body.octets.chars(Pct.utf8(cp)) ++ Spec.wire.payload(t, tail)
+  for rest: String
+  {Spec.wire.payload.text(SCon{Chr{cp}, t}, rest)
+    == Body.octets.chars(Pct.utf8(cp)) ++ Spec.wire.payload.text(t, rest)
     : String}
 
 # --- the response, read by the request's method (SPEC.md HTTP-CLI-9) ---
@@ -3449,9 +3443,9 @@ law form_bad_boundary:
   for +b: String
   for ps: List<&2, Form.Part>
   for e: {False{} == Form.form.boundary.ok(b) : Bool}
-  {Form.form.body(b, ps)
-    == Form.NoForm{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
-    : Form.Form}
+  {Form.form.plan(b, ps)
+    == Form.NoPlan{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
+    : Form.Plan}
 
 # LAW: a valid boundary whose delimiter occurs in a part's content is refused
 # HTTP-FORM-1
@@ -3460,8 +3454,8 @@ law form_clash:
   for +ps: List<&2, Form.Part>
   for e1: {True{} == Form.form.boundary.ok(b) : Bool}
   for e2: {True{} == Form.form.clash(b, ps) : Bool}
-  {Form.form.body(b, ps) == Form.NoForm{"the boundary occurs in a part's content"}
-    : Form.Form}
+  {Form.form.plan(b, ps) == Form.NoPlan{"the boundary occurs in a part's content"}
+    : Form.Plan}
 
 # LAW: a file part whose content type holds a CR or LF is refused
 # HTTP-FORM-1
@@ -3471,11 +3465,11 @@ law form_bad_type:
   for e1: {True{} == Form.form.boundary.ok(b) : Bool}
   for e2: {False{} == Form.form.clash(b, ps) : Bool}
   for e3: {True{} == Form.form.badtype(ps) : Bool}
-  {Form.form.body(b, ps)
-    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+  {Form.form.plan(b, ps)
+    == Form.NoPlan{"a file part's content type holds a CR or LF"} : Form.Plan}
 
-# LAW (RFC 7578 §4.1): every other form is built: its Content-Type value and
-# its parts as octets
+# LAW (RFC 7578 §4.1): every other form is planned: its Content-Type value
+# and its parts' runs
 # HTTP-FORM-1
 law form_ok:
   for +b: String
@@ -3483,9 +3477,8 @@ law form_ok:
   for e1: {True{} == Form.form.boundary.ok(b) : Bool}
   for e2: {False{} == Form.form.clash(b, ps) : Bool}
   for e3: {False{} == Form.form.badtype(ps) : Bool}
-  {Form.form.body(b, ps)
-    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
-    : Form.Form}
+  {Form.form.plan(b, ps) == Form.Plan{Form.form.type(b), Form.form.parts(b, ps)}
+    : Form.Plan}
 
 # LAW (RFC 7578 §4.1): the Content-Type field value names the boundary
 # HTTP-FORM-1
@@ -3548,8 +3541,28 @@ law clash_cons:
   for p: Form.Part
   for t: List<&2, Form.Part>
   {Form.form.clash(b, p <> t)
-    == Bool.or(Form.octets.has(Form.form.content(p, []), Form.form.delim(b)),
-      Form.form.clash(b, t)) : Bool}
+    == Bool.or(Form.form.hit(b, p), Form.form.clash(b, t)) : Bool}
+
+# LAW: a field's content holds the delimiter exactly when its value's UTF-8
+# octets hold the delimiter's octets as a contiguous run
+# HTTP-FORM-2
+law hit_field:
+  for +b: String
+  for name: String
+  for value: String
+  {Form.form.hit(b, Form.Field{name, value})
+    == Form.octets.has(Form.octets.onto(value, []), Form.form.delim(b)) : Bool}
+
+# LAW: a file's content holds the delimiter exactly when the search of its
+# bytes found it
+# HTTP-FORM-2
+law hit_file:
+  for +b: String
+  for name: String
+  for filename: String
+  for ctype: String
+  for clash: Bool
+  {Form.form.hit(b, Form.File{name, filename, ctype, clash}) == clash : Bool}
 
 # LAW: a check of this and the rest holds exactly when both do
 # HTTP-FORM-2
@@ -3606,27 +3619,25 @@ law starts_cons:
   {Form.octets.starts(x <> t, p <> q)
     == Bool.and(U32.is_eq(x, p), Form.octets.starts(t, q)) : Bool}
 
-# LAW: a field's content is its value's UTF-8 octets
-# HTTP-FORM-2
+# LAW: a field's content is a run of its value's UTF-8 octets
 # HTTP-FORM-3
 law content_field:
   for name: String
   for value: String
-  for rest: List<&2, U32>
+  for rest: List<&2, Form.Seg>
   {Form.form.content(Form.Field{name, value}, rest)
-    == Form.octets.onto(value, rest) : List<&2, U32>}
+    == Form.Run{Form.octets.onto(value, [])} <> rest : List<&2, Form.Seg>}
 
-# LAW: a file's content is its bytes, unchanged
-# HTTP-FORM-2
+# LAW: a file's content is the next file's bytes, unchanged
 # HTTP-FORM-3
 law content_file:
   for name: String
   for filename: String
   for ctype: String
-  for bytes: List<&2, U32>
-  for rest: List<&2, U32>
-  {Form.form.content(Form.File{name, filename, ctype, bytes}, rest)
-    == List.append(&2, U32, bytes, rest) : List<&2, U32>}
+  for clash: Bool
+  for rest: List<&2, Form.Seg>
+  {Form.form.content(Form.File{name, filename, ctype, clash}, rest)
+    == Form.Blob{} <> rest : List<&2, Form.Seg>}
 
 # LAW: no parts hold a bad content type
 # HTTP-FORM-2
@@ -3657,8 +3668,8 @@ law badtype_file:
   for name: String
   for filename: String
   for +ctype: String
-  for bytes: List<&2, U32>
-  {Form.form.badtype.one(Form.File{name, filename, ctype, bytes})
+  for clash: Bool
+  {Form.form.badtype.one(Form.File{name, filename, ctype, clash})
     == Bool.or(String.contains(ctype, "\r"), String.contains(ctype, "\n"))
     : Bool}
 
@@ -3666,8 +3677,8 @@ law badtype_file:
 # HTTP-FORM-3
 law parts_nil:
   for +b: String
-  {Form.form.parts(b, []) == Form.octets.onto("--" ++ b ++ "--\r\n", [])
-    : List<&2, U32>}
+  {Form.form.parts(b, []) == [Form.Run{Form.octets.onto("--" ++ b ++ "--\r\n", [])}]
+    : List<&2, Form.Seg>}
 
 # LAW: the parts are written in order, each in front of the rest
 # HTTP-FORM-3
@@ -3676,7 +3687,7 @@ law parts_cons:
   for p: Form.Part
   for t: List<&2, Form.Part>
   {Form.form.parts(b, p <> t) == Form.form.part(b, p, Form.form.parts(b, t))
-    : List<&2, U32>}
+    : List<&2, Form.Seg>}
 
 # LAW (RFC 7578 §4.1): a part is the delimiter line, its header lines, a blank
 # line, its content and a CRLF
@@ -3684,10 +3695,11 @@ law parts_cons:
 law part:
   for +b: String
   for +p: Form.Part
-  for rest: List<&2, U32>
+  for rest: List<&2, Form.Seg>
   {Form.form.part(b, p, rest)
-    == Form.octets.onto("--" ++ b ++ "\r\n" ++ Form.form.head(p) ++ "\r\n",
-      Form.form.content(p, Form.octets.onto("\r\n", rest))) : List<&2, U32>}
+    == Form.Run{Form.octets.onto("--" ++ b ++ "\r\n" ++ Form.form.head(p)
+      ++ "\r\n", [])} <> Form.form.content(p,
+        Form.Run{Form.octets.onto("\r\n", [])} <> rest) : List<&2, Form.Seg>}
 
 # LAW: the empty string writes no octets
 # HTTP-FORM-3
@@ -3709,19 +3721,28 @@ law onto_cons:
 # LAW: form_field makes a field part
 # HTTP-FORM-4
 law field_is:
+  for +d: String
   for name: String
   for value: String
-  {Form.form.field(name, value) == Form.Field{name, value} : Form.Part}
+  {Pair.fst(List<&2, Form.Part>, List<&1, Bytes.Bytes>,
+    Form.form.split(d, [Form.form.field(name, value)]))
+    == [Form.Field{name, value}] : List<&2, Form.Part>}
 
-# LAW: form_file makes a file part
+# LAW: a file part is planned with its names, its content type and whether
+# the search of its bytes found the delimiter
+# HTTP-FORM-2
 # HTTP-FORM-4
 law file_is:
   for name: String
   for filename: String
   for ctype: String
-  for bytes: List<&2, U32>
-  {Form.form.file(name, filename, ctype, bytes)
-    == Form.File{name, filename, ctype, bytes} : Form.Part}
+  for n: U32
+  for buf: Array<U32>
+  for hit: Bool
+  {Pair.fst(List<&2, Form.Part>, List<&1, Bytes.Bytes>,
+    Form.form.split.file(name, filename, ctype, (Bytes.Bytes{n, buf}, hit),
+      ([], [])))
+    == [Form.File{name, filename, ctype, hit}] : List<&2, Form.Part>}
 
 # LAW (RFC 7578 §4.2): a field part's header is its Content-Disposition line
 # HTTP-FORM-4
@@ -3738,8 +3759,8 @@ law head_file:
   for name: String
   for filename: String
   for ctype: String
-  for bytes: List<&2, U32>
-  {Form.form.head(Form.File{name, filename, ctype, bytes})
+  for clash: Bool
+  {Form.form.head(Form.File{name, filename, ctype, clash})
     == Form.form.disposition(name) ++ "; filename=\"" ++ Form.form.quote(filename)
       ++ "\"\r\n" ++ "Content-Type: " ++ ctype ++ "\r\n" : String}
 
@@ -5127,3 +5148,115 @@ law ck_values_miss:
 law ref_round:
   for s: String
   {Ref.unescape(Html.escape(s)) == s : String}
+
+# --- bodies as octets (SPEC.md HTTP-BODY) ---
+
+# LAW: a received text's octets are its characters, one each
+# HTTP-BODY-1
+law octs_len:
+  for s: String
+  {Http.octs.len(s) == String.length(s) : Nat}
+
+# LAW: the first n octets of a received text are its first n characters
+# HTTP-BODY-1
+law octs_take:
+  for s: String
+  for +n: Nat
+  {Http.octs.take(s, n) == String.take(s, n) : String}
+
+# LAW: what follows the first n octets is what follows its first n
+# characters
+# HTTP-BODY-1
+law octs_drop:
+  for s: String
+  for +n: Nat
+  {Http.octs.drop(s, n) == String.drop(s, n) : String}
+
+# LAW (RFC 9112 §6.3 item 5): a body framed by a Content-Length of exactly
+# its octets is those octets, whatever follows them
+# HTTP-BODY-2
+law clen_prefix:
+  for st: U32
+  for hs: List<&2, Http.Header>
+  for +b: String
+  for +r: String
+  {Http.parse.clen(st, hs, String.length(b), String.append(b, r))
+    == Http.Reply{st, hs, b}
+    : Http.Reply}
+
+# LAW (RFC 9112 §7.1): a chunk of n octets other than 0 is its data, then
+# the chunks after its CRLF
+# HTTP-BODY-3
+law chunk_data:
+  for f: Nat
+  for +h: String
+  for +d: String
+  for +r: String
+  for e: {False{} == Nat.is_eq(Http.hexlen(h), 0n) : Bool}
+  for el: {String.length(d) == Http.hexlen(h) : Nat}
+  {Http.chunks(1n+f, Http.Cut{h, String.append(d, "\r\n" ++ r)})
+    == String.append(d, Http.chunks(f, Http.divide(r, "\r\n"))) : String}
+
+# LAW (RFC 9112 §7.1): a chunk of size 0 ends the body
+# HTTP-BODY-3
+law chunk_last:
+  for f: Nat
+  for +h: String
+  for after: String
+  for e: {True{} == Nat.is_eq(Http.hexlen(h), 0n) : Bool}
+  {Http.chunks(1n+f, Http.Cut{h, after}) == "" : String}
+
+# LAW: received octets as text are their UTF-8 decoding, one octet a byte
+# HTTP-BODY-4
+law octets_text:
+  for o: String
+  {Qs.octets.text(o) == Qs.utf.dec(Qs.octets.toks(o), Qs.Idle{}) : String}
+
+# LAW: no octets are no pieces to decode
+# HTTP-BODY-4
+law octets_toks_nil:
+  for s: String
+  for e: {SNil{} == s : String}
+  {Qs.octets.toks(s) == [] : List<&2, Qs.Tok>}
+
+# LAW: each octet is one byte for the decoder, in order
+# HTTP-BODY-4
+law octets_toks_cons:
+  for +c: Char
+  for t: String
+  {Qs.octets.toks(SCon{c, t}) == Qs.B{Char.to_u32(c)} <> Qs.octets.toks(t)
+    : List<&2, Qs.Tok>}
+
+# LAW: header fields as text are each name and value decoded, in order
+# HTTP-BODY-4
+law octets_headers_cons:
+  for name: String
+  for value: String
+  for t: List<&2, Http.Header>
+  {Qs.octets.headers(Http.H{name, value} <> t)
+    == Http.H{Qs.octets.text(name), Qs.octets.text(value)}
+      <> Qs.octets.headers(t) : List<&2, Http.Header>}
+
+# LAW: no header fields are no header fields
+# HTTP-BODY-4
+law octets_headers_nil:
+  for hs: List<&2, Http.Header>
+  for e: {[] == hs : List<&2, Http.Header>}
+  {Qs.octets.headers(hs) == [] : List<&2, Http.Header>}
+
+# LAW: a request is handed on as text, each part decoded
+# HTTP-SRV-2
+law step_text:
+  for method: String
+  for target: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Step.step.text(Http.Request{method, target, hs, body})
+    == Http.Request{Qs.octets.text(method), Qs.octets.text(target),
+      Qs.octets.headers(hs), Qs.octets.text(body)} : Http.Request}
+
+# LAW: a bad request keeps its reason
+# HTTP-SRV-1
+law step_text_bad:
+  for why: String
+  {Step.step.text(Http.Bad{why}) == Http.Bad{why} : Http.Request}

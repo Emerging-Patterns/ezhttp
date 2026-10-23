@@ -1,31 +1,52 @@
-# ezhttp/src/form: multipart/form-data request bodies (RFC 7578), pure. A
-# form is text fields and file parts; the body is octets (Body.Octets), so a
-# file's bytes reach the wire unchanged (SPEC.md HTTP-CLI-10). The caller picks
-# the boundary and the builder refuses one a reader could misread. SPEC.md
-# HTTP-FORM lists what is guaranteed.
+# ezhttp/src/form: multipart/form-data request bodies (RFC 7578), no IO. A
+# form is text fields and file parts whose content is packed Bytes. Every
+# decision is form.plan's, over the parts with each file's content replaced
+# by whether the delimiter occurs in it; the plan lays the body out as runs
+# of octets and file contents, and form.build puts them together, so a
+# file's bytes reach the wire unchanged (SPEC.md HTTP-CLI-10). The caller
+# picks the boundary and the builder refuses one a reader could misread.
+# SPEC.md HTTP-FORM lists what is guaranteed.
 import Base
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./body.bend as Body
 import ./pct.bend as Pct
 
-# one part of a form: a text field, or a file with its name and content type
+# one part handed to the builder: a text field, or a file with its name,
+# content type and bytes
+type Upload is Type:
+  UField{name: String, value: String}
+  UFile{name: String, filename: String, ctype: String, bytes: Bytes.Bytes}
+
+# one part as the plan sees it: a text field, or a file whose content is
+# known only by whether the delimiter occurs in it
 type Part is Data:
   Field{name: String, value: String}
-  File{name: String, filename: String, ctype: String, bytes: List<&2, U32>}
+  File{name: String, filename: String, ctype: String, clash: Bool}
+
+# one run of the body the plan lays out: octets, or the next file's bytes
+type Seg is Data:
+  Run{octets: List<&2, U32>}
+  Blob{}
+
+# a planned form (the Content-Type field value and the body's runs), or why
+# not
+type Plan is Data:
+  NoPlan{why: String}
+  Plan{ctype: String, segs: List<&2, Seg>}
 
 # a built form (the Content-Type field value and the body), or why not
-type Form is Data:
+type Form is Type:  # noqa: L001 it holds Bytes, which no law can compare; form.plan's laws cover it (HTTP-TRUST-8)
   NoForm{why: String}
   Form{ctype: String, body: Body.Body}
 
 # a text field
-def form.field(name: String, value: String) -> Part:
-  Field{name, value}
+def form.field(name: String, value: String) -> Upload:
+  UField{name, value}
 
 # a file part: its field name, its filename, its content type and its bytes
-# (each 0..255)
 def form.file(name: String, filename: String, ctype: String,
-  bytes: List<&2, U32>) -> Part:
-  File{name, filename, ctype, bytes}
+  bytes: Bytes.Bytes) -> Upload:
+  UFile{name, filename, ctype, bytes}
 
 # --- octets ---
 
@@ -151,34 +172,43 @@ def form.head(p: Part) -> String:
   match p:
     case Field{name, value}:
       form.disposition(name) ++ "\r\n"
-    case File{name, filename, ctype, bytes}:
+    case File{name, filename, ctype, clash}:
       form.disposition(name) ++ "; filename=\"" ++ form.quote(filename) ++ "\"\r\n"
         ++ "Content-Type: " ++ ctype ++ "\r\n"
 
-# a part's content in front of `rest`: a field's value as UTF-8, a file's
-# bytes as they are
-def form.content(p: Part, rest: List<&2, U32>) -> List<&2, U32>:
+# a part's content in front of `rest`: a field's value as UTF-8 octets, a
+# file's bytes as they are
+def form.content(p: Part, rest: List<&2, Seg>) -> List<&2, Seg>:
   match p:
     case Field{name, value}:
-      octets.onto(value, rest)
-    case File{name, filename, ctype, bytes}:
-      List.append(&2, U32, bytes, rest)
+      Run{octets.onto(value, [])} <> rest
+    case File{name, filename, ctype, clash}:
+      Blob{} <> rest
 
 # one part in front of `rest`: the delimiter line, its head, a blank line,
 # its content and a CRLF
-def form.part(+b: String, +p: Part, rest: List<&2, U32>) -> List<&2, U32>:
-  octets.onto("--" ++ b ++ "\r\n" ++ form.head(p) ++ "\r\n",
-    form.content(p, octets.onto("\r\n", rest)))
+def form.part(+b: String, +p: Part, rest: List<&2, Seg>) -> List<&2, Seg>:
+  Run{octets.onto("--" ++ b ++ "\r\n" ++ form.head(p) ++ "\r\n", [])}
+    <> form.content(p, Run{octets.onto("\r\n", [])} <> rest)
 
 # every part in order, then the close delimiter (RFC 2046 §5.1.1)
-def form.parts(+b: String, ps: List<&2, Part>) -> List<&2, U32>:
+def form.parts(+b: String, ps: List<&2, Part>) -> List<&2, Seg>:
   match ps:
     case []:
-      octets.onto("--" ++ b ++ "--\r\n", [])
+      [Run{octets.onto("--" ++ b ++ "--\r\n", [])}]
     case p <> t:
       form.part(b, p, form.parts(b, t))
 
 # --- the checks ---
+
+# whether a part's content holds the delimiter: a field's octets are
+# searched, a file's answer was found in its bytes
+def form.hit(+b: String, p: Part) -> Bool:
+  match p:
+    case Field{name, value}:
+      octets.has(octets.onto(value, []), form.delim(b))
+    case File{name, filename, ctype, clash}:
+      clash
 
 # whether some part's content holds the delimiter
 def form.clash(+b: String, ps: List<&2, Part>) -> Bool:
@@ -186,15 +216,14 @@ def form.clash(+b: String, ps: List<&2, Part>) -> Bool:
     case []:
       False{}
     case p <> t:
-      any.step(octets.has(form.content(p, []), form.delim(b)),
-        _u => form.clash(b, t))
+      any.step(form.hit(b, p), _u => form.clash(b, t))
 
 # whether a part's content type holds a CR or an LF
 def form.badtype.one(p: Part) -> Bool:
   match p:
     case Field{name, value}:
       False{}
-    case File{name, filename, +ctype, bytes}:
+    case File{name, filename, +ctype, clash}:
       Bool.or(String.contains(ctype, "\r"), String.contains(ctype, "\n"))
 
 # whether any part's content type holds a CR or an LF
@@ -209,31 +238,106 @@ def form.badtype(ps: List<&2, Part>) -> Bool:
 def form.type(b: String) -> String:
   "multipart/form-data; boundary=" ++ b
 
-# the form once its content types are checked
-def form.check.type(+b: String, ps: List<&2, Part>, bad: Bool) -> Form:
+# the plan once its content types are checked
+def form.check.type(+b: String, ps: List<&2, Part>, bad: Bool) -> Plan:
   match bad:
     case True{}:
-      NoForm{"a file part's content type holds a CR or LF"}
+      NoPlan{"a file part's content type holds a CR or LF"}
     case False{}:
-      Form{form.type(b), Body.Octets{form.parts(b, ps)}}
+      Plan{form.type(b), form.parts(b, ps)}
 
-# the form once its parts are checked against the delimiter
-def form.check.clash(+b: String, +ps: List<&2, Part>, hit: Bool) -> Form:
+# the plan once its parts are checked against the delimiter
+def form.check.clash(+b: String, +ps: List<&2, Part>, hit: Bool) -> Plan:
   match hit:
     case True{}:
-      NoForm{"the boundary occurs in a part's content"}
+      NoPlan{"the boundary occurs in a part's content"}
     case False{}:
       form.check.type(b, ps, form.badtype(ps))
 
-# the form once its boundary is checked
-def form.check(+b: String, +ps: List<&2, Part>, ok: Bool) -> Form:
+# the plan once its boundary is checked
+def form.check(+b: String, +ps: List<&2, Part>, ok: Bool) -> Plan:
   match ok:
     case False{}:
-      NoForm{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
+      NoPlan{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
     case True{}:
       form.check.clash(b, ps, form.clash(b, ps))
 
-# a multipart/form-data body with this boundary and these parts, or why not
-# (SPEC.md HTTP-FORM)
-def form.body(+b: String, ps: List<&2, Part>) -> Form:
+# a multipart/form-data body's plan with this boundary and these parts, or
+# why not (SPEC.md HTTP-FORM)
+def form.plan(+b: String, ps: List<&2, Part>) -> Plan:
   form.check(b, ps, form.boundary.ok(b))
+
+# --- the body (SPEC.md HTTP-TRUST-8) ---
+
+# whether a search found the delimiter, with the bytes handed back
+def form.found(r: Bytes.Bytes & Maybe<&2, U32>) -> Bytes.Bytes & Bool:
+  (bs, m) = r
+  match m:
+    case None{}:
+      (bs, False{})
+    case Some{i}:
+      (bs, True{})
+
+# a file part once its bytes are searched: the part the plan sees, onto the
+# rest, and its bytes kept in order
+def form.split.file(name: String, filename: String, ctype: String,
+  r: Bytes.Bytes & Bool, rest: List<&2, Part> & List<&1, Bytes.Bytes>)
+  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+  (bs, hit) = r
+  (ps, fs) = rest
+  (File{name, filename, ctype, hit} <> ps, bs <> fs)
+
+# a field part onto the rest
+def form.split.field(name: String, value: String,
+  rest: List<&2, Part> & List<&1, Bytes.Bytes>)
+  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+  (ps, fs) = rest
+  (Field{name, value} <> ps, fs)
+
+# the parts as the plan sees them, and the files' bytes in order; `d` is
+# the delimiter's octets, one character each
+def form.split(+d: String, us: List<&1, Upload>)
+  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+  match us:
+    case []:
+      ([], [])
+    case u <> t:
+      match u:
+        case UField{name, value}:
+          form.split.field(name, value, form.split(d, t))
+        case UFile{name, filename, ctype, bytes}:
+          form.split.file(name, filename, ctype,
+            form.found(Bytes.find(bytes, d)), form.split(d, t))
+
+# the body's runs as packed octets, each file's bytes in its place
+def form.runs(segs: List<&2, Seg>, fs: List<&1, Bytes.Bytes>)
+  -> List<&1, Bytes.Bytes>:
+  match segs:
+    case []:
+      []
+    case Run{octets} <> t:
+      Bytes.from_string(Body.octets.chars(octets)) <> form.runs(t, fs)
+    case Blob{} <> t:
+      match fs:
+        case []:
+          form.runs(t, [])
+        case f <> rest:
+          f <> form.runs(t, rest)
+
+# a plan as the form it builds
+def form.build(p: Plan, fs: List<&1, Bytes.Bytes>) -> Form:
+  match p:
+    case NoPlan{why}:
+      NoForm{why}
+    case Plan{ctype, segs}:
+      Form{ctype, Body.Octets{Bytes.concat(form.runs(segs, fs))}}
+
+# a planned form once the files are searched
+def form.built(+b: String, r: List<&2, Part> & List<&1, Bytes.Bytes>) -> Form:
+  (ps, fs) = r
+  form.build(form.plan(b, ps), fs)
+
+# a multipart/form-data body with this boundary and these parts, or why not
+# (SPEC.md HTTP-FORM, HTTP-TRUST-8)
+def form.body(+b: String, us: List<&1, Upload>) -> Form:
+  form.built(b, form.split(Body.octets.chars(form.delim(b)), us))

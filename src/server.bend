@@ -8,6 +8,7 @@ import Base
 import ./http.bend as Http
 import ./cors.bend as Cors
 import ./step.bend as Step
+import bend-kit-wire@0.4.6.1/wire.bend as W
 
 # default recv budget for one request message
 def server.max() -> U32:
@@ -138,6 +139,30 @@ def server.read.un(
   server.read.pass(sock, got, rest,
     Step.step.got(Maybe<&1, String>, "read", r))
 
+# what a receive brought: the octets, or None{} once the peer has closed
+def server.recv.some(+text: String) -> Maybe<&1, String>:
+  Bool.pick(Maybe<&1, String>, String.is_empty(text), None{}, Some{text})
+
+# a receive's answer in the shape the read loop takes
+def server.recv.un(r: Socket & Result<&1, &1, U32 & String, String>)
+  -> IO(Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>):
+  (sock, res) = r
+  match res:
+    case Fail{e}:
+      IO.pure(Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>,
+        (sock, Fail{e}))
+    case Done{text}:
+      IO.pure(Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>,
+        (sock, Done{server.recv.some(text)}))
+
+# the next octets of a request, one character each (bend-kit-wire; no
+# deadline)
+def server.recv(sock: Socket)
+  -> IO(Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>):
+  IO.bind(Socket & Result<&1, &1, U32 & String, String>,
+    Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>,
+    W.recv(sock, server.max(), 0), server.recv.un)
+
 # recv until Content-Length is met, the peer closes, or fuel runs out.
 # fuel is first so the recursive call is a decreasing self-call.
 def server.read.go(fuel: Nat, sock: Socket, got: String) -> IO(Socket & Step.Got<Http.Request>):
@@ -148,7 +173,7 @@ def server.read.go(fuel: Nat, sock: Socket, got: String) -> IO(Socket & Step.Got
       IO.bind(
         Socket & Result<&1, &1, U32 & String, Maybe<&1, String>>,
         Socket & Step.Got<Http.Request>,
-        TCP.recv(sock, server.max()),
+        server.recv(sock),
         pair => server.read.un(got, s => g => server.read.go(f, s, g), pair))
 
 # recv then parse an HTTP request (RFC 9112 §3)
@@ -245,7 +270,8 @@ def server.exchange.got(
   match got:
     case Step.Lost{line}:
       server.lose(sock, line)
-    case Step.Kept{+req}:
+    case Step.Kept{got}:
+      +req = Step.step.text(got)
       server.step(handle, sock, Http.method.of(req), Step.step.of(req))
 
 def server.exchange.un(

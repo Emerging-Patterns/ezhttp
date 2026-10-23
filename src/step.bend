@@ -3,6 +3,7 @@
 # each outcome means; it decides nothing itself.
 import Base
 import ./http.bend as Http
+import ./qs.bend as Qs
 
 # what a request asks of the server: answer it now, or call the handler
 type Step is Data:
@@ -14,6 +15,17 @@ type Step is Data:
 type Got<-A: Type> is Type:
   Kept{value: A}
   Lost{line: String}
+
+# a request received as octets, as text: its method, target, header names
+# and values and body each decoded as UTF-8 (SPEC.md HTTP-SRV-2); a bad one
+# keeps its reason
+def step.text(req: Http.Request) -> Http.Request:
+  match req:
+    case Http.Bad{why}:
+      Http.Bad{why}
+    case Http.Request{method, target, headers, body}:
+      Http.Request{Qs.octets.text(method), Qs.octets.text(target),
+        Qs.octets.headers(headers), Qs.octets.text(body)}
 
 # a bad request is answered 400 with its reason and never reaches the
 # handler; a good one goes to the handler as it was parsed

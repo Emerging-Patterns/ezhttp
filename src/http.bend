@@ -123,14 +123,15 @@ def hex.well(token: String) -> Bool:
 def chunks.token(before: String) -> String:
   String.trim(first(String.split(before, ';')))
 
-# bytes one code point takes in UTF-8. Content-Length counts octets
-# (RFC 9110 §8.6); a Bend String counts code points.
+# octets one code point takes in UTF-8, for a text written onto the wire
+# (RFC 3629 §3). Content-Length counts octets (RFC 9110 §8.6); a Bend String
+# counts code points.
 def utf8.width(+u: U32) -> Nat:
   Bool.pick(Nat, U32.is_lt(u, 128), 1n,
     Bool.pick(Nat, U32.is_lt(u, 2048), 2n,
       Bool.pick(Nat, U32.is_lt(u, 65536), 3n, 4n)))
 
-# how many bytes of UTF-8 a string is
+# how many octets of UTF-8 a text is
 def utf8.len(s: String) -> Nat:
   match s:
     case SNil{}:
@@ -138,8 +139,23 @@ def utf8.len(s: String) -> Nat:
     case SCon{h, t}:
       Nat.add(utf8.width(Char.to_u32(h)), utf8.len(t))
 
+# What is received is octets, one character each (SPEC.md HTTP-BODY-1): the
+# octs.* walks below count a character as one octet.
+
+# octets one received character stands for: one
+def octs.width(+_u: U32) -> Nat:
+  1n
+
+# how many octets a received text is
+def octs.len(s: String) -> Nat:
+  match s:
+    case SNil{}:
+      0n
+    case SCon{h, t}:
+      Nat.add(octs.width(Char.to_u32(h)), octs.len(t))
+
 # one step of the take
-def utf8.take.step(short: Bool, h: Char, rest: Unit -> String) -> String:
+def octs.take.step(short: Bool, h: Char, rest: Unit -> String) -> String:
   match short:
     case True{}:
       SNil{}
@@ -147,16 +163,16 @@ def utf8.take.step(short: Bool, h: Char, rest: Unit -> String) -> String:
       SCon{h, rest(Unit{})}
 
 # the front of a string that is this many bytes of UTF-8
-def utf8.take(s: String, +n: Nat) -> String:
+def octs.take(s: String, +n: Nat) -> String:
   match s:
     case SNil{}:
       SNil{}
     case SCon{+h, t}:
-      +w = utf8.width(Char.to_u32(h))
-      utf8.take.step(Nat.is_lt(n, w), h, _u => utf8.take(t, Nat.sub(n, w)))
+      +w = octs.width(Char.to_u32(h))
+      octs.take.step(Nat.is_lt(n, w), h, _u => octs.take(t, Nat.sub(n, w)))
 
 # one step of the drop
-def utf8.drop.step(short: Bool, h: Char, t: String,
+def octs.drop.step(short: Bool, h: Char, t: String,
   rest: Unit -> String) -> String:
   match short:
     case True{}:
@@ -165,13 +181,13 @@ def utf8.drop.step(short: Bool, h: Char, t: String,
       rest(Unit{})
 
 # the rest of a string after this many bytes of UTF-8
-def utf8.drop(s: String, +n: Nat) -> String:
+def octs.drop(s: String, +n: Nat) -> String:
   match s:
     case SNil{}:
       SNil{}
     case SCon{+h, +t}:
-      +w = utf8.width(Char.to_u32(h))
-      utf8.drop.step(Nat.is_lt(n, w), h, t, _u => utf8.drop(t, Nat.sub(n, w)))
+      +w = octs.width(Char.to_u32(h))
+      octs.drop.step(Nat.is_lt(n, w), h, t, _u => octs.drop(t, Nat.sub(n, w)))
 
 # a decimal digit's value, or 10 when the character is not a digit
 def digits.val.of(+u: U32) -> U32:
@@ -211,7 +227,7 @@ def digits.read(s: String) -> Maybe<&2, Nat>:
 
 # one step of the count: a character wider than what is still asked for
 # means the string is longer
-def utf8.has.step(short: Bool, rest: Unit -> Bool) -> Bool:
+def octs.has.step(short: Bool, rest: Unit -> Bool) -> Bool:
   match short:
     case True{}:
       True{}
@@ -219,19 +235,19 @@ def utf8.has.step(short: Bool, rest: Unit -> Bool) -> Bool:
       rest(Unit{})
 
 # whether a string is at least this many bytes of UTF-8, walking no further
-# than that many (utf8.len walks all of it)
-def utf8.has(s: String, +n: Nat) -> Bool:
+# than that many (octs.len walks all of it)
+def octs.has(s: String, +n: Nat) -> Bool:
   match s:
     case SNil{}:
       Bool.not(Nat.is_lt(0n, n))
     case SCon{+h, t}:
-      +w = utf8.width(Char.to_u32(h))
-      utf8.has.step(Nat.is_lt(n, w), _u => utf8.has(t, Nat.sub(n, w)))
+      +w = octs.width(Char.to_u32(h))
+      octs.has.step(Nat.is_lt(n, w), _u => octs.has(t, Nat.sub(n, w)))
 
 # a non-zero chunk has its data and the following CRLF
 def chunks.ready(+after: String, +n: Nat) -> Bool:
-  Bool.and(utf8.has(after, Nat.add(n, 2n)),
-    String.starts_with(utf8.drop(after, n), "\r\n"))
+  Bool.and(octs.has(after, Nat.add(n, 2n)),
+    String.starts_with(octs.drop(after, n), "\r\n"))
 
 # the next scan step, or why this chunk header is not usable
 type Next is Data:
@@ -247,7 +263,7 @@ def chunks.next.of(zero: Bool, ready: Bool, +after: String, +n: Nat) -> Next:
     case False{} False{}:
       Reject{"the chunked body stopped short"}
     case False{} True{}:
-      Go{divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n")}
+      Go{divide(octs.drop(after, Nat.add(n, 2n)), "\r\n")}
 
 # hex check, then the length
 def chunks.next.hex(+before: String, +after: String, ok: Bool) -> Next:
@@ -290,7 +306,7 @@ def chunks.more(+n: Nat, +after: String, rest: Unit -> String, zero: Bool)
     case True{}:
       ""
     case False{}:
-      utf8.take(after, n)
+      octs.take(after, n)
         ++ rest(Unit{})
 
 # a chunked body put back together (RFC 9112 §7.1)
@@ -303,7 +319,7 @@ def chunks(fuel: Nat, c: Cut) -> String:
     case 1n+f Cut{before, +after}:
       +n = hexlen(before)
       chunks.more(n, after,
-        _u => chunks(f, divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n")),
+        _u => chunks(f, divide(octs.drop(after, Nat.add(n, 2n)), "\r\n")),
         Nat.is_eq(n, 0n))
 
 # a Transfer-Encoding: chunked body as the octets it stands for
@@ -636,18 +652,18 @@ def head_req(host: String, path: String, headers: List<&2, Header>) -> String:
 
 # POST with body and optional headers
 def post_req(host: String, path: String, headers: List<&2, Header>,
-  body: Body.Body) -> String:
-  request("POST", host, path, headers, Body.body.payload(body))
+  body: String) -> String:
+  request("POST", host, path, headers, body)
 
 # PUT with body and optional headers (RFC 9110 §9.3.4)
 def put_req(host: String, path: String, headers: List<&2, Header>,
-  body: Body.Body) -> String:
-  request("PUT", host, path, headers, Body.body.payload(body))
+  body: String) -> String:
+  request("PUT", host, path, headers, body)
 
 # DELETE with body and optional headers (RFC 9110 §9.3.5)
 def delete_req(host: String, path: String, headers: List<&2, Header>,
-  body: Body.Body) -> String:
-  request("DELETE", host, path, headers, Body.body.payload(body))
+  body: String) -> String:
+  request("DELETE", host, path, headers, body)
 
 # OPTIONS with optional headers (RFC 9110 §9.3.7). No request body.
 def options_req(host: String, path: String, headers: List<&2, Header>) -> String:
@@ -706,12 +722,12 @@ def parse.short(status: U32, headers: List<&2, Header>, n: Nat, body: String,
     case True{}:
       Torn{"the response body stopped before its Content-Length"}
     case False{}:
-      Reply{status, headers, utf8.take(body, n)}
+      Reply{status, headers, octs.take(body, n)}
 
 # a body framed by Content-Length (RFC 9110 §8.6 / RFC 9112 §6.3)
 def parse.clen(status: U32, headers: List<&2, Header>, +n: Nat, +body: String)
   -> Reply:
-  parse.short(status, headers, n, body, Nat.is_lt(utf8.len(body), n))
+  parse.short(status, headers, n, body, Nat.is_lt(octs.len(body), n))
 
 # Content-Length when present; else the rest of the connection is the body
 def parse.len(status: U32, headers: List<&2, Header>, m: Maybe<&2, Nat>,
@@ -948,12 +964,12 @@ def ask.short(method: String, target: String, headers: List<&2, Header>,
     case True{}:
       Bad{"the request body stopped before its Content-Length"}
     case False{}:
-      Request{method, target, headers, utf8.take(body, n)}
+      Request{method, target, headers, octs.take(body, n)}
 
 # a request body framed by Content-Length (RFC 9110 §8.6 / RFC 9112 §6.3)
 def ask.clen(method: String, target: String, headers: List<&2, Header>,
   +n: Nat, +body: String) -> Request:
-  ask.short(method, target, headers, n, body, Nat.is_lt(utf8.len(body), n))
+  ask.short(method, target, headers, n, body, Nat.is_lt(octs.len(body), n))
 
 # Content-Length when present; else the rest of the connection is the body
 def ask.len(method: String, target: String, headers: List<&2, Header>,
@@ -1141,7 +1157,7 @@ def chunks.ended.data(+after: String, +n: Nat, ready: Bool,
     case False{}:
       False{}
     case True{}:
-      rest(divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n"))
+      rest(divide(octs.drop(after, Nat.add(n, 2n)), "\r\n"))
 
 # a chunk of size n: the last one when n is 0
 def chunks.ended.size(+after: String, +n: Nat, zero: Bool,
@@ -1184,7 +1200,7 @@ def whole.of(f: Frame, +body: String) -> Bool:
     case Bare{}:
       True{}
     case Sized{n}:
-      Bool.not(Nat.is_lt(utf8.len(body), n))
+      Bool.not(Nat.is_lt(octs.len(body), n))
     case Chunked{}:
       chunks.ended(String.length(body), divide(body, "\r\n"))
     case Closed{}:
@@ -1303,7 +1319,7 @@ type Skip is Data:
   Over{left: Nat, rest: String}
 
 # one step of the skip: a character wider than what is left stops it
-def utf8.skip.step(short: Bool, +n: Nat, h: Char, t: String,
+def octs.skip.step(short: Bool, +n: Nat, h: Char, t: String,
   rest: Unit -> Skip) -> Skip:
   match short:
     case True{}:
@@ -1311,14 +1327,14 @@ def utf8.skip.step(short: Bool, +n: Nat, h: Char, t: String,
     case False{}:
       rest(Unit{})
 
-# walk n bytes of UTF-8 off a string, as utf8.drop does, saying how it ended
-def utf8.skip(s: String, +n: Nat) -> Skip:
+# walk n bytes of UTF-8 off a string, as octs.drop does, saying how it ended
+def octs.skip(s: String, +n: Nat) -> Skip:
   match s:
     case SNil{}:
       Short{n}
     case SCon{+h, +t}:
-      +w = utf8.width(Char.to_u32(h))
-      utf8.skip.step(Nat.is_lt(n, w), n, h, t, _u => utf8.skip(t, Nat.sub(n, w)))
+      +w = octs.width(Char.to_u32(h))
+      octs.skip.step(Nat.is_lt(n, w), n, h, t, _u => octs.skip(t, Nat.sub(n, w)))
 
 # where a chunked body's walk stands: ended; waiting at a chunk header (or the
 # last chunk's trailer) that has not all arrived; inside a chunk's data with
@@ -1336,7 +1352,7 @@ def walk.crlf(g: Nat, +left: Nat, +rest: String, ready: Bool,
   go: String -> Walk) -> Walk:
   match ready:
     case True{}:
-      go(utf8.drop(rest, Nat.add(left, 2n)))
+      go(octs.drop(rest, Nat.add(left, 2n)))
     case False{}:
       Tail{g, left, rest}
 
@@ -1346,7 +1362,7 @@ def walk.data(+g: Nat, s: Skip, go: String -> Walk) -> Walk:
     case Short{owed}:
       Owed{g, owed}
     case Over{+left, +rest}:
-      walk.crlf(g, left, rest, Bool.and(utf8.has(rest, Nat.add(left, 2n)),
+      walk.crlf(g, left, rest, Bool.and(octs.has(rest, Nat.add(left, 2n)),
         String.starts_with(rest, "\r\n")), go)
 
 # the last chunk: ended once its trailer section has
@@ -1364,7 +1380,7 @@ def walk.size(+g: Nat, rest: String, +after: String, +n: Nat, zero: Bool,
     case True{}:
       walk.trail(g, rest, chunks.trailer(after))
     case False{}:
-      walk.data(g, utf8.skip(after, n), go)
+      walk.data(g, octs.skip(after, n), go)
 
 # a chunk header: a size that is not hex ends the walk (the parse rejects it)
 def walk.hex(+g: Nat, rest: String, +before: String, +after: String, ok: Bool,
@@ -1414,7 +1430,7 @@ def walk.more(w: Walk, +m: Nat, b: String) -> Walk:
       walk(Nat.add(fuel, m), rest ++ b)
     case Owed{g, owed}:
       +f = Nat.add(g, m)
-      walk.data(f, utf8.skip(b, owed), s => walk(f, s))
+      walk.data(f, octs.skip(b, owed), s => walk(f, s))
     case Tail{g, left, rest}:
       +f = Nat.add(g, m)
       walk.data(f, Over{left, rest ++ b}, s => walk(f, s))
@@ -1436,7 +1452,7 @@ def hear.body(f: Frame, +after: String) -> Hear:
     case Bare{}:
       Whole{}
     case Sized{n}:
-      Count{n, utf8.len(after)}
+      Count{n, octs.len(after)}
     case Chunked{}:
       Walking{walk(String.length(after), after)}
     case Closed{}:
@@ -1501,7 +1517,7 @@ def hear.more(h: Hear, +b: String) -> Hear:
     case Never{}:
       Never{}
     case Count{n, have}:
-      Count{n, Nat.add(have, utf8.len(b))}
+      Count{n, Nat.add(have, octs.len(b))}
     case Walking{w}:
       Walking{walk.more(w, String.length(b), b)}
 

@@ -414,3 +414,26 @@ def get(ps: List<&2, Kv()>, +name: String) -> Maybe<&2, String>:
       None{}
     case (key, value) <> t:
       get.pick(get(t, name), value, String.eq(key, name))
+
+# --- received octets as text (SPEC.md HTTP-BODY-4) ---
+
+# octets, one character each, as the pieces utf.dec reads
+def octets.toks(s: String) -> List<&2, Tok>:
+  match s:
+    case SNil{}:
+      []
+    case SCon{c, t}:
+      B{Char.to_u32(c)} <> octets.toks(t)
+
+# received octets as text: decoded as UTF-8, each ill-formed sequence's
+# maximal subpart one U+FFFD (HTTP-QS-2)
+def octets.text(o: String) -> String:
+  utf.dec(octets.toks(o), Idle{})
+
+# received header fields as text, name and value each decoded
+def octets.headers(hs: List<&2, Http.Header>) -> List<&2, Http.Header>:
+  match hs:
+    case []:
+      []
+    case Http.H{name, value} <> t:
+      Http.H{octets.text(name), octets.text(value)} <> octets.headers(t)
