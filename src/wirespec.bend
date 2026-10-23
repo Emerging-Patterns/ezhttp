@@ -262,42 +262,73 @@ def wire.opened.of(+got: String, ok: Bool) -> Opened:
 def wire.opened(+got: String) -> Opened:
   wire.opened.of(got, wire.ok(got))
 
+# what has been received so far: its pieces, the newest first, and where
+# the response stands (Http.hear)
+type Got is Data:
+  Got{pieces: List<&2, String>, hear: Http.Hear}
+
+# the text a list of pieces, newest first, stands for
+def wire.joined(ps: List<&2, String>) -> String:
+  match ps:
+    case []:
+      ""
+    case p <> rest:
+      wire.joined(rest) ++ p
+
+# the pieces put together onto what follows them, each copied once
+def wire.join.go(ps: List<&2, String>, acc: String) -> String:
+  match ps:
+    case []:
+      acc
+    case p <> rest:
+      wire.join.go(rest, p ++ acc)
+
+# the text a list of pieces, newest first, stands for, built in one pass
+def wire.join(ps: List<&2, String>) -> String:
+  wire.join.go(ps, "")
+
+# what has been received as these pieces, for a request with this method
+def wire.got(+method: String, +ps: List<&2, String>) -> Got:
+  Got{ps, Http.hear.of(method, wire.joined(ps))}
+
 # after a read: read again with what has arrived, or answer
 type Read is Data:
-  Again{acc: String}
+  Again{acc: Got}
   Heard{answer: String}
 
 # everything received, once it is known whether it is a whole response
-def wire.read.whole(all: String, done: Bool) -> Read:
+def wire.read.whole(+ps: List<&2, String>, h: Http.Hear, done: Bool) -> Read:
   match done:
     case True{}:
-      Heard{"0\n" ++ all}
+      Heard{"0\n" ++ wire.join(ps)}
     case False{}:
-      Again{all}
+      Again{Got{ps, h}}
+
+# a read that brought text, judged with where the response now stands
+def wire.read.add(text: String, ps: List<&2, String>, +h: Http.Hear) -> Read:
+  wire.read.whole(text <> ps, h, Http.hear.done(h))
 
 # a read that brought text, or found the connection closed
-def wire.read.got(+method: String, acc: String, text: String, closed: Bool)
-  -> Read:
-  match closed:
-    case True{}:
-      Heard{"0\n" ++ acc}
-    case False{}:
-      +all = acc ++ text
-      wire.read.whole(all, Http.whole(method, all))
+def wire.read.got(st: Got, +text: String, closed: Bool) -> Read:
+  match st closed:
+    case Got{ps, h} True{}:
+      Heard{"0\n" ++ wire.join(ps)}
+    case Got{ps, h} False{}:
+      wire.read.add(text, ps, Http.hear.more(h, text))
 
 # a read's answer once it is known whether it succeeded
-def wire.read.of(+method: String, acc: String, +got: String, ok: Bool) -> Read:
+def wire.read.of(st: Got, +got: String, ok: Bool) -> Read:
   match ok:
     case False{}:
       Heard{got}
     case True{}:
       +text = wire.text(got)
-      wire.read.got(method, acc, text, String.is_empty(text))
+      wire.read.got(st, text, String.is_empty(text))
 
-# what to do after a read answered `got`, with `acc` received before it, for
-# a request with this method (SPEC.md HTTP-CLI-6)
-def wire.read.next(+method: String, acc: String, +got: String) -> Read:
-  wire.read.of(method, acc, got, wire.ok(got))
+# what to do after a read answered `got`, with what was received before it
+# (SPEC.md HTTP-CLI-6)
+def wire.read.next(st: Got, +got: String) -> Read:
+  wire.read.of(st, got, wire.ok(got))
 
 # the answer when the reads run out before the response ends
 def wire.spent() -> String:

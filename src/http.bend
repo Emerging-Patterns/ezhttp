@@ -209,9 +209,28 @@ def digits.read(s: String) -> Maybe<&2, Nat>:
     case SCon{h, t}:
       digits.go(SCon{h, t}, 0n, 9n)
 
+# one step of the count: a character wider than what is still asked for
+# means the string is longer
+def utf8.has.step(short: Bool, rest: Unit -> Bool) -> Bool:
+  match short:
+    case True{}:
+      True{}
+    case False{}:
+      rest(Unit{})
+
+# whether a string is at least this many bytes of UTF-8, walking no further
+# than that many (utf8.len walks all of it)
+def utf8.has(s: String, +n: Nat) -> Bool:
+  match s:
+    case SNil{}:
+      Bool.not(Nat.is_lt(0n, n))
+    case SCon{+h, t}:
+      +w = utf8.width(Char.to_u32(h))
+      utf8.has.step(Nat.is_lt(n, w), _u => utf8.has(t, Nat.sub(n, w)))
+
 # a non-zero chunk has its data and the following CRLF
 def chunks.ready(+after: String, +n: Nat) -> Bool:
-  Bool.and(Bool.not(Nat.is_lt(utf8.len(after), Nat.add(n, 2n))),
+  Bool.and(utf8.has(after, Nat.add(n, 2n)),
     String.starts_with(utf8.drop(after, n), "\r\n"))
 
 # the next scan step, or why this chunk header is not usable
@@ -1266,3 +1285,222 @@ def parse.to.go(fuel: Nat, +head: Bool, c: Cut) -> Reply:
 def parse.to(+method: String, +raw: String) -> Reply:
   parse.to.go(String.length(raw), String.eq(method, "HEAD"),
     divide(raw, "\r\n\r\n"))
+
+# --- when a response has all arrived, judged read by read (SPEC.md HTTP-CLI-12) ---
+#
+# The client judges the text it has received after every read. Judging the
+# whole text each time (whole) costs the whole text each time; the state
+# below carries the judgement from one read to the next, so a read costs what
+# it brought (and the head, while no final head has ended). hear.more(
+# hear.of(method, a), b) is hear.of(method, a ++ b), and hear.done of it is
+# whole(method, a ++ b).
+
+# bytes of UTF-8 walked off the front of a string: all of it, with this many
+# still owed, or a stop at the first character that does not fit in what was
+# left, with what was left and the text from that character on
+type Skip is Data:
+  Short{owed: Nat}
+  Over{left: Nat, rest: String}
+
+# one step of the skip: a character wider than what is left stops it
+def utf8.skip.step(short: Bool, +n: Nat, h: Char, t: String,
+  rest: Unit -> Skip) -> Skip:
+  match short:
+    case True{}:
+      Over{n, SCon{h, t}}
+    case False{}:
+      rest(Unit{})
+
+# walk n bytes of UTF-8 off a string, as utf8.drop does, saying how it ended
+def utf8.skip(s: String, +n: Nat) -> Skip:
+  match s:
+    case SNil{}:
+      Short{n}
+    case SCon{+h, +t}:
+      +w = utf8.width(Char.to_u32(h))
+      utf8.skip.step(Nat.is_lt(n, w), n, h, t, _u => utf8.skip(t, Nat.sub(n, w)))
+
+# where a chunked body's walk stands: ended; waiting at a chunk header (or the
+# last chunk's trailer) that has not all arrived; inside a chunk's data with
+# octets still owed; or at the end of a chunk's data, at what should be its
+# CRLF. `fuel` is what chunks.ended would have left there.
+type Walk is Data:
+  Ended{}
+  Hold{fuel: Nat, rest: String}
+  Owed{fuel: Nat, owed: Nat}
+  Tail{fuel: Nat, left: Nat, rest: String}
+
+# a chunk's data skipped: whether its CRLF has arrived, and on to the next
+# chunk header when it has
+def walk.crlf(g: Nat, +left: Nat, +rest: String, ready: Bool,
+  go: String -> Walk) -> Walk:
+  match ready:
+    case True{}:
+      go(utf8.drop(rest, Nat.add(left, 2n)))
+    case False{}:
+      Tail{g, left, rest}
+
+# a chunk's data: all of what arrived, with octets still owed, or its end
+def walk.data(+g: Nat, s: Skip, go: String -> Walk) -> Walk:
+  match s:
+    case Short{owed}:
+      Owed{g, owed}
+    case Over{+left, +rest}:
+      walk.crlf(g, left, rest, Bool.and(utf8.has(rest, Nat.add(left, 2n)),
+        String.starts_with(rest, "\r\n")), go)
+
+# the last chunk: ended once its trailer section has
+def walk.trail(g: Nat, rest: String, ended: Bool) -> Walk:
+  match ended:
+    case True{}:
+      Ended{}
+    case False{}:
+      Hold{1n+g, rest}
+
+# a chunk of size n: the last one when n is 0
+def walk.size(+g: Nat, rest: String, +after: String, +n: Nat, zero: Bool,
+  go: String -> Walk) -> Walk:
+  match zero:
+    case True{}:
+      walk.trail(g, rest, chunks.trailer(after))
+    case False{}:
+      walk.data(g, utf8.skip(after, n), go)
+
+# a chunk header: a size that is not hex ends the walk (the parse rejects it)
+def walk.hex(+g: Nat, rest: String, +before: String, +after: String, ok: Bool,
+  go: String -> Walk) -> Walk:
+  match ok:
+    case False{}:
+      Ended{}
+    case True{}:
+      +n = hexlen(before)
+      walk.size(g, rest, after, n, Nat.is_eq(n, 0n), go)
+
+# a chunk header that has arrived, or not yet
+def walk.at(+g: Nat, rest: String, c: Cut, go: String -> Walk) -> Walk:
+  match c:
+    case NoCut{}:
+      Hold{1n+g, rest}
+    case Cut{+before, +after}:
+      walk.hex(g, rest, before, after, hex.well(chunks.token(before)), go)
+
+# the walk of chunks.ended from the chunk header at the front of a text
+def walk(fuel: Nat, +rest: String) -> Walk:
+  match fuel:
+    case 0n:
+      Hold{0n, rest}
+    case 1n+f:
+      +g = f
+      walk.at(g, rest, divide(rest, "\r\n"), s => walk(g, s))
+
+# whether the walk has ended
+def walk.done(w: Walk) -> Bool:
+  match w:
+    case Ended{}:
+      True{}
+    case Hold{fuel, rest}:
+      False{}
+    case Owed{fuel, owed}:
+      False{}
+    case Tail{fuel, left, rest}:
+      False{}
+
+# the walk once m more characters, b, have arrived
+def walk.more(w: Walk, +m: Nat, b: String) -> Walk:
+  match w:
+    case Ended{}:
+      Ended{}
+    case Hold{fuel, rest}:
+      walk(Nat.add(fuel, m), rest ++ b)
+    case Owed{g, owed}:
+      +f = Nat.add(g, m)
+      walk.data(f, utf8.skip(b, owed), s => walk(f, s))
+    case Tail{g, left, rest}:
+      +f = Nat.add(g, m)
+      walk.data(f, Over{left, rest ++ b}, s => walk(f, s))
+
+# where a response stands: no final head yet (with the text from the head
+# being read on, and the fuel whole.go would have there); no body, so whole;
+# framed by the close, so never whole; sized, with the octets that have
+# arrived; or chunked, with its walk
+type Hear is Data:
+  Heads{fuel: Nat, asked: Bool, raw: String}
+  Whole{}
+  Never{}
+  Count{n: Nat, have: Nat}
+  Walking{w: Walk}
+
+# a final head's body under its framing
+def hear.body(f: Frame, +after: String) -> Hear:
+  match f:
+    case Bare{}:
+      Whole{}
+    case Sized{n}:
+      Count{n, utf8.len(after)}
+    case Chunked{}:
+      Walking{walk(String.length(after), after)}
+    case Closed{}:
+      Never{}
+
+# an interim head: on to the next; a final one: its body
+def hear.step(asked: Bool, +ls: List<&2, String>, +after: String,
+  interim: Bool, go: String -> Hear) -> Hear:
+  match interim:
+    case True{}:
+      go(after)
+    case False{}:
+      hear.body(frame(Bool.or(asked, status.bare(status.of(ls))),
+        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
+        after)
+
+# a head that has ended, or not yet
+def hear.at(+g: Nat, +asked: Bool, raw: String, c: Cut, go: String -> Hear)
+  -> Hear:
+  match c:
+    case NoCut{}:
+      Heads{1n+g, asked, raw}
+    case Cut{before, after}:
+      +ls = String.lines(before)
+      hear.step(asked, ls, after, status.interim(status.of(ls)), go)
+
+# the heads in turn, as whole.go reads them
+def hear.go(fuel: Nat, +asked: Bool, +raw: String) -> Hear:
+  match fuel:
+    case 0n:
+      Heads{0n, asked, raw}
+    case 1n+f:
+      +g = f
+      hear.at(g, asked, raw, divide(raw, "\r\n\r\n"), s => hear.go(g, asked, s))
+
+# where a response to a request with this method stands, read from the
+# whole text received so far
+def hear.of(+method: String, +raw: String) -> Hear:
+  hear.go(String.length(raw), String.eq(method, "HEAD"), raw)
+
+# whether the response has all arrived
+def hear.done(h: Hear) -> Bool:
+  match h:
+    case Heads{fuel, asked, raw}:
+      False{}
+    case Whole{}:
+      True{}
+    case Never{}:
+      False{}
+    case Count{n, have}:
+      Bool.not(Nat.is_lt(have, n))
+    case Walking{w}:
+      walk.done(w)
+
+# where a response stands once more text, b, has arrived
+def hear.more(h: Hear, +b: String) -> Hear:
+  match h:
+    case Heads{fuel, asked, raw}:
+      hear.go(Nat.add(fuel, String.length(b)), asked, raw ++ b)
+    case Whole{}:
+      Whole{}
+    case Never{}:
+      Never{}
+    case Count{n, have}:
+      Count{n, Nat.add(have, utf8.len(b))}
+    case Walking{w}:
+      Walking{walk.more(w, String.length(b), b)}
