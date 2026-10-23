@@ -11,14 +11,14 @@ ezhttp is built and checked on bend 2.0.38.
 With [Bend](https://github.com/bendlang/bend) alone there is no install
 step: import ezhttp by its hub name and `bend` fetches it from
 [the hub](https://hub.bend-lang.com) into `~/.bend/lib` on the first run.
-`emerging-ezhttp@0.8.0.0` is ezhttp v0.8.0:
+`emerging-ezhttp@0.13.0.0` is ezhttp v0.13.0:
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/main.bend as Http
 ```
 
-That name resolves to `0xf1c957a470368870a6d1d62a8c0cbe32`.
-To pin by content instead, import `0xf1c957a470368870a6d1d62a8c0cbe32/main.bend`.
+That name resolves to `0xd3f9c1f02240edb63fd4a109ceb8fa74`.
+To pin by content instead, import `0xd3f9c1f02240edb63fd4a109ceb8fa74/main.bend`.
 
 Or with [ez](https://github.com/Emerging-Patterns/ez), which records the
 package in `ez.toml` (`ez init` makes one):
@@ -48,8 +48,9 @@ wire/runtime layer (`EZ_LIBSSL` when needed). `https` selects that TLS path
 and port 443.
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
-import emerging-ezhttp@0.8.0.0/src/client.bend as Client
+import emerging-ezhttp@0.13.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/src/client.bend as Client
+import emerging-ezhttp@0.13.0.0/src/body.bend as Body
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -58,7 +59,7 @@ def authed() -> IO(Client.Response):
   Http.http.get_with("https://example.com/api", [Http.bearer("token")])
 
 def create() -> IO(Client.Response):
-  Http.http.put("https://example.com/items", Http.text_body("hello"))
+  Http.http.put("https://example.com/items", Body.Plain{"hello"})
 ```
 
 `http.get_opts(url, headers, timeout_ms, follow)` is a GET with a timeout in
@@ -102,12 +103,15 @@ length from the body. Every other header is sent as you gave it, in order
 (SPEC.md HTTP-CLI-8).
 
 ```
-import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.13.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/src/client.bend as Client
+import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.13.0.0/src/body.bend as Body
 
 def ingest(url: String, json: String) -> IO(Client.Response):
   Http.http.post_opts(url,
     [Msg.H{"User-Agent", "my-app/1"}, Msg.H{"Content-Type", "application/json"}],
-    Http.text_body(json), 10000)
+    Body.Plain{json}, 10000)
 ```
 
 ### Server
@@ -131,8 +135,8 @@ A handler that needs IO (a file, a subprocess, an upstream call) goes to
 service; it is `@unsafe` recursion, so a program calling it is not proof-clean.
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
-import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.13.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -146,8 +150,8 @@ def main() -> IO(Unit):
 ```
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
-import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.13.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> IO(Msg.Reply):
   match req:
@@ -164,10 +168,10 @@ def main() -> IO(Unit):
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
-import emerging-ezhttp@0.8.0.0/src/http.bend as Msg
-import emerging-ezhttp@0.8.0.0/src/cookie.bend as Cookie
-import emerging-ezhttp@0.8.0.0/src/cors.bend as Cors
+import emerging-ezhttp@0.13.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
+import emerging-ezhttp@0.13.0.0/src/cookie.bend as Cookie
+import emerging-ezhttp@0.13.0.0/src/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
@@ -204,7 +208,7 @@ byte in upper-case hex, and `/` stays in a path but is `%2F` in a component.
 SPEC.md lists these guarantees (HTTP-URL). They are new after ezhttp 0.9.0.
 
 ```
-import emerging-ezhttp@0.8.0.0/main.bend as Http
+import emerging-ezhttp@0.13.0.0/main.bend as Http
 
 def search(q: String) -> String:
   "https://example.com/search?q=" ++ Http.quote_component(q)
