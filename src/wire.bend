@@ -2,8 +2,9 @@
 # the effect (OpenSSL via dlopen); this module does not re-specify TLS.
 #
 # Spec: scheme, host, port each on their own line; everything after the third
-# newline is the request verbatim; the scheme line may carry a timeout
-# (wirespec.bend). Answer: status on the first line, then text
+# newline is the request verbatim, and a list of octets (the body's tail,
+# wirespec.bend wire.tail) is sent after it byte for byte; the scheme line may
+# carry a timeout (wirespec.bend). Answer: status on the first line, then text
 # ("0" and the raw response, or a non-zero code and the reason).
 #
 # The effect opens a connection and sends the request, then answers one read
@@ -13,8 +14,9 @@
 import Base
 import ./wirespec.bend as Spec
 
-# connect, send the request a spec carries, and answer a connection number
-def ezwire.open(spec: String) -> IO(String):
+# connect, send the request a spec carries and then the tail's octets as
+# bytes, and answer a connection number
+def ezwire.open(spec: String, tail: List<&2, U32>) -> IO(String):
   import "./effs/wire.c"
   import "./effs/wire.js"
 
@@ -71,18 +73,21 @@ def wire.after(o: Spec.Opened, method: String) -> IO(String):
     case Spec.Open{conn}:
       wire.hear(conn, method)
 
-# a request with this method, sent as a spec says, and its whole answer
-def wire.run(method: String, spec: String) -> IO(String):
+# a request with this method, sent as a spec says with its tail of octets
+# after it, and its whole answer
+def wire.run(method: String, spec: String, tail: List<&2, U32>)
+  -> IO(String):
   do IO<String>:
-    +got : String <- ezwire.open(spec)
+    +got : String <- ezwire.open(spec, tail)
     wire.after(Spec.wire.opened(got), method)
 
-# a request sent to a host and its whole answer read back
+# a request sent to a host, its tail of octets after it, and its whole answer
+# read back
 def wire.talk(secure: Bool, host: String, port: U32, method: String,
-  req: String) -> IO(String):
-  wire.run(method, wire.spec(secure, host, port, req))
+  req: String, tail: List<&2, U32>) -> IO(String):
+  wire.run(method, wire.spec(secure, host, port, req), tail)
 
 # the same exchange, bounded by a timeout in milliseconds
 def wire.talk.timed(secure: Bool, ms: U32, host: String, port: U32,
-  method: String, req: String) -> IO(String):
-  wire.run(method, Spec.wire.spec.timed(secure, ms, host, port, req))
+  method: String, req: String, tail: List<&2, U32>) -> IO(String):
+  wire.run(method, Spec.wire.spec.timed(secure, ms, host, port, req), tail)

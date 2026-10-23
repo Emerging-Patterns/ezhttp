@@ -18,6 +18,7 @@ import ./src/step.bend as Step
 import ./src/pct.bend as Pct
 import ./src/html.bend as Html
 import ./src/redirect.bend as Redirect
+import ./src/form.bend as Form
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -2199,6 +2200,123 @@ law chunk_ready:
     == Bool.and(Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
       String.starts_with(Http.utf8.drop(after, n), "\r\n")) : Bool}
 
+# --- octet bodies on the wire (SPEC.md HTTP-CLI-10) ---
+
+# LAW: a text body is sent inside the request text, as HTTP-CLI-4 says
+# HTTP-CLI-10
+law exchange_body_text:
+  for method: String
+  for l: Url.Loc
+  for hs: List<&2, Http.Header>
+  for text: String
+  {Spec.wire.exchange.body(method, l, hs, Body.Plain{text})
+    == Spec.wire.exchange(method, l, hs, text) : Spec.Exchange}
+
+# LAW: an empty body is sent as the empty text body
+# HTTP-CLI-10
+law exchange_body_empty:
+  for method: String
+  for l: Url.Loc
+  for hs: List<&2, Http.Header>
+  {Spec.wire.exchange.body(method, l, hs, Body.Empty{})
+    == Spec.wire.exchange(method, l, hs, "") : Spec.Exchange}
+
+# LAW: an octet body's request text is built for its number of octets
+# HTTP-CLI-10
+law exchange_body_octets:
+  for method: String
+  for l: Url.Loc
+  for hs: List<&2, Http.Header>
+  for +bytes: List<&2, U32>
+  {Spec.wire.exchange.body(method, l, hs, Body.Octets{bytes})
+    == Spec.wire.exchange.octets(method, l, hs, List.length(&2, U32, bytes))
+    : Spec.Exchange}
+
+# LAW: a URL that does not parse sends nothing and keeps its reason
+# HTTP-CLI-10
+law exchange_octets_bad:
+  for method: String
+  for why: String
+  for hs: List<&2, Http.Header>
+  for n: Nat
+  {Spec.wire.exchange.octets(method, Url.Bad{why}, hs, n) == Spec.NoUrl{why}
+    : Spec.Exchange}
+
+# LAW: a URL that parses is sent to its host and port, over TLS exactly when
+# its scheme is https, with the method it was given and the request text
+# request.head.at writes for n octets
+# HTTP-CLI-10
+law exchange_octets_loc:
+  for +method: String
+  for +scheme: String
+  for +host: String
+  for +port: U32
+  for path: String
+  for hs: List<&2, Http.Header>
+  for n: Nat
+  {Spec.wire.exchange.octets(method, Url.Loc{scheme, host, port, path}, hs, n)
+    == Spec.Exchange{String.eq(scheme, "https"), host, port, method,
+      Http.request.head.at(method, String.eq(scheme, "https"), host, port,
+        path, hs, n)} : Spec.Exchange}
+
+# LAW (RFC 9112 §3): the request text ahead of n octets is the request line,
+# the header fields for n octets, and the blank line, nothing after it
+# HTTP-CLI-10
+law request_head_at:
+  for +method: String
+  for secure: Bool
+  for host: String
+  for port: U32
+  for +path: String
+  for hs: List<&2, Http.Header>
+  for n: Nat
+  {Http.request.head.at(method, secure, host, port, path, hs, n)
+    == method ++ " " ++ path ++ " HTTP/1.1\r\n"
+      ++ Http.headers.lines(
+        Http.request.fields.n(Http.authority(secure, host, port), hs, n))
+      ++ "\r\n"
+    : String}
+
+# LAW (RFC 9110 §8.6): a text body's header fields are the fields for its
+# UTF-8 octets
+# HTTP-CLI-10
+law fields_n:
+  for host: String
+  for +hs: List<&2, Http.Header>
+  for +body: String
+  {Http.request.fields(host, hs, body)
+    == Http.request.fields.n(host, hs, Http.utf8.len(body))
+    : List<&2, Http.Header>}
+
+# LAW (RFC 9110 §8.6): whatever the caller gave, the Content-Length fields for
+# n octets are exactly `Content-Length: n`, and none for none
+# HTTP-CLI-10
+law fields_clen_n:
+  for +host: String
+  for +hs: List<&2, Http.Header>
+  for +n: Nat
+  {Http.fields.of(Http.FClen{}, Http.request.fields.n(host, hs, n))
+    == Http.clen.field(n, Nat.is_eq(n, 0n)) : List<&2, Http.Header>}
+
+# LAW: an octet body's octets are the tail sent after the request text
+# HTTP-CLI-10
+law tail_octets:
+  for bytes: List<&2, U32>
+  {Spec.wire.tail(Body.Octets{bytes}) == bytes : List<&2, U32>}
+
+# LAW: a text body has no tail
+# HTTP-CLI-10
+law tail_text:
+  for text: String
+  {Spec.wire.tail(Body.Plain{text}) == [] : List<&2, U32>}
+
+# LAW: an empty body has no tail
+# HTTP-CLI-10
+law tail_empty:
+  for b: Body.Body
+  for e: {Body.Empty{} == b : Body.Body}
+  {Spec.wire.tail(b) == [] : List<&2, U32>}
+
 # --- the response, read by the request's method (SPEC.md HTTP-CLI-9) ---
 
 # LAW: a response is read head by head for the request's method, at most as
@@ -2968,3 +3086,357 @@ law follows_other:
   for e: {False{} == String.eq(method, "GET") : Bool}
   for follow: Bool
   {Redirect.redirect.follows(method, follow) == False{} : Bool}
+
+# --- multipart/form-data bodies (SPEC.md HTTP-FORM) ---
+
+# LAW: a boundary that is not valid is refused
+# HTTP-FORM-1
+law form_bad_boundary:
+  for +b: String
+  for ps: List<&2, Form.Part>
+  for e: {False{} == Form.form.boundary.ok(b) : Bool}
+  {Form.form.body(b, ps)
+    == Form.NoForm{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
+    : Form.Form}
+
+# LAW: a valid boundary whose delimiter occurs in a part's content is refused
+# HTTP-FORM-1
+law form_clash:
+  for +b: String
+  for +ps: List<&2, Form.Part>
+  for e1: {True{} == Form.form.boundary.ok(b) : Bool}
+  for e2: {True{} == Form.form.clash(b, ps) : Bool}
+  {Form.form.body(b, ps) == Form.NoForm{"the boundary occurs in a part's content"}
+    : Form.Form}
+
+# LAW: a file part whose content type holds a CR or LF is refused
+# HTTP-FORM-1
+law form_bad_type:
+  for +b: String
+  for +ps: List<&2, Form.Part>
+  for e1: {True{} == Form.form.boundary.ok(b) : Bool}
+  for e2: {False{} == Form.form.clash(b, ps) : Bool}
+  for e3: {True{} == Form.form.badtype(ps) : Bool}
+  {Form.form.body(b, ps)
+    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+
+# LAW (RFC 7578 §4.1): every other form is built: its Content-Type value and
+# its parts as octets
+# HTTP-FORM-1
+law form_ok:
+  for +b: String
+  for +ps: List<&2, Form.Part>
+  for e1: {True{} == Form.form.boundary.ok(b) : Bool}
+  for e2: {False{} == Form.form.clash(b, ps) : Bool}
+  for e3: {False{} == Form.form.badtype(ps) : Bool}
+  {Form.form.body(b, ps)
+    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
+    : Form.Form}
+
+# LAW (RFC 7578 §4.1): the Content-Type field value names the boundary
+# HTTP-FORM-1
+law form_type:
+  for b: String
+  {Form.form.type(b) == "multipart/form-data; boundary=" ++ b : String}
+
+# LAW (RFC 2046 §5.1.1): a boundary is 1 to 70 boundary characters
+# HTTP-FORM-2
+law boundary_ok:
+  for +b: String
+  {Form.form.boundary.ok(b)
+    == Bool.and(Bool.and(Bool.not(String.is_empty(b)),
+      Nat.is_le(String.length(b), 70n)), Form.form.bchars(b)) : Bool}
+
+# LAW: the boundary characters are A-Z, a-z, 0-9, `-`, `_` and `.`
+# HTTP-FORM-2
+law bchar:
+  for +cp: U32
+  {Form.form.bchar(cp)
+    == Bool.or(Bool.and(U32.is_le(65, cp), U32.is_le(cp, 90)),
+      Bool.or(Bool.and(U32.is_le(97, cp), U32.is_le(cp, 122)),
+        Bool.or(Bool.and(U32.is_le(48, cp), U32.is_le(cp, 57)),
+          Bool.or(U32.is_eq(cp, 45),
+            Bool.or(U32.is_eq(cp, 95), U32.is_eq(cp, 46)))))) : Bool}
+
+# LAW: the empty string has no character that is not a boundary character
+# HTTP-FORM-2
+law bchars_nil:
+  for s: String
+  for e: {SNil{} == s : String}
+  {Form.form.bchars(s) == True{} : Bool}
+
+# LAW: a string's characters are boundary characters exactly when its first
+# is and the rest's are
+# HTTP-FORM-2
+law bchars_cons:
+  for +c: U32
+  for t: String
+  {Form.form.bchars(SCon{Chr{c}, t})
+    == Bool.and(Form.form.bchar(c), Form.form.bchars(t)) : Bool}
+
+# LAW (RFC 2046 §5.1.1): the delimiter is `--` and the boundary, as octets
+# HTTP-FORM-2
+law delim:
+  for b: String
+  {Form.form.delim(b) == Form.octets.onto("--" ++ b, []) : List<&2, U32>}
+
+# LAW: no parts, no clash
+# HTTP-FORM-2
+law clash_nil:
+  for b: String
+  {Form.form.clash(b, []) == False{} : Bool}
+
+# LAW: a list of parts clashes exactly when its first part's content holds
+# the delimiter or the rest clashes
+# HTTP-FORM-2
+law clash_cons:
+  for +b: String
+  for p: Form.Part
+  for t: List<&2, Form.Part>
+  {Form.form.clash(b, p <> t)
+    == Bool.or(Form.octets.has(Form.form.content(p, []), Form.form.delim(b)),
+      Form.form.clash(b, t)) : Bool}
+
+# LAW: a check of this and the rest holds exactly when both do
+# HTTP-FORM-2
+law all_step:
+  for ok: Bool
+  for rest: Unit -> Bool
+  {Form.all.step(ok, rest) == Bool.and(ok, rest(Unit{})) : Bool}
+
+# LAW: a search of this and the rest hits exactly when either does
+# HTTP-FORM-2
+law any_step:
+  for hit: Bool
+  for rest: Unit -> Bool
+  {Form.any.step(hit, rest) == Bool.or(hit, rest(Unit{})) : Bool}
+
+# LAW: no octets hold a pattern exactly when the pattern is empty
+# HTTP-FORM-2
+law has_nil:
+  for +pat: List<&2, U32>
+  {Form.octets.has([], pat) == Form.octets.starts([], pat) : Bool}
+
+# LAW: octets hold a pattern exactly when they open with it or their rest
+# holds it
+# HTTP-FORM-2
+law has_cons:
+  for +x: U32
+  for +t: List<&2, U32>
+  for +pat: List<&2, U32>
+  {Form.octets.has(x <> t, pat)
+    == Bool.or(Form.octets.starts(x <> t, pat), Form.octets.has(t, pat))
+    : Bool}
+
+# LAW: every octets open with the empty pattern
+# HTTP-FORM-2
+law starts_done:
+  for xs: List<&2, U32>
+  {Form.octets.starts(xs, []) == True{} : Bool}
+
+# LAW: no octets open with a pattern that is not empty
+# HTTP-FORM-2
+law starts_short:
+  for p: U32
+  for q: List<&2, U32>
+  {Form.octets.starts([], p <> q) == False{} : Bool}
+
+# LAW: octets open with a pattern exactly when their first octets are equal
+# and the rest opens with the pattern's rest
+# HTTP-FORM-2
+law starts_cons:
+  for x: U32
+  for t: List<&2, U32>
+  for p: U32
+  for q: List<&2, U32>
+  {Form.octets.starts(x <> t, p <> q)
+    == Bool.and(U32.is_eq(x, p), Form.octets.starts(t, q)) : Bool}
+
+# LAW: a field's content is its value's UTF-8 octets
+# HTTP-FORM-2
+# HTTP-FORM-3
+law content_field:
+  for name: String
+  for value: String
+  for rest: List<&2, U32>
+  {Form.form.content(Form.Field{name, value}, rest)
+    == Form.octets.onto(value, rest) : List<&2, U32>}
+
+# LAW: a file's content is its bytes, unchanged
+# HTTP-FORM-2
+# HTTP-FORM-3
+law content_file:
+  for name: String
+  for filename: String
+  for ctype: String
+  for bytes: List<&2, U32>
+  for rest: List<&2, U32>
+  {Form.form.content(Form.File{name, filename, ctype, bytes}, rest)
+    == List.append(&2, U32, bytes, rest) : List<&2, U32>}
+
+# LAW: no parts hold a bad content type
+# HTTP-FORM-2
+law badtype_nil:
+  for ps: List<&2, Form.Part>
+  for e: {[] == ps : List<&2, Form.Part>}
+  {Form.form.badtype(ps) == False{} : Bool}
+
+# LAW: a list of parts holds a bad content type exactly when its first part
+# or its rest does
+# HTTP-FORM-2
+law badtype_cons:
+  for p: Form.Part
+  for t: List<&2, Form.Part>
+  {Form.form.badtype(p <> t)
+    == Bool.or(Form.form.badtype.one(p), Form.form.badtype(t)) : Bool}
+
+# LAW: a field part has no content type to be bad
+# HTTP-FORM-2
+law badtype_field:
+  for name: String
+  for value: String
+  {Form.form.badtype.one(Form.Field{name, value}) == False{} : Bool}
+
+# LAW: a file part's content type is bad exactly when it holds a CR or an LF
+# HTTP-FORM-2
+law badtype_file:
+  for name: String
+  for filename: String
+  for +ctype: String
+  for bytes: List<&2, U32>
+  {Form.form.badtype.one(Form.File{name, filename, ctype, bytes})
+    == Bool.or(String.contains(ctype, "\r"), String.contains(ctype, "\n"))
+    : Bool}
+
+# LAW (RFC 2046 §5.1.1): after the last part comes the close delimiter
+# HTTP-FORM-3
+law parts_nil:
+  for +b: String
+  {Form.form.parts(b, []) == Form.octets.onto("--" ++ b ++ "--\r\n", [])
+    : List<&2, U32>}
+
+# LAW: the parts are written in order, each in front of the rest
+# HTTP-FORM-3
+law parts_cons:
+  for +b: String
+  for p: Form.Part
+  for t: List<&2, Form.Part>
+  {Form.form.parts(b, p <> t) == Form.form.part(b, p, Form.form.parts(b, t))
+    : List<&2, U32>}
+
+# LAW (RFC 7578 §4.1): a part is the delimiter line, its header lines, a blank
+# line, its content and a CRLF
+# HTTP-FORM-3
+law part:
+  for +b: String
+  for +p: Form.Part
+  for rest: List<&2, U32>
+  {Form.form.part(b, p, rest)
+    == Form.octets.onto("--" ++ b ++ "\r\n" ++ Form.form.head(p) ++ "\r\n",
+      Form.form.content(p, Form.octets.onto("\r\n", rest))) : List<&2, U32>}
+
+# LAW: the empty string writes no octets
+# HTTP-FORM-3
+law onto_nil:
+  for rest: List<&2, U32>
+  {Form.octets.onto("", rest) == rest : List<&2, U32>}
+
+# LAW (RFC 3629 §3): a string is written as its first character's UTF-8
+# octets, then the rest's
+# HTTP-FORM-3
+law onto_cons:
+  for +c: U32
+  for t: String
+  for rest: List<&2, U32>
+  {Form.octets.onto(SCon{Chr{c}, t}, rest)
+    == List.append(&2, U32, Pct.utf8(c), Form.octets.onto(t, rest))
+    : List<&2, U32>}
+
+# LAW: form_field makes a field part
+# HTTP-FORM-4
+law field_is:
+  for name: String
+  for value: String
+  {Form.form.field(name, value) == Form.Field{name, value} : Form.Part}
+
+# LAW: form_file makes a file part
+# HTTP-FORM-4
+law file_is:
+  for name: String
+  for filename: String
+  for ctype: String
+  for bytes: List<&2, U32>
+  {Form.form.file(name, filename, ctype, bytes)
+    == Form.File{name, filename, ctype, bytes} : Form.Part}
+
+# LAW (RFC 7578 §4.2): a field part's header is its Content-Disposition line
+# HTTP-FORM-4
+law head_field:
+  for name: String
+  for value: String
+  {Form.form.head(Form.Field{name, value})
+    == Form.form.disposition(name) ++ "\r\n" : String}
+
+# LAW (RFC 7578 §4.2, §4.4): a file part's header is its Content-Disposition
+# line with the filename, then its Content-Type line
+# HTTP-FORM-4
+law head_file:
+  for name: String
+  for filename: String
+  for ctype: String
+  for bytes: List<&2, U32>
+  {Form.form.head(Form.File{name, filename, ctype, bytes})
+    == Form.form.disposition(name) ++ "; filename=\"" ++ Form.form.quote(filename)
+      ++ "\"\r\n" ++ "Content-Type: " ++ ctype ++ "\r\n" : String}
+
+# LAW (RFC 7578 §4.2): the disposition names the part, quoted
+# HTTP-FORM-4
+law disposition:
+  for name: String
+  {Form.form.disposition(name)
+    == "Content-Disposition: form-data; name=\"" ++ Form.form.quote(name)
+      ++ "\"" : String}
+
+# LAW: the empty name is written as the empty string
+# HTTP-FORM-5
+law fq_nil:
+  for s: String
+  for e: {SNil{} == s : String}
+  {Form.form.quote(s) == "" : String}
+
+# LAW: a name is written one character at a time, the first character's
+# writing followed by the rest's
+# HTTP-FORM-5
+law fq_cons:
+  for +c: U32
+  for t: String
+  {Form.form.quote(SCon{Chr{c}, t}) == Form.form.one(c, Form.form.quote(t))
+    : String}
+
+# LAW (RFC 7578 §4.2): `"` is written as %22
+# HTTP-FORM-5
+law fq_dq:
+  for rest: String
+  {Form.form.one(34, rest) == "%22" ++ rest : String}
+
+# LAW (RFC 7578 §4.2): CR is written as %0D
+# HTTP-FORM-5
+law fq_cr:
+  for rest: String
+  {Form.form.one(13, rest) == "%0D" ++ rest : String}
+
+# LAW (RFC 7578 §4.2): LF is written as %0A
+# HTTP-FORM-5
+law fq_lf:
+  for rest: String
+  {Form.form.one(10, rest) == "%0A" ++ rest : String}
+
+# LAW: every other character is written as itself
+# HTTP-FORM-5
+law fq_other:
+  for +c: U32
+  for e1: {False{} == U32.is_eq(c, 34) : Bool}
+  for e2: {False{} == U32.is_eq(c, 13) : Bool}
+  for e3: {False{} == U32.is_eq(c, 10) : Bool}
+  for rest: String
+  {Form.form.one(c, rest) == SCon{Chr{c}, rest} : String}

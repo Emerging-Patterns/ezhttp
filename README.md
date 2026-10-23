@@ -110,6 +110,36 @@ def ingest(url: String, json: String) -> IO(Client.Response):
     Http.text_body(json), 10000)
 ```
 
+A body is text (`text_body`, sent as its UTF-8) or octets (`octets_body`,
+each 0 to 255, sent byte for byte after the request head, with
+`Content-Length` counting them; SPEC.md HTTP-CLI-10), so binary uploads reach
+the server unchanged. `form_body(boundary, parts)` builds a
+`multipart/form-data` body (RFC 7578) from `form_field(name, value)` and
+`form_file(name, filename, content_type, bytes)` parts: it answers the
+`Content-Type` value to send and an octet body, or refuses a boundary that is
+not 1 to 70 of `A-Z a-z 0-9 - _ .`, one whose `--boundary` occurs in a part's
+content, and a file content type holding CR or LF (SPEC.md HTTP-FORM). Names
+and filenames have `"`, CR and LF written as `%22`, `%0D` and `%0A`. A file's
+bytes come straight from `File.read_bytes`.
+
+```
+import emerging-ezhttp@0.8.0.0/src/form.bend as Form
+
+def upload(url: String, key: String, f: Form.Form) -> IO(Client.Response):
+  match f:
+    case Form.NoForm{why}:
+      IO.pure(Client.Response, Client.Err{why})
+    case Form.Form{ctype, body}:
+      Http.http.post_opts(url, [Msg.H{"Content-Type", ctype}, Http.bearer(key)],
+        body, 120000)
+
+def transcribe(url: String, key: String, wav: List<&2, U32>)
+  -> IO(Client.Response):
+  upload(url, key, Http.form_body("ezhttp-whisper-7d1f",
+    [Http.form_field("model", "whisper"),
+     Http.form_file("file", "audio.wav", "audio/wav", wav)]))
+```
+
 The client reads a response with its request's method in mind (SPEC.md
 HTTP-CLI-9): interim 1xx responses such as `100 Continue` are skipped, and a
 response to HEAD, or with a 1xx, 204 or 304 status, has an empty body
@@ -274,6 +304,12 @@ the list of defs that rely on foreign code as its only error. The laws target:
   torn (client response) or bad (server request). Absolute-form is rejected.
   The client skips interim 1xx responses (RFC 9110 §15.2) and reads no body
   for a reply to HEAD or a 1xx, 204 or 304 status (§6.3 item 1).
+- [RFC 7578](https://www.rfc-editor.org/rfc/rfc7578) multipart/form-data:
+  each part framed by `--boundary` CRLF, its `Content-Disposition: form-data;
+  name="…"` line (with `filename="…"` and a `Content-Type` line for a file),
+  a blank line, its content and CRLF, closed by `--boundary--` CRLF (§4.1,
+  §4.2, §4.4; RFC 2046 §5.1.1); `"`, CR and LF in a name percent-encoded; a
+  boundary that occurs in a part is refused.
 - [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) Base64 (§4, §10) and
   [RFC 7617](https://www.rfc-editor.org/rfc/rfc7617) Basic authentication
   (§2): `Authorization: Basic` is Base64 of `user:password`.

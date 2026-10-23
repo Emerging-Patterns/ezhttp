@@ -8,6 +8,7 @@ import ./src/pct.bend as Pct
 import ./src/wirespec.bend as Spec
 import ./src/html.bend as Html
 import ./src/redirect.bend as Redirect
+import ./src/form.bend as Form
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -2991,7 +2992,7 @@ def Laws.pop_nil(out, e):
 def Laws.pop_cons(_s, _t):
   {==}
 
-# --- responses read by the request's method (HTTP-CLI-9) ---
+# --- octet bodies, responses by method, multipart forms (HTTP-CLI-10, 10, HTTP-FORM) ---
 
 def Laws.whole_go(_method, _raw):
   {==}
@@ -3010,6 +3011,63 @@ def Laws.status_interim_some(_n):
 
 def Laws.status_interim_none(_m, e):
   %e : {Http.status.interim(_) == False{} : Bool}
+  {==}
+
+def Laws.exchange_body_text(_method, _l, _hs, _text):
+  {==}
+
+def Laws.exchange_body_empty(_method, _l, _hs):
+  {==}
+
+def Laws.exchange_body_octets(_method, _l, _hs, _bytes):
+  {==}
+
+def Laws.exchange_octets_bad(_method, _why, _hs, _n):
+  {==}
+
+def Laws.exchange_octets_loc(_method, _scheme, _host, _port, _path, _hs, _n):
+  {==}
+
+def Laws.request_head_at(_method, _secure, _host, _port, _path, _hs, _n):
+  {==}
+
+def Laws.fields_n(_host, _hs, _body):
+  {==}
+
+def Laws.fields_clen_n(host, hs, n):
+  hd.of_fields(Http.FClen{},
+      Http.fields.or(Http.fields.of(Http.FHost{}, hs), [Http.H{"Host", host}]),
+      Http.fields.or(Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}]),
+      Http.fields.or(Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}]),
+      Http.fields.of(Http.FOther{}, hs),
+      Http.clen.field(n, Nat.is_eq(n, 0n)),
+      [], [], [], [],
+        Http.clen.field(n,
+        Nat.is_eq(n, 0n)),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FHost{}, hs),
+        [Http.H{"Host", host}],
+      hd.disj(Http.FClen{}, Http.FHost{}, {==}, hs), {==}),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FAgent{}, hs),
+        [Http.H{"User-Agent", "ezhttp"}],
+      hd.disj(Http.FClen{}, Http.FAgent{}, {==}, hs), {==}),
+      hd.or_gone(Http.FClen{}, Http.fields.of(Http.FAccept{}, hs),
+        [Http.H{"Accept", "*/*"}],
+      hd.disj(Http.FClen{}, Http.FAccept{}, {==}, hs), {==}),
+      Equal.sym(List<&2, Http.Header>,
+        Http.fields.of(Http.FClen{}, Http.fields.of(Http.FOther{}, hs)), [],
+      hd.disj(Http.FClen{}, Http.FOther{}, {==}, hs)),
+      hd.clen_self(n, Nat.is_eq(n, 0n)))
+
+def Laws.tail_octets(_bytes):
+  {==}
+
+def Laws.tail_text(_text):
+  {==}
+
+def Laws.tail_empty(_b, e):
+  %e : {Spec.wire.tail(_) == [] : List<&2, U32>}
   {==}
 
 def Laws.reply_to(_method, _raw):
@@ -3071,4 +3129,168 @@ def Laws.heard_fail(method, raw, e):
   %e : {Spec.wire.heard.of(method, raw, _)
     == Http.Torn{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
     : Http.Reply}
+  {==}
+
+def Laws.all_step(ok, _rest):
+  match ok:
+    case False{}:
+      {==}
+    case True{}:
+      {==}
+
+def Laws.any_step(hit, _rest):
+  match hit:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.form_bad_boundary(b, ps, e):
+  %e : {Form.form.check(b, ps, _)
+    == Form.NoForm{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
+    : Form.Form}
+  {==}
+
+def Laws.form_clash(b, ps, e1, e2):
+  %e1 : {Form.form.check(b, ps, _)
+    == Form.NoForm{"the boundary occurs in a part's content"} : Form.Form}
+  %e2 : {Form.form.check.clash(b, ps, _)
+    == Form.NoForm{"the boundary occurs in a part's content"} : Form.Form}
+  {==}
+
+def Laws.form_bad_type(b, ps, e1, e2, e3):
+  %e1 : {Form.form.check(b, ps, _)
+    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+  %e2 : {Form.form.check.clash(b, ps, _)
+    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+  %e3 : {Form.form.check.type(b, ps, _)
+    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+  {==}
+
+def Laws.form_ok(b, ps, e1, e2, e3):
+  %e1 : {Form.form.check(b, ps, _)
+    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
+    : Form.Form}
+  %e2 : {Form.form.check.clash(b, ps, _)
+    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
+    : Form.Form}
+  %e3 : {Form.form.check.type(b, ps, _)
+    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
+    : Form.Form}
+  {==}
+
+def Laws.form_type(_b):
+  {==}
+
+def Laws.boundary_ok(_b):
+  {==}
+
+def Laws.bchar(_cp):
+  {==}
+
+def Laws.bchars_nil(_s, e):
+  %e : {Form.form.bchars(_) == True{} : Bool}
+  {==}
+
+def Laws.bchars_cons(c, t):
+  Laws.all_step(Form.form.bchar(c), _u => Form.form.bchars(t))
+
+def Laws.delim(_b):
+  {==}
+
+def Laws.clash_nil(_b):
+  {==}
+
+def Laws.clash_cons(b, p, t):
+  Laws.any_step(Form.octets.has(Form.form.content(p, []), Form.form.delim(b)),
+    _u => Form.form.clash(b, t))
+
+def Laws.has_nil(_pat):
+  {==}
+
+def Laws.has_cons(x, t, pat):
+  Laws.any_step(Form.octets.starts(x <> t, pat), _u => Form.octets.has(t, pat))
+
+def Laws.starts_done(xs):
+  match xs:
+    case []:
+      {==}
+    case _x <> _t:
+      {==}
+
+def Laws.starts_short(_p, _q):
+  {==}
+
+def Laws.starts_cons(x, t, p, q):
+  Laws.all_step(U32.is_eq(x, p), _u => Form.octets.starts(t, q))
+
+def Laws.content_field(_name, _value, _rest):
+  {==}
+
+def Laws.content_file(_name, _filename, _ctype, _bytes, _rest):
+  {==}
+
+def Laws.badtype_nil(_ps, e):
+  %e : {Form.form.badtype(_) == False{} : Bool}
+  {==}
+
+def Laws.badtype_cons(p, t):
+  Laws.any_step(Form.form.badtype.one(p), _u => Form.form.badtype(t))
+
+def Laws.badtype_field(_name, _value):
+  {==}
+
+def Laws.badtype_file(_name, _filename, _ctype, _bytes):
+  {==}
+
+def Laws.parts_nil(_b):
+  {==}
+
+def Laws.parts_cons(_b, _p, _t):
+  {==}
+
+def Laws.part(_b, _p, _rest):
+  {==}
+
+def Laws.onto_nil(_rest):
+  {==}
+
+def Laws.onto_cons(_c, _t, _rest):
+  {==}
+
+def Laws.field_is(_name, _value):
+  {==}
+
+def Laws.file_is(_name, _filename, _ctype, _bytes):
+  {==}
+
+def Laws.head_field(_name, _value):
+  {==}
+
+def Laws.head_file(_name, _filename, _ctype, _bytes):
+  {==}
+
+def Laws.disposition(_name):
+  {==}
+
+def Laws.fq_nil(_s, e):
+  %e : {Form.form.quote(_) == "" : String}
+  {==}
+
+def Laws.fq_cons(_c, _t):
+  {==}
+
+def Laws.fq_dq(_rest):
+  {==}
+
+def Laws.fq_cr(_rest):
+  {==}
+
+def Laws.fq_lf(_rest):
+  {==}
+
+def Laws.fq_other(c, e1, e2, e3, rest):
+  %e1 : {Form.form.one.dq(c, rest, _) == SCon{Chr{c}, rest} : String}
+  %e2 : {Form.form.one.cr(c, rest, _) == SCon{Chr{c}, rest} : String}
+  %e3 : {Form.form.one.lf(c, rest, _) == SCon{Chr{c}, rest} : String}
   {==}

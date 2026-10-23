@@ -212,10 +212,11 @@ function ezwire_shake(tls, fd, host, late) {
   return ssl;
 }
 
-// the whole request out, over TLS when there is a session
+// the whole request out, over TLS when there is a session: a string as its
+// UTF-8, or a Uint8Array as its bytes
 function ezwire_say(tls, fd, ssl, text, late) {
   const ffi = require("bun:ffi");
-  const b = new TextEncoder().encode(text);
+  const b = typeof text === "string" ? new TextEncoder().encode(text) : text;
   let at = 0;
   while (at < b.length) {
     const part = b.subarray(at);
@@ -268,8 +269,13 @@ function ezwire_conns() {
   return globalThis.EZ_WIRE_CONNS;
 }
 
-// connect, shake hands, send the request, and answer a connection number
-function ezwire_open(spec) {
+// connect, shake hands, send the request and then the tail's octets byte for
+// byte, and answer a connection number
+function ezwire_open(spec, tail) {
+  const bytes = io_unlist(tail);
+  if (bytes === null) {
+    return "22\na body octet is past 255";
+  }
   const cut = [];
   let at = 0;
   while (cut.length < 3) {
@@ -302,7 +308,8 @@ function ezwire_open(spec) {
       ? "28\nthe TLS handshake with " + cut[1] + " took over " + ms + " ms"
       : "35\nthe TLS handshake with " + cut[1] + " failed";
   }
-  if (!ezwire_say(tls, fd, ssl, spec.slice(at), late)) {
+  if (!ezwire_say(tls, fd, ssl, spec.slice(at), late)
+    || !ezwire_say(tls, fd, ssl, bytes, late)) {
     if (ssl !== null) {
       tls.SSL_shutdown(ssl);
       tls.SSL_free(ssl);

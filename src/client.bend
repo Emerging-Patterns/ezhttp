@@ -29,44 +29,47 @@ def from.reply(r: Http.Reply) -> Response:
 def http.heard(+method: String, +raw: String) -> Response:
   from.reply(Spec.wire.heard(method, raw))
 
-# an exchange as wirespec.bend wrote it: sent and read by its own method, or
-# the URL's reason
-def http.send(ex: Spec.Exchange) -> IO(Response):
+# an exchange as wirespec.bend wrote it, with the body's tail of octets: sent
+# and read by its own method, or the URL's reason
+def http.send(ex: Spec.Exchange, tail: List<&2, U32>) -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
     case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
-        +raw : String <- Wire.wire.talk(secure, host, port, method, req)
+        +raw : String <- Wire.wire.talk(secure, host, port, method, req, tail)
         IO.pure(Response, http.heard(method, raw))
 
-# a URL that came apart (or not) into an HTTP exchange
+# a URL that came apart (or not) into an HTTP exchange with this body
 def http.loc(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
-  body: String) -> IO(Response):
-  http.send(Spec.wire.exchange(method, l, headers, body))
+  +body: Body.Body) -> IO(Response):
+  http.send(Spec.wire.exchange.body(method, l, headers, body),
+    Spec.wire.tail(body))
 
 # an exchange as wirespec.bend wrote it, bounded by a timeout, sent and read
 # by its own method
-def http.send.timed(ms: U32, ex: Spec.Exchange) -> IO(Response):
+def http.send.timed(ms: U32, ex: Spec.Exchange, tail: List<&2, U32>)
+  -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
     case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
         +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, method,
-          req)
+          req, tail)
         IO.pure(Response, http.heard(method, raw))
 
 # a request with this method, headers and body, bounded by a timeout in
 # milliseconds
 def client.timed(method: String, url: String, headers: List<&2, Http.Header>,
-  body: String, ms: U32) -> IO(Response):
-  http.send.timed(ms, Spec.wire.exchange(method, Url.parse(url), headers, body))
+  +body: Body.Body, ms: U32) -> IO(Response):
+  http.send.timed(ms, Spec.wire.exchange.body(method, Url.parse(url), headers,
+    body), Spec.wire.tail(body))
 
 # GET bounded by a timeout in milliseconds
 def client.get.timed(url: String, headers: List<&2, Http.Header>, ms: U32)
   -> IO(Response):
-  client.timed("GET", url, headers, "", ms)
+  client.timed("GET", url, headers, Body.Empty{}, ms)
 
 # the next hop after a response (redirect.bend); a failed exchange stops
 def client.hop(left: Nat, url: String, r: Response) -> Redirect.Hop:
@@ -89,7 +92,7 @@ def client.after(hop: Redirect.Hop, r: Response, go: String -> IO(Response))
 # hop only. The answer is the last response, which is a redirect only when
 # the hops ran out or its Location is not one redirect.bend follows
 def client.follow(+left: Nat, +url: String, +headers: List<&2, Http.Header>,
-  body: String, +ms: U32) -> IO(Response):
+  body: Body.Body, +ms: U32) -> IO(Response):
   match left:
     case 0n:
       client.timed("GET", url, headers, body, ms)
@@ -97,11 +100,11 @@ def client.follow(+left: Nat, +url: String, +headers: List<&2, Http.Header>,
       do IO<Response>:
         +r : Response <- client.timed("GET", url, headers, body, ms)
         client.after(client.hop(left, url, r), r,
-          next => client.follow(p, next, headers, "", ms))
+          next => client.follow(p, next, headers, Body.Empty{}, ms))
 
 # a request once it is known whether it follows redirects
 def client.request.go(go: Bool, method: String, url: String,
-  headers: List<&2, Http.Header>, body: String, ms: U32) -> IO(Response):
+  headers: List<&2, Http.Header>, body: Body.Body, ms: U32) -> IO(Response):
   match go:
     case True{}:
       client.follow(Redirect.redirect.max(), url, headers, body, ms)
@@ -112,7 +115,7 @@ def client.request.go(go: Bool, method: String, url: String,
 # when `follow` is set and the method is GET (redirect.bend
 # redirect.follows), and answers its first response otherwise
 def client.request.opts(+method: String, url: String,
-  headers: List<&2, Http.Header>, body: String, ms: U32, follow: Bool)
+  headers: List<&2, Http.Header>, body: Body.Body, ms: U32, follow: Bool)
   -> IO(Response):
   client.request.go(Redirect.redirect.follows(method, follow), method, url,
     headers, body, ms)
@@ -120,7 +123,7 @@ def client.request.opts(+method: String, url: String,
 # GET with headers and a timeout, following redirects when `follow` is set
 def client.get.opts(url: String, headers: List<&2, Http.Header>, ms: U32,
   follow: Bool) -> IO(Response):
-  client.request.opts("GET", url, headers, "", ms, follow)
+  client.request.opts("GET", url, headers, Body.Empty{}, ms, follow)
 
 # whether a response is the failure of an exchange that ran out of time
 def client.timed_out(r: Response) -> Bool:
@@ -132,30 +135,30 @@ def client.timed_out(r: Response) -> Bool:
 
 # GET
 def client.get(url: String, headers: List<&2, Http.Header>) -> IO(Response):
-  http.loc("GET", Url.parse(url), headers, "")
+  http.loc("GET", Url.parse(url), headers, Body.Empty{})
 
 # HEAD (RFC 9110 §9.3.2)
 def client.head(url: String, headers: List<&2, Http.Header>) -> IO(Response):
-  http.loc("HEAD", Url.parse(url), headers, "")
+  http.loc("HEAD", Url.parse(url), headers, Body.Empty{})
 
 # POST
 def client.post(url: String, headers: List<&2, Http.Header>, body: Body.Body)
   -> IO(Response):
-  http.loc("POST", Url.parse(url), headers, Body.body.payload(body))
+  http.loc("POST", Url.parse(url), headers, body)
 
 # PUT
 def client.put(url: String, headers: List<&2, Http.Header>, body: Body.Body)
   -> IO(Response):
-  http.loc("PUT", Url.parse(url), headers, Body.body.payload(body))
+  http.loc("PUT", Url.parse(url), headers, body)
 
 # DELETE
 def client.delete(url: String, headers: List<&2, Http.Header>, body: Body.Body)
   -> IO(Response):
-  http.loc("DELETE", Url.parse(url), headers, Body.body.payload(body))
+  http.loc("DELETE", Url.parse(url), headers, body)
 
 # OPTIONS
 def client.options(url: String, headers: List<&2, Http.Header>) -> IO(Response):
-  http.loc("OPTIONS", Url.parse(url), headers, "")
+  http.loc("OPTIONS", Url.parse(url), headers, Body.Empty{})
 
 # Authorization: Bearer … (auth.bend)
 def client.bearer(token: String) -> Http.Header:

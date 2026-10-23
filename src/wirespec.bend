@@ -12,6 +12,7 @@
 import Base
 import ./http.bend as Http
 import ./url.bend as Url
+import ./body.bend as Body
 
 # the word the effect reads for a scheme that wants TLS
 def wire.scheme(secure: Bool) -> String:
@@ -163,6 +164,40 @@ def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
     case Url.Loc{scheme, host, port, path}:
       +secure = String.eq(scheme, "https")
       wire.exchange.at(method, secure, host, port, path, headers, body)
+
+# a request with n octets of body to a URL that came apart: the request text
+# ends at the blank line, and the octets go after it as the tail (wire.tail)
+def wire.exchange.octets(+method: String, l: Url.Loc,
+  headers: List<&2, Http.Header>, n: Nat) -> Exchange:
+  match l:
+    case Url.Bad{why}:
+      NoUrl{why}
+    case Url.Loc{scheme, +host, +port, path}:
+      +secure = String.eq(scheme, "https")
+      Exchange{secure, host, port, method,
+        Http.request.head.at(method, secure, host, port, path, headers, n)}
+
+# a request with this body to a URL that came apart: text inside the request
+# text as UTF-8, octets after it (SPEC.md HTTP-CLI-10)
+def wire.exchange.body(method: String, l: Url.Loc,
+  headers: List<&2, Http.Header>, b: Body.Body) -> Exchange:
+  match b:
+    case Body.Empty{}:
+      wire.exchange(method, l, headers, "")
+    case Body.Plain{text}:
+      wire.exchange(method, l, headers, text)
+    case Body.Octets{bytes}:
+      wire.exchange.octets(method, l, headers, List.length(&2, U32, bytes))
+
+# the octets sent after the request text: an octet body's, else none
+def wire.tail(b: Body.Body) -> List<&2, U32>:
+  match b:
+    case Body.Empty{}:
+      []
+    case Body.Plain{text}:
+      []
+    case Body.Octets{bytes}:
+      bytes
 
 # --- what is heard ---
 

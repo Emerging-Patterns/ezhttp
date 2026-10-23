@@ -536,14 +536,14 @@ def fields.or(given: List<&2, Header>, dflt: List<&2, Header>)
     case h <> t:
       h <> t
 
-# a request's header fields: Host, User-Agent and Accept (the caller's, or
-# the default), Connection: close, the caller's other fields, Content-Length.
+# a request's header fields for a body of n octets: Host, User-Agent and
+# Accept (the caller's, or the default), Connection: close, the caller's other
+# fields, Content-Length.
 # A caller's Connection or Content-Length is not sent: Connection: close lets
 # the connection end frame the body when no Content-Length / chunked framing
 # applies (RFC 9112 §9.6 / §6.3), and the body's length is computed.
-def request.fields(host: String, +hs: List<&2, Header>, +body: String)
+def request.fields.n(host: String, +hs: List<&2, Header>, +n: Nat)
   -> List<&2, Header>:
-  +n = utf8.len(body)
   List.append(&2, Header, fields.or(fields.of(FHost{}, hs), [H{"Host", host}]),
     List.append(&2, Header,
       fields.or(fields.of(FAgent{}, hs), [H{"User-Agent", "ezhttp"}]),
@@ -552,6 +552,11 @@ def request.fields(host: String, +hs: List<&2, Header>, +body: String)
         H{"Connection", "close"}
           <> List.append(&2, Header, fields.of(FOther{}, hs),
             clen.field(n, Nat.is_eq(n, 0n))))))
+
+# a request's header fields for a text body: the fields for its UTF-8 octets
+def request.fields(host: String, +hs: List<&2, Header>, +body: String)
+  -> List<&2, Header>:
+  request.fields.n(host, hs, utf8.len(body))
 
 # a request-line and headers (RFC 9112 §3, §5). Absolute-path request-target
 # (RFC 9112 §3.2.1); the fields are request.fields'.
@@ -588,6 +593,19 @@ def authority(secure: Bool, host: String, +port: U32) -> String:
 def request.at(method: String, secure: Bool, host: String, port: U32,
   path: String, headers: List<&2, Header>, body: String) -> String:
   request(method, authority(secure, host, port), path, headers, body)
+
+# the request text for a body of n octets that is sent after it as its own
+# octets: the request line, the fields for n octets, and the blank line
+def request.head(method: String, host: String, path: String,
+  headers: List<&2, Header>, +n: Nat) -> String:
+  method ++ " " ++ path ++ " HTTP/1.1\r\n"
+    ++ headers.lines(request.fields.n(host, headers, n))
+    ++ "\r\n"
+
+# the request text a client sends to host and port ahead of n octets
+def request.head.at(method: String, secure: Bool, host: String, port: U32,
+  path: String, headers: List<&2, Header>, n: Nat) -> String:
+  request.head(method, authority(secure, host, port), path, headers, n)
 
 # GET with optional headers
 def get_req(host: String, path: String, headers: List<&2, Header>) -> String:

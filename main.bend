@@ -7,6 +7,7 @@ import ./src/url.bend as Url
 import ./src/pct.bend as Pct
 import ./src/http.bend as Http
 import ./src/body.bend as Body
+import ./src/form.bend as Form
 import ./src/client.bend as Client
 import ./src/server.bend as Server
 import ./src/cookie.bend as Cookie
@@ -59,6 +60,22 @@ def text_body(text: String) -> Body.Body:
 # octet-list request body
 def octets_body(bs: List<&2, U32>) -> Body.Body:
   Body.body.octets(bs)
+
+# a multipart/form-data text field (RFC 7578)
+def form_field(name: String, value: String) -> Form.Part:
+  Form.form.field(name, value)
+
+# a multipart/form-data file part: field name, filename, content type and the
+# file's bytes (each 0..255, as File.read_bytes gives them)
+def form_file(name: String, filename: String, ctype: String,
+  bytes: List<&2, U32>) -> Form.Part:
+  Form.form.file(name, filename, ctype, bytes)
+
+# a multipart/form-data body (RFC 7578) with this boundary: the Content-Type
+# field value to send and an octet body, or why the boundary cannot be used
+# (SPEC.md HTTP-FORM)
+def form_body(boundary: String, parts: List<&2, Form.Part>) -> Form.Form:
+  Form.form.body(boundary, parts)
 
 # BYO JSON (or any codec): encode a value with the caller's to_text
 def encode(~A: Data, ~to_text: A -> String, value: A) -> Body.Body:
@@ -141,8 +158,7 @@ def http.request_opts(
   timeout_ms: U32,
   follow: Bool
 ) -> IO(Client.Response):
-  Client.client.request.opts(method, url, headers, Body.body.payload(body),
-    timeout_ms, follow)
+  Client.client.request.opts(method, url, headers, body, timeout_ms, follow)
 
 # POST with headers, a body and a timeout in milliseconds; redirects are not
 # followed
