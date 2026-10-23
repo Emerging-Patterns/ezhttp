@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.21.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.20.0...v0.21.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **client:** Client.Response is Response{status, headers, reason, bytes}; the eager `body` text is gone, and body_text(bytes) decodes it as UTF-8 when asked. Wire.wire.talk, talk.timed and run answer IO(Wire.Answer) (Failed{answer} or Received{octets}); http.heard is replaced by http.answer. wirespec's Got and the old read state are gone: wire.got(method) is an Http.Hear, Read is Again{hear} | Heard{}, and wire.read.next takes the state and a receive's text. Http.parse.frame, parse.agree, parse.te and parse.te.clash are replaced by head.plan and plan.text.
+
+### Features
+
+* **client:** read responses on packed octets, decode the body on demand ([#58](https://github.com/Emerging-Patterns/ezhttp/issues/58)) ([cab153b](https://github.com/Emerging-Patterns/ezhttp/commit/cab153b2bf4308127f454d8e204e6c85ae50aaaa))
+
 ## [0.20.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.19.0...v0.20.0) (2026-10-23)
 
 
