@@ -1293,7 +1293,7 @@ law lost_kept:
 law lost_send:
   for code: U32
   for why: String
-  for left: String
+  for left: List<&2, U32>
   {Step.step.sent(Fail{((code, why), left)})
     == Step.Lost{"ezhttp: write: " ++ why} : Step.Got<Unit>}
 

@@ -55,7 +55,7 @@ law format_response_is_respond:
 law empty_body_is_empty:
   {Ez.empty_body() == Body.body.empty() : Body.Body}
 
-# LAW: text_body wraps Text
+# LAW: text_body wraps Plain
 law text_body_is_text:
   for s: String
   {Ez.text_body(s) == Body.body.text(s) : Body.Body}

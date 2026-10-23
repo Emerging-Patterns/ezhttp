@@ -157,14 +157,14 @@ def server.read(sock: Socket) -> IO(Socket & Step.Got<Http.Request>):
 
 # write a structured response; a failed send loses the connection
 def server.write.un(
-  pair: Socket & Result<&1, &1, (U32 & String) & String, Unit>
+  pair: Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>
 ) -> IO(Socket & Step.Got<Unit>):
   (sock, res) = pair
   IO.pure(Socket & Step.Got<Unit>, (sock, Step.step.sent(res)))
 
 def server.write(sock: Socket, reply: Http.Reply) -> IO(Socket & Step.Got<Unit>):
   IO.bind(
-    Socket & Result<&1, &1, (U32 & String) & String, Unit>,
+    Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>,
     Socket & Step.Got<Unit>,
     TCP.send(sock, Http.respond.of(reply)),
     server.write.un)

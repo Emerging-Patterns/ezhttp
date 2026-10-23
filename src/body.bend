@@ -6,7 +6,7 @@ import Base
 # what rides in a request: nothing, text, or raw octets (each U32 is 0..255)
 type Body is Data:
   Empty{}
-  Text{text: String}
+  Plain{text: String}
   Octets{bytes: List<&2, U32>}
 
 # one octet as a character whose code point is that byte
@@ -26,7 +26,7 @@ def body.payload(b: Body) -> String:
   match b:
     case Empty{}:
       ""
-    case Text{text}:
+    case Plain{text}:
       text
     case Octets{bytes}:
       octets.chars(bytes)
@@ -37,7 +37,7 @@ def body.empty() -> Body:
 
 # UTF-8 text body
 def body.text(s: String) -> Body:
-  Text{s}
+  Plain{s}
 
 # octet body (each element a wire-oriented code point 0..255)
 def body.octets(bs: List<&2, U32>) -> Body:
@@ -45,7 +45,7 @@ def body.octets(bs: List<&2, U32>) -> Body:
 
 # BYO encode: any value to a text body via the caller's encoder
 def body.encode(~A: Data, ~to_text: A -> String, value: A) -> Body:
-  Text{to_text(value)}
+  Plain{to_text(value)}
 
 # BYO decode: body text to a value via the caller's decoder
 def body.decode(~A: Data, ~from_text: String -> Maybe<&2, A>, s: String)

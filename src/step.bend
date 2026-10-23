@@ -40,8 +40,9 @@ def step.got(
     case Done{value}:
       Kept{value}
 
-# a failed send loses the connection too; the text it did not send is dropped
-def step.sent(res: Result<&1, &1, (U32 & String) & String, Unit>) -> Got<Unit>:
+# a failed send loses the connection too; the bytes it did not send are dropped
+def step.sent(res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>)
+  -> Got<Unit>:
   match res:
     case Fail{((code, why), left)}:
       Lost{step.line("write", why)}
