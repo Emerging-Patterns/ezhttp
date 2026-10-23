@@ -2463,41 +2463,87 @@ law opened_conn:
 # LAW: a read that fails is the exchange's answer as the effect gave it
 # HTTP-CLI-6
 law read_fail:
-  for +method: String
-  for acc: String
+  for st: Spec.Got
   for +got: String
   for e: {False{} == Spec.wire.ok(got) : Bool}
-  {Spec.wire.read.next(method, acc, got) == Spec.Heard{got} : Spec.Read}
+  {Spec.wire.read.next(st, got) == Spec.Heard{got} : Spec.Read}
 
 # LAW: a read that finds the connection closed answers everything received
 # HTTP-CLI-6
 law read_closed:
-  for +method: String
-  for acc: String
-  {Spec.wire.read.next(method, acc, "0\n") == Spec.Heard{"0\n" ++ acc}
-    : Spec.Read}
+  for ps: List<&2, String>
+  for h: Http.Hear
+  {Spec.wire.read.next(Spec.Got{ps, h}, "0\n")
+    == Spec.Heard{"0\n" ++ Spec.wire.joined(ps)} : Spec.Read}
 
 # LAW: a read whose text completes the response answers all of it
 # HTTP-CLI-6
 law read_whole:
   for +method: String
-  for +acc: String
+  for +ps: List<&2, String>
   for +text: String
   for e1: {False{} == String.is_empty(text) : Bool}
-  for e2: {True{} == Http.whole(method, acc ++ text) : Bool}
-  {Spec.wire.read.next(method, acc, "0\n" ++ text)
-    == Spec.Heard{"0\n" ++ (acc ++ text)} : Spec.Read}
+  for e2: {True{} == Http.whole(method, Spec.wire.joined(ps) ++ text) : Bool}
+  {Spec.wire.read.next(Spec.wire.got(method, ps), "0\n" ++ text)
+    == Spec.Heard{"0\n" ++ (Spec.wire.joined(ps) ++ text)} : Spec.Read}
 
 # LAW: a read whose text does not complete the response reads again with it
+# added, in the state for what has been received with it
 # HTTP-CLI-6
 law read_more:
   for +method: String
-  for +acc: String
+  for +ps: List<&2, String>
   for +text: String
   for e1: {False{} == String.is_empty(text) : Bool}
-  for e2: {False{} == Http.whole(method, acc ++ text) : Bool}
-  {Spec.wire.read.next(method, acc, "0\n" ++ text) == Spec.Again{acc ++ text}
-    : Spec.Read}
+  for e2: {False{} == Http.whole(method, Spec.wire.joined(ps) ++ text) : Bool}
+  {Spec.wire.read.next(Spec.wire.got(method, ps), "0\n" ++ text)
+    == Spec.Again{Spec.wire.got(method, text <> ps)} : Spec.Read}
+
+# LAW: the pieces put together in one pass are the text they stand for
+# HTTP-CLI-6
+law join_joined:
+  for +ps: List<&2, String>
+  {Spec.wire.join(ps) == Spec.wire.joined(ps) : String}
+
+# --- judging a response read by read (SPEC.md HTTP-CLI-12) ---
+
+# LAW: the state for a text says the response is complete exactly when the
+# whole-text check (HTTP-CLI-5) says that text is
+# HTTP-CLI-12
+law hear_done:
+  for +method: String
+  for +raw: String
+  {Http.hear.done(Http.hear.of(method, raw)) == Http.whole(method, raw)
+    : Bool}
+
+# LAW: the state for a text, advanced by more text, is the state for the two
+# together
+# HTTP-CLI-12
+law hear_more:
+  for +method: String
+  for +a: String
+  for +b: String
+  {Http.hear.more(Http.hear.of(method, a), b) == Http.hear.of(method, a ++ b)
+    : Http.Hear}
+
+# LAW (RFC 9112 §7.1): a chunked body's walk from a chunk header has ended
+# exactly when chunks.ended says, with the same fuel
+# HTTP-CLI-12
+law walk_done:
+  for f: Nat
+  for +rest: String
+  {Http.walk.done(Http.walk(f, rest))
+    == Http.chunks.ended(f, Http.divide(rest, "\r\n")) : Bool}
+
+# LAW: the walk over a text and more text, with fuel for both, is the walk
+# over the text advanced by the more
+# HTTP-CLI-12
+law walk_more:
+  for f: Nat
+  for +rest: String
+  for +b: String
+  {Http.walk(Nat.add(f, String.length(b)), rest ++ b)
+    == Http.walk.more(Http.walk(f, rest), String.length(b), b) : Http.Walk}
 
 # --- redirects (SPEC.md HTTP-REDIR) ---
 

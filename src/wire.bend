@@ -39,7 +39,7 @@ def wire.reads() -> Nat:
   65536n
 
 # a read's outcome: read again, or the answer
-def wire.loop.on(r: Spec.Read, more: String -> IO(String)) -> IO(String):
+def wire.loop.on(r: Spec.Read, more: Spec.Got -> IO(String)) -> IO(String):
   match r:
     case Spec.Again{acc}:
       more(acc)
@@ -47,21 +47,21 @@ def wire.loop.on(r: Spec.Read, more: String -> IO(String)) -> IO(String):
       IO.pure(String, answer)
 
 # read until wirespec.bend says the answer is whole
-def wire.loop(fuel: Nat, +conn: U32, +method: String, acc: String)
-  -> IO(String):
+def wire.loop(fuel: Nat, +conn: U32, acc: Spec.Got) -> IO(String):
   match fuel:
     case 0n:
       IO.pure(String, Spec.wire.spent())
     case 1n+p:
       do IO<String>:
         +got : String <- ezwire.read(conn)
-        wire.loop.on(Spec.wire.read.next(method, acc, got),
-          next => wire.loop(p, conn, method, next))
+        wire.loop.on(Spec.wire.read.next(acc, got),
+          next => wire.loop(p, conn, next))
 
 # read the answer on an open connection, then close it
 def wire.hear(+conn: U32, method: String) -> IO(String):
   do IO<String>:
-    +answer : String <- wire.loop(wire.reads(), conn, method, "")
+    +answer : String <- wire.loop(wire.reads(), conn,
+      Spec.wire.got(method, []))
     _done : Unit <- ezwire.close(conn)
     IO.pure(String, answer)
 
