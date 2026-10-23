@@ -12,7 +12,7 @@ import ./auth.bend as Auth
 
 # structured client result: transport/parse error, or an HTTP response with
 # its status line's reason phrase (SPEC.md HTTP-CLI-11)
-type Response is Data:
+type Response is Data:  # noqa: L001 the wire effect keeps src/client.bend out of law files (HTTP-TRUST-5)
   Err{why: String}
   Response{status: U32, headers: List<&2, Http.Header>, body: String,
     reason: String}

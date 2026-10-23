@@ -301,11 +301,11 @@ never pair with `Access-Control-Allow-Origin: *`.
 ## Compliance
 
 Closed equalities in `LAWS.bend`, proved in `PROOF.bend`
-(`bend PROOF.bend` prints `ALL PROOFS CHECK`). The laws that say the
-entry's re-exports and the client's header helpers equal those pure
-definitions are in `ENTRY.bend`. `main.bend` and `src/client.bend` reach
-the wire effect, so bend's verdict on that file is `SOME PROOFS FAIL`, with
-the list of defs that rely on foreign code as its only error. The laws target:
+(`bend PROOF.bend` prints `ALL PROOFS CHECK`). `main.bend` and
+`src/client.bend` reach the wire effect, so no law file imports them: the
+laws are stated on the pure definitions under `src/`, and each re-export in
+`main.bend` that bolt's `coverage` rule (an error) would flag carries a
+`# noqa: L001` naming the definition it re-exports. The laws target:
 
 - [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) URI: scheme before the
   first colon and lowercased (§3.1), `hier-part` requiring `//` (§3),

@@ -703,6 +703,63 @@ law fresh_max_age_overrides_expires:
   {Cache.cache.fresh(Cache.cache.note("max-age=0",
       "Wed, 21 Oct 2099 07:28:00 GMT"), 0n) == False{} : Bool}
 
+# LAW (RFC 9111 §5.2.2.5): whatever else they say, directives with no-store
+# are never fresh
+law fresh_no_store_any:
+  for no_cache: Bool
+  for public: Bool
+  for private: Bool
+  for max_age: String
+  for expires: String
+  for age: Nat
+  {Cache.cache.fresh(Cache.Cc{True{}, no_cache, public, private, max_age,
+    expires}, age) == False{} : Bool}
+
+# LAW (RFC 9111 §5.2.2.4): whatever else they say, directives with no-cache
+# are never fresh
+law fresh_no_cache_any:
+  for no_store: Bool
+  for public: Bool
+  for private: Bool
+  for max_age: String
+  for expires: String
+  for age: Nat
+  {Cache.cache.fresh(Cache.Cc{no_store, True{}, public, private, max_age,
+    expires}, age) == False{} : Bool}
+
+# LAW (RFC 6265 §5.2.2): Max-Age replaces the cookie's max-age and nothing
+# else
+law cookie_age_sets:
+  for name: String
+  for value: String
+  for expires: String
+  for max_age: String
+  for domain: String
+  for path: String
+  for secure: Bool
+  for http_only: Bool
+  for same_site: String
+  for host_only: Bool
+  for age: String
+  {Cookie.cookie.age(Cookie.Cookie{name, value, expires, max_age, domain, path,
+    secure, http_only, same_site, host_only}, age)
+    == Cookie.Cookie{name, value, expires, age, domain, path, secure,
+      http_only, same_site, host_only} : Cookie.Cookie}
+
+# LAW: a preflight for a request that did not parse is 400 with its reason,
+# whatever the allow-list
+law cors_preflight_bad:
+  for cfg: Cors.Cfg
+  for why: String
+  {Cors.cors.preflight_req(cfg, Http.Bad{why}) == Http.Reply{400, [], why}
+    : Http.Reply}
+
+# LAW (RFC 4648 §4): at the end of the input, the quantum in progress is
+# written out with its padding
+law b64_go_end:
+  for phase: B64.Phase
+  {B64.b64.go([], phase) == B64.b64.end(phase) : String}
+
 # LAW (RFC 9111 §4.2.1): a present max-age is what freshness uses
 law cache_max_age_present:
   {Cache.cache.max_age(Cache.cache.parse("max-age=1")) == True{} : Bool}
