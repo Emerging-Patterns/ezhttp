@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.20.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.19.0...v0.20.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **server:** connections are served concurrently, not one at a time; limited serves return once every forked connection is closed; replies are sent with bend-kit-wire's send.words; server.reply (the CORS helper) is renamed server.reply.text.
+
+### Features
+
+* **server:** fork per connection, a context for the handler, byte replies ([#56](https://github.com/Emerging-Patterns/ezhttp/issues/56)) ([9eaa048](https://github.com/Emerging-Patterns/ezhttp/commit/9eaa048b3e33667a65a3ca0bd5e673442612a6dc))
+
 ## [0.19.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.18.0...v0.19.0) (2026-10-23)
 
 
