@@ -42,16 +42,16 @@ hub package; import ezjson from the hub to read a JSON body (below).
 
 `http.get`, `http.head`, `http.post`, `http.put`, `http.delete`, and
 `http.options` return a structured client `Response`, or `Err` with why the
-exchange failed. A `Response` has the status, the header fields, the body and
-the status line's reason phrase as text (decoded from what arrived as UTF-8,
-U+FFFD for a byte that is not), and `bytes`: the body's octets exactly as they
-arrived (SPEC.md HTTP-BODY), so a binary download is byte-exact. `Response`
-holds `Bytes`, so it is a linear value: match on it once. Content-Length and
-chunk sizes count octets. A body of `n` octets costs about 64 bytes of memory
-per octet while it is read (1.35 GB peak for 20 MB); the request side stays
-packed.
-a connection that could not be made names its cause, such as
-`could not reach 127.0.0.1 port 1: ECONNREFUSED (111)`.
+exchange failed. A `Response` has the status, the header fields and the status
+line's reason phrase as text (decoded from what arrived as UTF-8, U+FFFD for a
+byte that is not), and `bytes`: the body's octets exactly as they arrived,
+packed (SPEC.md HTTP-BODY), so a binary download is byte-exact. The body is
+never turned into text unless you ask: `body_text(bytes)` decodes it as UTF-8.
+`Response` holds `Bytes`, so it is a linear value: match on it once.
+Content-Length and chunk sizes count octets. A response is read and framed on
+its packed octets, so a 20 MB download peaks near 100 MB rather than 1.35 GB.
+An exchange that fails says why: a connection that could not be made names its
+cause, such as `could not reach 127.0.0.1 port 1: ECONNREFUSED (111)`.
 Pass custom headers: `bearer` writes `Authorization: Bearer …`, and `basic`
 writes `Authorization: Basic …` (RFC 7617, RFC 4648). Sockets, TLS and
 name resolution are [bend-kit](https://github.com/paymog/bend-kit)'s
@@ -61,6 +61,15 @@ checked. OpenSSL 3 is loaded at run time; point `BEND_LIBSSL` at `libssl.so.3`
 when it is not where the loader looks (`EZ_LIBSSL` is no longer read). Its
 effects park on the runtime's event loop, so requests made under `IO.fork`
 run side by side.
+
+```
+def status_and_text(r: Client.Response) -> String:
+  match r:
+    case Client.Err{why}:
+      why
+    case Client.Response{status, headers, reason, bytes}:
+      U32.show(status) ++ " " ++ Http.body_text(bytes)
+```
 
 ```
 import emerging-ezhttp@0.13.0.0/main.bend as Http

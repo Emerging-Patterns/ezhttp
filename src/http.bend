@@ -278,6 +278,57 @@ def chunks.next.hex(+before: String, +after: String, ok: Bool) -> Next:
 def chunks.next(+before: String, +after: String) -> Next:
   chunks.next.hex(before, after, hex.well(chunks.token(before)))
 
+# what a chunk-size line says, before the octets after it are looked at
+# (RFC 9112 §7.1): not a size, the last chunk, or a chunk of n octets
+type Size is Data:
+  SizeBad{why: String}
+  SizeLast{}
+  SizeData{n: Nat}
+
+# a size that is hex: the last chunk when it is 0
+def chunk.size.n(+n: Nat, zero: Bool) -> Size:
+  match zero:
+    case True{}:
+      SizeLast{}
+    case False{}:
+      SizeData{n}
+
+# a chunk-size line once it is known whether its size is hex
+def chunk.size.of(+before: String, ok: Bool) -> Size:
+  match ok:
+    case False{}:
+      SizeBad{"chunk size is not hexadecimal"}
+    case True{}:
+      +n = hexlen(before)
+      chunk.size.n(n, Nat.is_eq(n, 0n))
+
+# what a chunk-size line says (extensions after `;` ignored)
+def chunk.size(+before: String) -> Size:
+  chunk.size.of(before, hex.well(chunks.token(before)))
+
+# why a chunk whose octets and CRLF have not all arrived is torn
+def chunk.short() -> String:
+  "the chunked body stopped short"
+
+# a chunk of n octets: on to the next chunk header once its octets and CRLF
+# are there
+def chunk.next.data(+after: String, +n: Nat, ready: Bool) -> Next:
+  match ready:
+    case False{}:
+      Reject{chunk.short()}
+    case True{}:
+      Go{divide(octs.drop(after, Nat.add(n, 2n)), "\r\n")}
+
+# the decoder's step for what a chunk-size line says and the text after it
+def chunk.next(z: Size, +after: String) -> Next:
+  match z:
+    case SizeBad{why}:
+      Reject{why}
+    case SizeLast{}:
+      Stop{}
+    case SizeData{+n}:
+      chunk.next.data(after, n, chunks.ready(after, n))
+
 # apply one scan step
 def chunks.scan.step(step: Next, rest: Cut -> Maybe<&2, String>)
   -> Maybe<&2, String>:
@@ -715,6 +766,13 @@ def target.form(method: String, path: String, absolute: Bool) -> Bool:
     case False{}:
       target.asterisk(method, String.eq(path, "*"))
 
+# how a response's body is framed
+type Frame is Data:
+  Bare{}
+  Sized{n: Nat}
+  Chunked{}
+  Closed{}
+
 # a body against the length its head promised
 def parse.short(status: U32, headers: List<&2, Header>, n: Nat, body: String,
   short: Bool) -> Reply:
@@ -784,49 +842,84 @@ def parse.chunks(status: U32, headers: List<&2, Header>, +body: String) -> Reply
   parse.chunked(status, headers, body,
     chunks.scan(String.length(body), divide(body, "\r\n")))
 
-# Transfer-Encoding together with Content-Length is a bad message
-def parse.te.clash(status: U32, headers: List<&2, Header>, body: String,
-  present: Bool) -> Reply:
+# --- a response planned from its head (SPEC.md HTTP-CLI-15) ---
+
+# what a final head says of its response, before its body is touched: torn,
+# or its status, its fields and how its body is framed
+type Plan is Data:
+  Unplanned{why: String}
+  Planned{status: U32, headers: List<&2, Header>, frame: Frame}
+
+# chunked framing, unless a Content-Length is there too (RFC 9112 §6.3 item 3)
+def plan.clash(status: U32, headers: List<&2, Header>, present: Bool) -> Plan:
   match present:
     case True{}:
-      Torn{"Content-Length and Transfer-Encoding conflict"}
+      Unplanned{"Content-Length and Transfer-Encoding conflict"}
     case False{}:
-      parse.chunks(status, headers, body)
+      Planned{status, headers, Chunked{}}
+
+# Content-Length when it reads as a number; else the rest of the connection
+def plan.len(status: U32, headers: List<&2, Header>, m: Maybe<&2, Nat>) -> Plan:
+  match m:
+    case None{}:
+      Planned{status, headers, Closed{}}
+    case Some{n}:
+      Planned{status, headers, Sized{n}}
 
 # chunked framing, or Content-Length, or the rest of the connection
-def parse.te(status: U32, headers: List<&2, Header>, +lens: List<&2, String>,
-  +body: String, chunked: Bool) -> Reply:
+def plan.te(status: U32, headers: List<&2, Header>, +lens: List<&2, String>,
+  chunked: Bool) -> Plan:
   match chunked:
     case False{}:
-      parse.len(status, headers, digits.read(first(lens)), body)
+      plan.len(status, headers, digits.read(first(lens)))
     case True{}:
-      parse.te.clash(status, headers, body, clen.any(lens))
+      plan.clash(status, headers, clen.any(lens))
 
 # disagreeing Content-Length values are torn before framing
-def parse.agree(status: U32, headers: List<&2, Header>, te: String,
-  +lens: List<&2, String>, body: String, ok: Bool) -> Reply:
+def plan.agree(status: U32, headers: List<&2, Header>, te: String,
+  +lens: List<&2, String>, ok: Bool) -> Plan:
   match ok:
     case False{}:
-      Torn{"Content-Length values disagree"}
+      Unplanned{"Content-Length values disagree"}
     case True{}:
-      parse.te(status, headers, lens, body,
+      plan.te(status, headers, lens,
         String.contains(String.to_lower(te), "chunked"))
 
-# the headers that decide the framing (RFC 9112 §6.3)
-def parse.frame(status: U32, headers: List<&2, Header>, te: String,
-  +lens: List<&2, String>, body: String) -> Reply:
-  parse.agree(status, headers, te, lens, body, clen.agree(lens))
+# a final head's plan, its status line read (RFC 9112 §4, §6.3)
+def head.plan(m: Maybe<&2, U32>, +ls: List<&2, String>) -> Plan:
+  match m:
+    case None{}:
+      Unplanned{"the response has no status line"}
+    case Some{n}:
+      +lens = head.values(ls, "content-length")
+      plan.agree(n, head.list(ls), head.go(ls, "transfer-encoding"), lens,
+        clen.agree(lens))
+
+# a body under its framing, as the text parse reads it
+def plan.body(status: U32, headers: List<&2, Header>, f: Frame, +body: String)
+  -> Reply:
+  match f:
+    case Bare{}:
+      Reply{status, headers, ""}
+    case Sized{n}:
+      parse.clen(status, headers, n, body)
+    case Chunked{}:
+      parse.chunks(status, headers, body)
+    case Closed{}:
+      Reply{status, headers, body}
+
+# a plan carried out on the text after its head
+def plan.text(p: Plan, +body: String) -> Reply:
+  match p:
+    case Unplanned{why}:
+      Torn{why}
+    case Planned{status, headers, f}:
+      plan.body(status, headers, f, body)
 
 # a head whose status line has been read (RFC 9112 §4)
 def parse.status(m: Maybe<&2, U32>, +ls: List<&2, String>, body: String)
   -> Reply:
-  match m:
-    case None{}:
-      Torn{"the response has no status line"}
-    case Some{n}:
-      +hs = head.list(ls)
-      parse.frame(n, hs, head.go(ls, "transfer-encoding"),
-        head.values(ls, "content-length"), body)
+  plan.text(head.plan(m, ls), body)
 
 # the status code a head's first line names, if it names one (RFC 9112 §4)
 def status.of(ls: List<&2, String>) -> Maybe<&2, U32>:
@@ -1151,13 +1244,6 @@ def ask.show(r: Request) -> String:
 
 # --- when a response has all arrived (RFC 9112 §6.3) ---
 
-# how a response's body is framed
-type Frame is Data:
-  Bare{}
-  Sized{n: Nat}
-  Chunked{}
-  Closed{}
-
 # 204 and 304 carry no body; a status line that did not parse is framed by
 # its headers
 def status.bare(m: Maybe<&2, U32>) -> Bool:
@@ -1311,9 +1397,36 @@ def whole(+method: String, +raw: String) -> Bool:
 def status.empty(+m: Maybe<&2, U32>) -> Bool:
   Bool.or(status.interim(m), status.bare(m))
 
+# a head that has no body: its status and fields (RFC 9110 §6.4.1)
+def head.bare(m: Maybe<&2, U32>, ls: List<&2, String>) -> Plan:
+  match m:
+    case None{}:
+      Unplanned{"the response has no status line"}
+    case Some{n}:
+      Planned{n, head.list(ls), Bare{}}
+
+# a final head's plan once it is known whether it has a body
+def head.final.of(bare: Bool, +m: Maybe<&2, U32>, +ls: List<&2, String>)
+  -> Plan:
+  match bare:
+    case True{}:
+      head.bare(m, ls)
+    case False{}:
+      head.plan(m, ls)
+
+# a final head's plan: no body for a reply to HEAD or a 1xx, 204 or 304 status
+# (RFC 9110 §6.4.1, §9.3.2), else as head.plan frames it
+def head.final(asked: Bool, +ls: List<&2, String>) -> Plan:
+  +m = status.of(ls)
+  head.final.of(Bool.or(asked, status.empty(m)), m, ls)
+
+# an interim head is skipped when anything follows it
+def interim.skip.of(m: Maybe<&2, U32>, more: Bool) -> Bool:
+  Bool.and(status.interim(m), more)
+
 # an interim head is skipped when more text follows it
 def interim.skip(m: Maybe<&2, U32>, after: String) -> Bool:
-  Bool.and(status.interim(m), Bool.not(String.is_empty(after)))
+  interim.skip.of(m, Bool.not(String.is_empty(after)))
 
 # the final head with no body: its status and fields, an empty body
 def parse.to.bare(m: Maybe<&2, U32>, ls: List<&2, String>) -> Reply:
@@ -1583,6 +1696,63 @@ def hear.more(h: Hear, +b: String) -> Hear:
       Count{n, Nat.add(have, octs.len(b))}
     case Walking{w}:
       Walking{walk.more(w, String.length(b), b)}
+
+# whether a walk can be advanced by a count of octets alone: inside a chunk's
+# data that still owes at least that many
+def walk.counts(w: Walk, +m: Nat) -> Bool:
+  match w:
+    case Ended{}:
+      False{}
+    case Hold{fuel, rest}:
+      False{}
+    case Owed{fuel, owed}:
+      Bool.not(Nat.is_lt(owed, m))
+    case Tail{fuel, left, rest}:
+      False{}
+
+# a walk advanced by m octets it does not look at (walk.counts says when
+# that is walk.more)
+def walk.more.n(w: Walk, +m: Nat) -> Walk:
+  match w:
+    case Ended{}:
+      Ended{}
+    case Hold{fuel, rest}:
+      Hold{fuel, rest}
+    case Owed{g, owed}:
+      Owed{Nat.add(g, m), Nat.sub(owed, m)}
+    case Tail{fuel, left, rest}:
+      Tail{fuel, left, rest}
+
+# whether a state can be advanced by a count of octets alone, without their
+# text: a whole response, a body framed by the close or by Content-Length, or
+# a chunk's data that still owes at least that many (SPEC.md HTTP-CLI-6)
+def hear.counts(h: Hear, +m: Nat) -> Bool:
+  match h:
+    case Heads{fuel, asked, raw}:
+      False{}
+    case Whole{}:
+      True{}
+    case Never{}:
+      True{}
+    case Count{n, have}:
+      True{}
+    case Walking{w}:
+      walk.counts(w, m)
+
+# a state advanced by m octets it does not look at (hear.counts says when
+# that is hear.more)
+def hear.more.n(h: Hear, +m: Nat) -> Hear:
+  match h:
+    case Heads{fuel, asked, raw}:
+      Heads{fuel, asked, raw}
+    case Whole{}:
+      Whole{}
+    case Never{}:
+      Never{}
+    case Count{n, have}:
+      Count{n, Nat.add(have, m)}
+    case Walking{w}:
+      Walking{walk.more.n(w, m)}
 
 # --- a response's reason phrase (RFC 9112 §4) ---
 

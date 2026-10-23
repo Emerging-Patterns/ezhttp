@@ -4153,10 +4153,6 @@ def Laws.hear_more(method, a, b):
         String.length(a ++ b), Nat.add(String.length(a), String.length(b)), len_app(a, b)),
       hm(String.length(a), asked, a, b)))
 
-def Laws.read_fail(st, got, e):
-  %e : {Spec.wire.read.of(st, got, _) == Spec.Heard{got} : Spec.Read}
-  {==}
-
 law app_nil:
   for x: String
   {x ++ "" == x : String}
@@ -4204,48 +4200,6 @@ def Laws.join_joined(ps):
   Equal.trans(String, Spec.wire.join.go(ps, ""), Spec.wire.joined(ps) ++ "",
     Spec.wire.joined(ps), join_go(ps, ""), app_nil(Spec.wire.joined(ps)))
 
-def Laws.read_closed(ps, _h):
-  Equal.cong(String, Spec.Read, x => Spec.Heard{"0\n" ++ x},
-    Spec.wire.join(ps), Spec.wire.joined(ps), Laws.join_joined(ps))
-
-def Laws.read_whole(method, ps, text, e1, e2):
-  +J = Spec.wire.joined(ps)
-  +H0 = Http.hear.of(method, J)
-  +dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
-  %dz : {Spec.wire.read.got(Spec.Got{ps, H0}, _, String.is_empty(_)) == Spec.Heard{"0\n" ++ (J ++ text)}
-    : Spec.Read}
-  %e1 : {Spec.wire.read.got(Spec.Got{ps, H0}, text, _) == Spec.Heard{"0\n" ++ (J ++ text)} : Spec.Read}
-  %Equal.sym(Http.Hear, Http.hear.more(H0, text), Http.hear.of(method, J ++ text),
-    Laws.hear_more(method, J, text))
-    : {Spec.wire.read.whole(text <> ps, _, Http.hear.done(_)) == Spec.Heard{"0\n" ++ (J ++ text)} : Spec.Read}
-  %Equal.sym(Bool, Http.hear.done(Http.hear.of(method, J ++ text)),
-    Http.whole(method, J ++ text), Laws.hear_done(method, J ++ text))
-    : {Spec.wire.read.whole(text <> ps, Http.hear.of(method, J ++ text), _) == Spec.Heard{"0\n" ++ (J ++ text)}
-      : Spec.Read}
-  %e2 : {Spec.wire.read.whole(text <> ps, Http.hear.of(method, J ++ text), _)
-    == Spec.Heard{"0\n" ++ (J ++ text)} : Spec.Read}
-  Equal.cong(String, Spec.Read, x => Spec.Heard{"0\n" ++ x},
-    Spec.wire.join(text <> ps), J ++ text, Laws.join_joined(text <> ps))
-
-def Laws.read_more(method, ps, text, e1, e2):
-  +J = Spec.wire.joined(ps)
-  +H0 = Http.hear.of(method, J)
-  +dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
-  %dz : {Spec.wire.read.got(Spec.Got{ps, H0}, _, String.is_empty(_)) == Spec.Again{Spec.wire.got(method, text <> ps)}
-    : Spec.Read}
-  %e1 : {Spec.wire.read.got(Spec.Got{ps, H0}, text, _) == Spec.Again{Spec.wire.got(method, text <> ps)} : Spec.Read}
-  %Equal.sym(Http.Hear, Http.hear.more(H0, text), Http.hear.of(method, J ++ text),
-    Laws.hear_more(method, J, text))
-    : {Spec.wire.read.whole(text <> ps, _, Http.hear.done(_)) == Spec.Again{Spec.wire.got(method,
-        text <> ps)} : Spec.Read}
-  %Equal.sym(Bool, Http.hear.done(Http.hear.of(method, J ++ text)),
-    Http.whole(method, J ++ text), Laws.hear_done(method, J ++ text))
-    : {Spec.wire.read.whole(text <> ps, Http.hear.of(method, J ++ text),
-        _) == Spec.Again{Spec.wire.got(method, text <> ps)}
-      : Spec.Read}
-  %e2 : {Spec.wire.read.whole(text <> ps, Http.hear.of(method, J ++ text), _)
-    == Spec.Again{Spec.wire.got(method, text <> ps)} : Spec.Read}
-  {==}
 
 # --- redirect targets (SPEC.md HTTP-REDIR-3 to 5) ---
 
@@ -6318,3 +6272,225 @@ def Laws.nocontent_is(_code):
 
 def Laws.step_octets(_method, _target, _hs, _body):
   {==}
+
+# --- reading packed octets, read by read (SPEC.md HTTP-CLI-6) ---
+
+def Laws.read_closed(_h):
+  {==}
+
+def Laws.skip_short(b, n, e):
+  match b:
+    case SNil{}:
+      Equal.cong(Nat, Http.Skip, x => Http.Short{x}, n, Nat.sub(n, 0n),
+        Equal.sym(Nat, Nat.sub(n, 0n), n, sub_zero(n)))
+    case SCon{+h, +t}:
+      match n:
+        case 0n:
+          eq.bit.absurd(&2, {Http.octs.skip(SCon{h, t}, 0n)
+            == Http.Short{Nat.sub(0n, String.length(SCon{h, t}))} : Http.Skip}, e)
+        case 1n+k:
+          match k:
+            case 0n:
+              Laws.skip_short(t, 0n, e)
+            case 1n+j:
+              Laws.skip_short(t, 1n+j, e)
+
+def Laws.hear_count(h, b, e):
+  match h:
+    case Http.Heads{fuel, asked, raw}:
+      eq.bit.absurd(&2, {Http.hear.more.n(Http.Heads{fuel, asked, raw}, String.length(b))
+        == Http.hear.more(Http.Heads{fuel, asked, raw}, b) : Http.Hear},
+        Equal.sym(Bool, True{}, False{}, e))
+    case Http.Whole{}:
+      {==}
+    case Http.Never{}:
+      {==}
+    case Http.Count{n, have}:
+      Equal.cong(Nat, Http.Hear, x => Http.Count{n, Nat.add(have, x)},
+        String.length(b), Http.octs.len(b),
+        Equal.sym(Nat, Http.octs.len(b), String.length(b), Laws.octs_len(b)))
+    case Http.Walking{w}:
+      match w:
+        case Http.Ended{}:
+          eq.bit.absurd(&2, {Http.hear.more.n(Http.Walking{Http.Ended{}}, String.length(b))
+            == Http.hear.more(Http.Walking{Http.Ended{}}, b) : Http.Hear},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.Hold{fuel, rest}:
+          eq.bit.absurd(&2, {Http.hear.more.n(Http.Walking{Http.Hold{fuel, rest}}, String.length(b))
+            == Http.hear.more(Http.Walking{Http.Hold{fuel, rest}}, b) : Http.Hear},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.Tail{fuel, left, rest}:
+          eq.bit.absurd(&2, {Http.hear.more.n(Http.Walking{Http.Tail{fuel, left, rest}}, String.length(b))
+            == Http.hear.more(Http.Walking{Http.Tail{fuel, left, rest}}, b) : Http.Hear},
+            Equal.sym(Bool, True{}, False{}, e))
+        case Http.Owed{+g, +owed}:
+          +f = Nat.add(g, String.length(b))
+          +lt = Equal.sym(Bool, Nat.is_lt(owed, String.length(b)), False{},
+            eq.not.true(Nat.is_lt(owed, String.length(b)), Equal.sym(Bool, True{},
+              Bool.not(Nat.is_lt(owed, String.length(b))), e)))
+          Equal.cong(Http.Skip, Http.Hear,
+            x => Http.Walking{Http.walk.data(f, x, s => Http.walk(f, s))},
+            Http.Short{Nat.sub(owed, String.length(b))}, Http.octs.skip(b, owed),
+            Equal.sym(Http.Skip, Http.octs.skip(b, owed), Http.Short{Nat.sub(owed, String.length(b))},
+              Laws.skip_short(b, owed, lt)))
+
+def Laws.read_count(h, b, e1, e2):
+  match b:
+    case SNil{}:
+      eq.bit.absurd(&2, {Spec.wire.read.count(h, 0n)
+        == Some{Spec.wire.read.next(h, "")} : Maybe<&2, Spec.Read>}, e1)
+    case SCon{+c, +t}:
+      +L = String.length(SCon{c, t})
+      +e = e2
+      %e : {Spec.wire.read.counted(h, L, _)
+        == Some{Spec.wire.read.next(h, SCon{c, t})} : Maybe<&2, Spec.Read>}
+      Equal.cong(Http.Hear, Maybe<&2, Spec.Read>, x => Some{Spec.wire.read.with(x)},
+        Http.hear.more.n(h, L), Http.hear.more(h, SCon{c, t}),
+        Laws.hear_count(h, SCon{c, t}, e))
+
+def Laws.read_whole(method, a, text, e1, e2):
+  +H0 = Http.hear.of(method, a)
+  +J = a ++ text
+  %e1 : {Spec.wire.read.got(H0, text, _) == Spec.Heard{} : Spec.Read}
+  %Equal.sym(Http.Hear, Http.hear.more(H0, text), Http.hear.of(method, J),
+    Laws.hear_more(method, a, text))
+    : {Spec.wire.read.done(_, Http.hear.done(_)) == Spec.Heard{} : Spec.Read}
+  %Equal.sym(Bool, Http.hear.done(Http.hear.of(method, J)), Http.whole(method, J),
+    Laws.hear_done(method, J))
+    : {Spec.wire.read.done(Http.hear.of(method, J), _) == Spec.Heard{} : Spec.Read}
+  %e2 : {Spec.wire.read.done(Http.hear.of(method, J), _) == Spec.Heard{} : Spec.Read}
+  {==}
+
+def Laws.read_more(method, a, text, e1, e2):
+  +H0 = Http.hear.of(method, a)
+  +J = a ++ text
+  %e1 : {Spec.wire.read.got(H0, text, _) == Spec.Again{Http.hear.of(method, J)}
+    : Spec.Read}
+  %Equal.sym(Http.Hear, Http.hear.more(H0, text), Http.hear.of(method, J),
+    Laws.hear_more(method, a, text))
+    : {Spec.wire.read.done(_, Http.hear.done(_))
+      == Spec.Again{Http.hear.of(method, J)} : Spec.Read}
+  %Equal.sym(Bool, Http.hear.done(Http.hear.of(method, J)), Http.whole(method, J),
+    Laws.hear_done(method, J))
+    : {Spec.wire.read.done(Http.hear.of(method, J), _)
+      == Spec.Again{Http.hear.of(method, J)} : Spec.Read}
+  %e2 : {Spec.wire.read.done(Http.hear.of(method, J), _)
+    == Spec.Again{Http.hear.of(method, J)} : Spec.Read}
+  {==}
+
+# --- a response planned from its head (SPEC.md HTTP-CLI-15) ---
+
+def Laws.plan_none(_ls):
+  {==}
+
+def Laws.plan_disagree(n, ls, e):
+  %e : {Http.plan.agree(n, Http.head.list(ls), Http.head.go(ls, "transfer-encoding"),
+    Http.head.values(ls, "content-length"), _)
+    == Http.Unplanned{"Content-Length values disagree"} : Http.Plan}
+  {==}
+
+def Laws.plan_conflict(n, ls, e1, e2, e3):
+  +V = Http.head.values(ls, "content-length")
+  %e1 : {Http.plan.agree(n, Http.head.list(ls), Http.head.go(ls, "transfer-encoding"),
+    V, _) == Http.Unplanned{"Content-Length and Transfer-Encoding conflict"} : Http.Plan}
+  %e2 : {Http.plan.te(n, Http.head.list(ls), V, _) == Http.Unplanned{"Content-Length and Transfer-Encoding conflict"} : Http.Plan}
+  %e3 : {Http.plan.clash(n, Http.head.list(ls), _) == Http.Unplanned{"Content-Length and Transfer-Encoding conflict"} : Http.Plan}
+  {==}
+
+def Laws.plan_chunked(n, ls, e1, e2, e3):
+  +V = Http.head.values(ls, "content-length")
+  %e1 : {Http.plan.agree(n, Http.head.list(ls), Http.head.go(ls, "transfer-encoding"),
+    V, _) == Http.Planned{n, Http.head.list(ls), Http.Chunked{}} : Http.Plan}
+  %e2 : {Http.plan.te(n, Http.head.list(ls), V, _) == Http.Planned{n, Http.head.list(ls), Http.Chunked{}} : Http.Plan}
+  %e3 : {Http.plan.clash(n, Http.head.list(ls), _) == Http.Planned{n, Http.head.list(ls), Http.Chunked{}} : Http.Plan}
+  {==}
+
+def Laws.plan_sized(n, ls, e1, e2, k, e3):
+  +V = Http.head.values(ls, "content-length")
+  %e1 : {Http.plan.agree(n, Http.head.list(ls), Http.head.go(ls, "transfer-encoding"),
+    V, _) == Http.Planned{n, Http.head.list(ls), Http.Sized{k}} : Http.Plan}
+  %e2 : {Http.plan.te(n, Http.head.list(ls), V, _) == Http.Planned{n, Http.head.list(ls), Http.Sized{k}} : Http.Plan}
+  %e3 : {Http.plan.len(n, Http.head.list(ls), _) == Http.Planned{n, Http.head.list(ls), Http.Sized{k}} : Http.Plan}
+  {==}
+
+def Laws.plan_closed(n, ls, e1, e2, e3):
+  +V = Http.head.values(ls, "content-length")
+  %e1 : {Http.plan.agree(n, Http.head.list(ls), Http.head.go(ls, "transfer-encoding"),
+    V, _) == Http.Planned{n, Http.head.list(ls), Http.Closed{}} : Http.Plan}
+  %e2 : {Http.plan.te(n, Http.head.list(ls), V, _) == Http.Planned{n, Http.head.list(ls), Http.Closed{}} : Http.Plan}
+  %e3 : {Http.plan.len(n, Http.head.list(ls), _) == Http.Planned{n, Http.head.list(ls), Http.Closed{}} : Http.Plan}
+  {==}
+
+def Laws.plan_status(_m, _ls, _body):
+  {==}
+
+law final_of:
+  for b: Bool
+  for +m: Maybe<&2, U32>
+  for +ls: List<&2, String>
+  for +after: String
+  {Http.parse.to.final(m, ls, after, b)
+    == Http.plan.text(Http.head.final.of(b, m, ls), after) : Http.Reply}
+
+def final_of(b, m, _ls, _after):
+  match b:
+    case True{}:
+      match m:
+        case None{}:
+          {==}
+        case Some{n}:
+          {==}
+    case False{}:
+      {==}
+
+def Laws.plan_final(f, head, before, after, e):
+  +L = String.lines(before)
+  +M = Http.status.of(L)
+  %e : {Http.parse.to.step(head, L, M, after, _, cut => Http.parse.to.go(f, head, cut))
+    == Http.plan.text(Http.head.final(head, L), after) : Http.Reply}
+  final_of(Bool.or(head, Http.status.empty(M)), M, L, after)
+
+law size_ready:
+  for +after: String
+  for +n: Nat
+  for r: Bool
+  {Http.chunks.next.of(False{}, r, after, n) == Http.chunk.next.data(after, n, r)
+    : Http.Next}
+
+def size_ready(_after, _n, r):
+  match r:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+law size_zero:
+  for +n: Nat
+  for +after: String
+  for z: Bool
+  {Http.chunks.next.of(z, Http.chunks.ready(after, n), after, n)
+    == Http.chunk.next(Http.chunk.size.n(n, z), after) : Http.Next}
+
+def size_zero(n, after, z):
+  match z:
+    case True{}:
+      {==}
+    case False{}:
+      size_ready(after, n, Http.chunks.ready(after, n))
+
+law size_hex:
+  for +before: String
+  for +after: String
+  for ok: Bool
+  {Http.chunks.next.hex(before, after, ok)
+    == Http.chunk.next(Http.chunk.size.of(before, ok), after) : Http.Next}
+
+def size_hex(before, after, ok):
+  match ok:
+    case False{}:
+      {==}
+    case True{}:
+      size_zero(Http.hexlen(before), after, Nat.is_eq(Http.hexlen(before), 0n))
+
+def Laws.size_next(before, after):
+  size_hex(before, after, Http.hex.well(Http.chunks.token(before)))

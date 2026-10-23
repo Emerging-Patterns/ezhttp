@@ -11,32 +11,39 @@ import ./wirespec.bend as Spec
 import ./redirect.bend as Redirect
 import ./auth.bend as Auth
 import ./qs.bend as Qs
+import ./packed.bend as Packed
 
 # structured client result: transport/parse error, or an HTTP response: its
-# status, its header fields, body and reason phrase as text (decoded from the
-# octets received as UTF-8, SPEC.md HTTP-BODY-4, HTTP-CLI-11), and its body's
-# octets as they arrived
+# status, its header fields and reason phrase as text (decoded from the octets
+# received as UTF-8, SPEC.md HTTP-BODY-4, HTTP-CLI-11), and its body's octets
+# as they arrived, packed (`client.text` decodes them when asked)
 type Response is Type:  # noqa: L001 the wire effect keeps src/client.bend out of law files (HTTP-TRUST-5)
   Err{why: String}
-  Response{status: U32, headers: List<&2, Http.Header>, body: String,
-    reason: String, bytes: Bytes.Bytes}
+  Response{status: U32, headers: List<&2, Http.Header>, reason: String,
+    bytes: Bytes.Bytes}
 
-# a torn or successful HTTP parse as a client Response, with the reason
-# phrase read from the same octets
-def from.reply(r: Http.Reply, reason: String) -> Response:
-  match r:
-    case Http.Torn{why}:
+# a body's octets decoded as UTF-8 (SPEC.md HTTP-BODY-4)
+def client.text(b: Bytes.Bytes) -> String:
+  Qs.octets.text(Bytes.to_string(b))
+
+# a response read off its octets as a client Response, its head's octet text
+# decoded
+def from.got(g: Packed.Got) -> Response:
+  match g:
+    case Packed.Torn{why}:
       Err{why}
-    case Http.Reply{status, headers, +body}:
-      Response{status, Qs.octets.headers(headers),
-        Qs.octets.text(body), Qs.octets.text(reason),
-        Bytes.from_string(body)}
+    case Packed.Got{status, headers, reason, body}:
+      Response{status, Qs.octets.headers(headers), Qs.octets.text(reason), body}
 
 # an exchange's answer as a client Response, read by the request's method
-# (wirespec.bend wire.heard: interim 1xx heads skipped, no body for HEAD,
-# 1xx, 204 or 304; a failed exchange keeps its reason)
-def http.heard(+method: String, +raw: String) -> Response:
-  from.reply(Spec.wire.heard(method, raw), Spec.wire.phrase(raw))
+# (packed.bend packed.reply: interim 1xx heads skipped, no body for HEAD, 1xx,
+# 204 or 304); a failed exchange keeps its reason (wirespec.bend wire.failed)
+def http.answer(+method: String, a: Wire.Answer) -> Response:
+  match a:
+    case Wire.Failed{answer}:
+      Err{Spec.wire.failed(answer)}
+    case Wire.Received{octets}:
+      from.got(Packed.packed.reply(method, octets))
 
 # an exchange as wirespec.bend wrote it, with the body's octets after it:
 # sent and read by its own method, or the URL's reason
@@ -46,8 +53,8 @@ def http.send(ex: Spec.Exchange, tail: Bytes.Bytes) -> IO(Response):
       IO.pure(Response, Err{why})
     case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
-        +raw : String <- Wire.wire.talk(secure, host, port, method, req, tail)
-        IO.pure(Response, http.heard(method, raw))
+        a : Wire.Answer <- Wire.wire.talk(secure, host, port, method, req, tail)
+        IO.pure(Response, http.answer(method, a))
 
 # an exchange for a body of this shape, sent with the body's octets
 def http.loc.shaped(method: String, l: Url.Loc,
@@ -70,9 +77,9 @@ def http.send.timed(ms: U32, ex: Spec.Exchange, tail: Bytes.Bytes)
       IO.pure(Response, Err{why})
     case Spec.Exchange{secure, host, port, +method, req}:
       do IO<Response>:
-        +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, method,
+        a : Wire.Answer <- Wire.wire.talk.timed(secure, ms, host, port, method,
           req, tail)
-        IO.pure(Response, http.heard(method, raw))
+        IO.pure(Response, http.answer(method, a))
 
 # a timed exchange for a body of this shape
 def client.timed.shaped(method: String, url: String,
@@ -99,9 +106,9 @@ def client.hop(left: Nat, url: String, r: Response) -> Redirect.Hop & Response:
   match r:
     case Err{why}:
       (Redirect.Stop{}, Err{why})
-    case Response{+status, +headers, body, reason, bytes}:
+    case Response{+status, +headers, reason, bytes}:
       (Redirect.redirect.plan(left, url, status, headers),
-        Response{status, headers, body, reason, bytes})
+        Response{status, headers, reason, bytes})
 
 # a response, or the GET its hop asks for
 def client.after(p: Redirect.Hop & Response, go: String -> IO(Response))
@@ -155,7 +162,7 @@ def client.timed_out(r: Response) -> Bool:
   match r:
     case Err{why}:
       Spec.wire.timed_out(why)
-    case Response{status, headers, body, reason, bytes}:
+    case Response{status, headers, reason, bytes}:
       False{}
 
 # GET

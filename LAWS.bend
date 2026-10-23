@@ -2762,47 +2762,68 @@ law phrase_heard:
 
 # --- reading until the response is whole (SPEC.md HTTP-CLI-6) ---
 
-# LAW: a read that fails is the exchange's answer as it was given
-# HTTP-CLI-6
-law read_fail:
-  for st: Spec.Got
-  for +got: String
-  for e: {False{} == Spec.wire.ok(got) : Bool}
-  {Spec.wire.read.next(st, got) == Spec.Heard{got} : Spec.Read}
-
-# LAW: a read that finds the connection closed answers everything received
+# LAW: a read of no octets finds the connection closed, and the answer is
+# everything received
 # HTTP-CLI-6
 law read_closed:
-  for ps: List<&2, String>
   for h: Http.Hear
-  {Spec.wire.read.next(Spec.Got{ps, h}, "0\n")
-    == Spec.Heard{"0\n" ++ Spec.wire.joined(ps)} : Spec.Read}
+  {Spec.wire.read.count(h, 0n) == Some{Spec.Heard{}} : Maybe<&2, Spec.Read>}
 
-# LAW: a read whose text completes the response answers all of it
+# LAW: a read whose count alone advances the state is judged by its count
+# exactly as by its text
+# HTTP-CLI-6
+law read_count:
+  for +h: Http.Hear
+  for +b: String
+  for e1: {False{} == String.is_empty(b) : Bool}
+  for e2: {True{} == Http.hear.counts(h, String.length(b)) : Bool}
+  {Spec.wire.read.count(h, String.length(b))
+    == Some{Spec.wire.read.next(h, b)} : Maybe<&2, Spec.Read>}
+
+# LAW: a state the count alone advances is advanced by a text's count
+# exactly as by the text
+# HTTP-CLI-6
+law hear_count:
+  for +h: Http.Hear
+  for +b: String
+  for e: {True{} == Http.hear.counts(h, String.length(b)) : Bool}
+  {Http.hear.more.n(h, String.length(b)) == Http.hear.more(h, b) : Http.Hear}
+
+# LAW: walking n octets off a text of at most n octets leaves n less its
+# length owed
+# HTTP-CLI-6
+law skip_short:
+  for +b: String
+  for +n: Nat
+  for e: {False{} == Nat.is_lt(n, String.length(b)) : Bool}
+  {Http.octs.skip(b, n) == Http.Short{Nat.sub(n, String.length(b))}
+    : Http.Skip}
+
+# LAW: a read whose text completes the response is heard
 # HTTP-CLI-6
 law read_whole:
   for +method: String
-  for +ps: List<&2, String>
+  for +a: String
   for +text: String
   for e1: {False{} == String.is_empty(text) : Bool}
-  for e2: {True{} == Http.whole(method, Spec.wire.joined(ps) ++ text) : Bool}
-  {Spec.wire.read.next(Spec.wire.got(method, ps), "0\n" ++ text)
-    == Spec.Heard{"0\n" ++ (Spec.wire.joined(ps) ++ text)} : Spec.Read}
+  for e2: {True{} == Http.whole(method, a ++ text) : Bool}
+  {Spec.wire.read.next(Http.hear.of(method, a), text) == Spec.Heard{}
+    : Spec.Read}
 
-# LAW: a read whose text does not complete the response reads again with it
-# added, in the state for what has been received with it
+# LAW: a read whose text does not complete the response reads again, in the
+# state for what has been received with it
 # HTTP-CLI-6
 law read_more:
   for +method: String
-  for +ps: List<&2, String>
+  for +a: String
   for +text: String
   for e1: {False{} == String.is_empty(text) : Bool}
-  for e2: {False{} == Http.whole(method, Spec.wire.joined(ps) ++ text) : Bool}
-  {Spec.wire.read.next(Spec.wire.got(method, ps), "0\n" ++ text)
-    == Spec.Again{Spec.wire.got(method, text <> ps)} : Spec.Read}
+  for e2: {False{} == Http.whole(method, a ++ text) : Bool}
+  {Spec.wire.read.next(Http.hear.of(method, a), text)
+    == Spec.Again{Http.hear.of(method, a ++ text)} : Spec.Read}
 
-# LAW: the pieces put together in one pass are the text they stand for
-# HTTP-CLI-6
+# LAW: the pieces put together in one pass are the text they stand for (the
+# server puts a request's pieces together with it)
 law join_joined:
   for +ps: List<&2, String>
   {Spec.wire.join(ps) == Spec.wire.joined(ps) : String}
@@ -2846,6 +2867,119 @@ law walk_more:
   for +b: String
   {Http.walk(Nat.add(f, String.length(b)), rest ++ b)
     == Http.walk.more(Http.walk(f, rest), String.length(b), b) : Http.Walk}
+
+# --- a response planned from its head (SPEC.md HTTP-CLI-15) ---
+
+# LAW (RFC 9112 §4): a final head with no status code is torn
+# HTTP-CLI-15
+law plan_none:
+  for ls: List<&2, String>
+  {Http.head.plan(None{}, ls)
+    == Http.Unplanned{"the response has no status line"} : Http.Plan}
+
+# LAW (RFC 9112 §6.3 item 5): Content-Length values that are not all the
+# same digits are torn
+# HTTP-CLI-15
+law plan_disagree:
+  for n: U32
+  for +ls: List<&2, String>
+  for e: {False{} == Http.clen.agree(Http.head.values(ls, "content-length"))
+    : Bool}
+  {Http.head.plan(Some{n}, ls)
+    == Http.Unplanned{"Content-Length values disagree"} : Http.Plan}
+
+# LAW (RFC 9112 §6.3 item 3): chunked Transfer-Encoding with a
+# Content-Length is torn
+# HTTP-CLI-15
+law plan_conflict:
+  for n: U32
+  for +ls: List<&2, String>
+  for e1: {True{} == Http.clen.agree(Http.head.values(ls, "content-length"))
+    : Bool}
+  for e2: {True{} == String.contains(String.to_lower(Http.head.go(ls,
+    "transfer-encoding")), "chunked") : Bool}
+  for e3: {True{} == Http.clen.any(Http.head.values(ls, "content-length"))
+    : Bool}
+  {Http.head.plan(Some{n}, ls)
+    == Http.Unplanned{"Content-Length and Transfer-Encoding conflict"}
+    : Http.Plan}
+
+# LAW (RFC 9112 §6.3 item 4): chunked Transfer-Encoding alone frames the
+# body by its chunks
+# HTTP-CLI-15
+law plan_chunked:
+  for n: U32
+  for +ls: List<&2, String>
+  for e1: {True{} == Http.clen.agree(Http.head.values(ls, "content-length"))
+    : Bool}
+  for e2: {True{} == String.contains(String.to_lower(Http.head.go(ls,
+    "transfer-encoding")), "chunked") : Bool}
+  for e3: {False{} == Http.clen.any(Http.head.values(ls, "content-length"))
+    : Bool}
+  {Http.head.plan(Some{n}, ls)
+    == Http.Planned{n, Http.head.list(ls), Http.Chunked{}} : Http.Plan}
+
+# LAW (RFC 9112 §6.3 item 6): otherwise a Content-Length that reads as a
+# number sizes the body
+# HTTP-CLI-15
+law plan_sized:
+  for n: U32
+  for +ls: List<&2, String>
+  for e1: {True{} == Http.clen.agree(Http.head.values(ls, "content-length"))
+    : Bool}
+  for e2: {False{} == String.contains(String.to_lower(Http.head.go(ls,
+    "transfer-encoding")), "chunked") : Bool}
+  for k: Nat
+  for e3: {Some{k} == Http.digits.read(Http.first(Http.head.values(ls,
+    "content-length"))) : Maybe<&2, Nat>}
+  {Http.head.plan(Some{n}, ls)
+    == Http.Planned{n, Http.head.list(ls), Http.Sized{k}} : Http.Plan}
+
+# LAW (RFC 9112 §6.3 item 8): otherwise the body runs to the close
+# HTTP-CLI-15
+law plan_closed:
+  for n: U32
+  for +ls: List<&2, String>
+  for e1: {True{} == Http.clen.agree(Http.head.values(ls, "content-length"))
+    : Bool}
+  for e2: {False{} == String.contains(String.to_lower(Http.head.go(ls,
+    "transfer-encoding")), "chunked") : Bool}
+  for e3: {None{} == Http.digits.read(Http.first(Http.head.values(ls,
+    "content-length"))) : Maybe<&2, Nat>}
+  {Http.head.plan(Some{n}, ls)
+    == Http.Planned{n, Http.head.list(ls), Http.Closed{}} : Http.Plan}
+
+# LAW: parse_response reads a head and its body as the head's plan says
+# HTTP-CLI-15
+law plan_status:
+  for m: Maybe<&2, U32>
+  for +ls: List<&2, String>
+  for +body: String
+  {Http.parse.status(m, ls, body) == Http.plan.text(Http.head.plan(m, ls), body)
+    : Http.Reply}
+
+# LAW (RFC 9110 §6.4.1, §9.3.2): a final head is read as its plan says, with
+# no body for HEAD or a 1xx, 204 or 304 status
+# HTTP-CLI-15
+law plan_final:
+  for f: Nat
+  for +head: Bool
+  for +before: String
+  for +after: String
+  for e: {False{} == Http.interim.skip(Http.status.of(String.lines(before)),
+    after) : Bool}
+  {Http.parse.to.go(1n+f, head, Http.Cut{before, after})
+    == Http.plan.text(Http.head.final(head, String.lines(before)), after)
+    : Http.Reply}
+
+# LAW (RFC 9112 §7.1): the chunked decoder's step is decided by the chunk-size
+# line alone, then by the octets after it
+# HTTP-CLI-15
+law size_next:
+  for +before: String
+  for +after: String
+  {Http.chunks.next(before, after)
+    == Http.chunk.next(Http.chunk.size(before), after) : Http.Next}
 
 # --- redirects (SPEC.md HTTP-REDIR) ---
 

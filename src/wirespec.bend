@@ -3,9 +3,10 @@
 # wire.bend (bend-kit-wire's effects) so the proof gate can import it.
 # wire.bend and client.bend act on what is decided here.
 #
-# An exchange's answer is a status on its first line, then text: "0" and the
-# response received, or a non-zero status and the reason the exchange failed.
-# SPEC.md HTTP-CLI lists what is guaranteed.
+# A failed exchange's answer is a non-zero status on its first line, then the
+# reason (wire.fail); a successful one is the response's octets, which
+# wire.bend keeps packed and packed.bend reads. SPEC.md HTTP-CLI lists what is
+# guaranteed.
 import Base
 import ./http.bend as Http
 import ./url.bend as Url
@@ -163,11 +164,6 @@ def wire.ok.of(m: Maybe<&2, U32>) -> Bool:
 def wire.ok(raw: String) -> Bool:
   wire.ok.of(wire.code(raw))
 
-# what has been received so far: its pieces, the newest first, and where
-# the response stands (Http.hear)
-type Got is Data:
-  Got{pieces: List<&2, String>, hear: Http.Hear}
-
 # the text a list of pieces, newest first, stands for
 def wire.joined(ps: List<&2, String>) -> String:
   match ps:
@@ -188,52 +184,71 @@ def wire.join.go(ps: List<&2, String>, acc: String) -> String:
 def wire.join(ps: List<&2, String>) -> String:
   wire.join.go(ps, "")
 
-# what has been received as these pieces, for a request with this method
-def wire.got(+method: String, +ps: List<&2, String>) -> Got:
-  Got{ps, Http.hear.of(method, wire.joined(ps))}
+# where a response to a request with this method stands before anything has
+# been received
+def wire.got(+method: String) -> Http.Hear:
+  Http.hear.of(method, "")
 
-# after a read: read again with what has arrived, or answer
+# after a read: read again from where the response now stands, or it has all
+# been received
 type Read is Data:
-  Again{acc: Got}
-  Heard{answer: String}
+  Again{hear: Http.Hear}
+  Heard{}
 
-# everything received, once it is known whether it is a whole response
-def wire.read.whole(+ps: List<&2, String>, h: Http.Hear, done: Bool) -> Read:
+# where the response stands after a read, judged
+def wire.read.done(+h: Http.Hear, done: Bool) -> Read:
   match done:
     case True{}:
-      Heard{"0\n" ++ wire.join(ps)}
+      Heard{}
     case False{}:
-      Again{Got{ps, h}}
+      Again{h}
 
-# a read that brought text, judged with where the response now stands
-def wire.read.add(text: String, ps: List<&2, String>, +h: Http.Hear) -> Read:
-  wire.read.whole(text <> ps, h, Http.hear.done(h))
+# where the response stands after a read, judged
+def wire.read.with(+h: Http.Hear) -> Read:
+  wire.read.done(h, Http.hear.done(h))
 
 # a read that brought text, or found the connection closed
-def wire.read.got(st: Got, +text: String, closed: Bool) -> Read:
-  match st closed:
-    case Got{ps, h} True{}:
-      Heard{"0\n" ++ wire.join(ps)}
-    case Got{ps, h} False{}:
-      wire.read.add(text, ps, Http.hear.more(h, text))
-
-# a read's answer once it is known whether it succeeded
-def wire.read.of(st: Got, +got: String, ok: Bool) -> Read:
-  match ok:
-    case False{}:
-      Heard{got}
+def wire.read.got(h: Http.Hear, +text: String, closed: Bool) -> Read:
+  match closed:
     case True{}:
-      +text = wire.text(got)
-      wire.read.got(st, text, String.is_empty(text))
+      Heard{}
+    case False{}:
+      wire.read.with(Http.hear.more(h, text))
 
-# what to do after a read answered `got`, with what was received before it
-# (SPEC.md HTTP-CLI-6)
-def wire.read.next(st: Got, +got: String) -> Read:
-  wire.read.of(st, got, wire.ok(got))
+# what to do after a read brought this text, judged from where the response
+# stood (SPEC.md HTTP-CLI-6)
+def wire.read.next(h: Http.Hear, +text: String) -> Read:
+  wire.read.got(h, text, String.is_empty(text))
+
+# a read of m octets judged by its count, when that is enough to judge it
+def wire.read.counted(+h: Http.Hear, +m: Nat, counts: Bool) -> Maybe<&2, Read>:
+  match counts:
+    case True{}:
+      Some{wire.read.with(Http.hear.more.n(h, m))}
+    case False{}:
+      None{}
+
+# a read of m octets: none is the close
+def wire.read.count.at(+h: Http.Hear, +m: Nat, closed: Bool)
+  -> Maybe<&2, Read>:
+  match closed:
+    case True{}:
+      Some{Heard{}}
+    case False{}:
+      wire.read.counted(h, m, Http.hear.counts(h, m))
+
+# what to do after a read of m octets, when their count alone decides it;
+# none when their text is needed (wire.read.next) (SPEC.md HTTP-CLI-6)
+def wire.read.count(+h: Http.Hear, +m: Nat) -> Maybe<&2, Read>:
+  wire.read.count.at(h, m, Nat.is_eq(m, 0n))
 
 # the answer when the reads run out before the response ends
 def wire.spent() -> String:
   "56\nthe answer did not end within 65536 reads"
+
+# the reason a failed exchange's answer is reported with (wire.why)
+def wire.failed(+raw: String) -> String:
+  wire.why(wire.code(raw), wire.text(raw))
 
 # the response an exchange's answer holds, read by the request's method
 # (SPEC.md HTTP-CLI-9); a failed exchange is torn with the reason it is
@@ -241,7 +256,7 @@ def wire.spent() -> String:
 def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
   match ok:
     case False{}:
-      Http.Torn{wire.why(wire.code(raw), wire.text(raw))}
+      Http.Torn{wire.failed(raw)}
     case True{}:
       Http.parse.to(method, wire.text(raw))
 
