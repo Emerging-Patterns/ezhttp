@@ -138,6 +138,60 @@ function ezwire_late_errno(code) {
     : (code === 11 || code === 115 || code === 110);
 }
 
+// the symbolic names of the errnos a socket call can leave, with their
+// numbers on Linux and on macOS: wire.c's table, so the two lanes write the
+// same text. An errno this table does not know is written "errno".
+const EZWIRE_ERRNO = [
+  ["EPERM", 1, 1], ["ENOENT", 2, 2], ["EINTR", 4, 4], ["EIO", 5, 5],
+  ["EBADF", 9, 9], ["EAGAIN", 11, 35], ["ENOMEM", 12, 12], ["EACCES", 13, 13],
+  ["EINVAL", 22, 22], ["ENFILE", 23, 23], ["EMFILE", 24, 24],
+  ["EPIPE", 32, 32], ["EPROTO", 71, 100], ["ENOTSOCK", 88, 38],
+  ["EPROTONOSUPPORT", 93, 43], ["EAFNOSUPPORT", 97, 47],
+  ["EADDRINUSE", 98, 48], ["EADDRNOTAVAIL", 99, 49], ["ENETDOWN", 100, 50],
+  ["ENETUNREACH", 101, 51], ["ECONNABORTED", 103, 53],
+  ["ECONNRESET", 104, 54], ["ENOBUFS", 105, 55], ["EISCONN", 106, 56],
+  ["ENOTCONN", 107, 57], ["ETIMEDOUT", 110, 60], ["ECONNREFUSED", 111, 61],
+  ["EHOSTDOWN", 112, 64], ["EHOSTUNREACH", 113, 65], ["EALREADY", 114, 37],
+  ["EINPROGRESS", 115, 36],
+];
+
+// getaddrinfo's answers, with their numbers on Linux (glibc) and on macOS
+const EZWIRE_GAI = [
+  ["EAI_BADFLAGS", -1, 3], ["EAI_NONAME", -2, 8], ["EAI_AGAIN", -3, 2],
+  ["EAI_FAIL", -4, 4], ["EAI_NODATA", -5, 7], ["EAI_FAMILY", -6, 5],
+  ["EAI_SOCKTYPE", -7, 10], ["EAI_SERVICE", -8, 9],
+  ["EAI_ADDRFAMILY", -9, 1], ["EAI_MEMORY", -10, 6], ["EAI_SYSTEM", -11, 11],
+];
+
+// SSL_get_error's answers, by number
+const EZWIRE_SSL = ["SSL_ERROR_NONE", "SSL_ERROR_SSL", "SSL_ERROR_WANT_READ",
+  "SSL_ERROR_WANT_WRITE", "SSL_ERROR_WANT_X509_LOOKUP", "SSL_ERROR_SYSCALL",
+  "SSL_ERROR_ZERO_RETURN", "SSL_ERROR_WANT_CONNECT", "SSL_ERROR_WANT_ACCEPT"];
+
+// a number's name in one of the tables above, or the fallback
+function ezwire_name(table, code, fallback) {
+  const col = process.platform === "darwin" ? 2 : 1;
+  for (const row of table) {
+    if (row[col] === code) {
+      return row[0];
+    }
+  }
+  return fallback;
+}
+
+// why a call failed, as `NAME (n)`: the errno, or with a TLS session the
+// SSL_get_error answer and then the errno when there is one (wire.c's
+// ezwire_cause)
+function ezwire_cause(tls, sslerr, err) {
+  const e = ezwire_name(EZWIRE_ERRNO, err, "errno") + " (" + err + ")";
+  if (!tls) {
+    return e;
+  }
+  const s = (sslerr >= 1 && sslerr <= 8 ? EZWIRE_SSL[sslerr] : "SSL_ERROR")
+    + " (" + sslerr + ")";
+  return err !== 0 ? s + ", " + e : s;
+}
+
 // the receive and send timeouts on a socket, as a struct timeval
 function ezwire_wait(sys, fd, ms) {
   const mac = process.platform === "darwin";
@@ -164,6 +218,8 @@ function ezwire_dial(host, port, ms, late) {
   const out = new BigUint64Array(1);
   const rc = ezwire_dns().getaddrinfo(ffi.ptr(ezwire_cstr(host)),
     ffi.ptr(ezwire_cstr(String(port))), ffi.ptr(hints), ffi.ptr(out));
+  late.gai = rc;
+  late.err = 0;
   if (rc !== 0) {
     return -1;
   }
@@ -175,11 +231,15 @@ function ezwire_dial(host, port, ms, late) {
     const len = Number(ffi.read.i32(at, 16));
     const addr = Number(ffi.read.ptr(at, 24));
     fd = Number(sys.socket(family, 1, 0));
+    if (fd < 0) {
+      late.err = Number(sys.errno());
+    }
     if (fd >= 0) {
       ezwire_wait(sys, fd, ms);
     }
     if (fd >= 0 && Number(sys.connect(fd, addr, len)) < 0) {
-      late.late = ezwire_late_errno(Number(sys.errno()));
+      late.err = Number(sys.errno());
+      late.late = ezwire_late_errno(late.err);
       sys.close(fd);
       fd = -1;
     }
@@ -194,6 +254,8 @@ function ezwire_dial(host, port, ms, late) {
 function ezwire_shake(tls, fd, host, late) {
   const ffi = require("bun:ffi");
   const ssl = tls.SSL_new(tls.ctx);
+  late.ssl = 1;
+  late.err = 0;
   if (ssl === null) {
     return null;
   }
@@ -205,6 +267,8 @@ function ezwire_shake(tls, fd, host, late) {
   if (n !== 1) {
     const code = Number(io_sys().errno());
     const why = tls.SSL_get_error(ssl, n);
+    late.ssl = why;
+    late.err = code;
     late.late = why === 2 || why === 3 || ezwire_late_errno(code);
     tls.SSL_free(ssl);
     return null;
@@ -226,6 +290,8 @@ function ezwire_say(tls, fd, ssl, text, late) {
     if (n <= 0) {
       const code = Number(io_sys().errno());
       const why = ssl === null ? 0 : tls.SSL_get_error(ssl, n);
+      late.ssl = why;
+      late.err = code;
       late.late = why === 2 || why === 3 || ezwire_late_errno(code);
       return false;
     }
@@ -248,11 +314,14 @@ function ezwire_recv(tls, fd, ssl, b, flags, late) {
     return n;
   }
   const code = Number(io_sys().errno());
+  late.ssl = 0;
+  late.err = code;
   if (ssl === null) {
     late.late = n < 0 && ezwire_late_errno(code);
     return n < 0 ? -1 : 0;
   }
   const why = tls.SSL_get_error(ssl, n);
+  late.ssl = why;
   if (why === 6 || (why === 5 && n === 0)) {
     return 0;
   }
@@ -296,17 +365,23 @@ function ezwire_open(spec, tail) {
   }
   const fd = ezwire_dial(cut[1], cut[2], ms, late);
   if (fd < 0) {
+    if (late.gai !== 0) {
+      return "6\ncould not resolve " + cut[1] + ": "
+        + ezwire_name(EZWIRE_GAI, late.gai, "EAI") + " (" + late.gai + ")";
+    }
     return late.late
       ? "28\nconnecting to " + cut[1] + " port " + cut[2] + " took over "
         + ms + " ms"
-      : "6\ncould not reach " + cut[1] + " port " + cut[2];
+      : "7\ncould not reach " + cut[1] + " port " + cut[2] + ": "
+        + ezwire_cause(false, 0, late.err);
   }
   const ssl = secure ? ezwire_shake(tls, fd, cut[1], late) : null;
   if (secure && ssl === null) {
     io_sys().close(fd);
     return late.late
       ? "28\nthe TLS handshake with " + cut[1] + " took over " + ms + " ms"
-      : "35\nthe TLS handshake with " + cut[1] + " failed";
+      : "35\nthe TLS handshake with " + cut[1] + " failed: "
+        + ezwire_cause(true, late.ssl, late.err);
   }
   if (!ezwire_say(tls, fd, ssl, spec.slice(at), late)
     || !ezwire_say(tls, fd, ssl, bytes, late)) {
@@ -317,7 +392,8 @@ function ezwire_open(spec, tail) {
     io_sys().close(fd);
     return late.late
       ? "28\nsending the request to " + cut[1] + " took over " + ms + " ms"
-      : "55\nthe request to " + cut[1] + " could not be sent";
+      : "55\nthe request to " + cut[1] + " could not be sent: "
+        + ezwire_cause(ssl !== null, late.ssl, late.err);
   }
   const conns = ezwire_conns();
   const id = globalThis.EZ_WIRE_NEXT;
@@ -345,7 +421,8 @@ function ezwire_read(id) {
     if (n < 0) {
       return late.late
         ? "28\n" + c.host + " sent nothing for " + c.ms + " ms"
-        : "56\nthe answer from " + c.host + " was cut short";
+        : "56\nthe answer from " + c.host + " was cut short: "
+        + ezwire_cause(c.ssl !== null, late.ssl, late.err);
     }
     if (n === 0) {
       c.done = true;

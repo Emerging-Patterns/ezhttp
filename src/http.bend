@@ -1504,3 +1504,85 @@ def hear.more(h: Hear, +b: String) -> Hear:
       Count{n, Nat.add(have, utf8.len(b))}
     case Walking{w}:
       Walking{walk.more(w, String.length(b), b)}
+
+# --- a response's reason phrase (RFC 9112 §4) ---
+
+# a reason phrase with the CR its line ended with removed; a reason-phrase
+# itself holds no CR (RFC 9112 §4)
+def phrase.chop.at(
+  cr: Bool,
+  ch: Char,
+  tl: String,
+  rest: Unit -> String
+) -> String:
+  match cr tl:
+    case True{} SNil{}:
+      SNil{}
+    case True{} SCon{x, xt}:
+      SCon{ch, rest(Unit{})}
+    case False{} _:
+      SCon{ch, rest(Unit{})}
+
+# the text of a reason phrase, a final CR removed
+def phrase.chop(text: String) -> String:
+  match text:
+    case SNil{}:
+      SNil{}
+    case SCon{+ch, +tl}:
+      phrase.chop.at(Char.is_eq(ch, '\r'), ch, tl, _u => phrase.chop(tl))
+
+# what follows the status code's SP: the reason phrase; none without that SP
+def phrase.code(cut: Cut) -> String:
+  match cut:
+    case NoCut{}:
+      ""
+    case Cut{before, after}:
+      phrase.chop(after)
+
+# what follows the version's SP: the status code, an SP and the reason
+def phrase.after(cut: Cut) -> String:
+  match cut:
+    case NoCut{}:
+      ""
+    case Cut{before, after}:
+      phrase.code(divide(after, " "))
+
+# a status line's reason phrase (RFC 9112 §4: HTTP-version SP status-code SP
+# [ reason-phrase ]), empty when the line has fewer than two SPs
+def phrase.line(line: String) -> String:
+  phrase.after(divide(line, " "))
+
+# an interim head is skipped, any other gives the reason on its first line
+def phrase.to.step(
+  +ls: List<&2, String>,
+  +after: String,
+  skip: Bool,
+  rest: Cut -> String
+) -> String:
+  match skip:
+    case True{}:
+      rest(divide(after, "\r\n\r\n"))
+    case False{}:
+      phrase.line(first(ls))
+
+# a head that has ended, or none
+def phrase.to.at(cut: Cut, rest: Cut -> String) -> String:
+  match cut:
+    case NoCut{}:
+      ""
+    case Cut{before, +after}:
+      +ls = String.lines(before)
+      phrase.to.step(ls, after, interim.skip(status.of(ls), after), rest)
+
+# the heads in turn, at most `fuel` of them
+def phrase.to.go(fuel: Nat, cut: Cut) -> String:
+  match fuel:
+    case 0n:
+      ""
+    case 1n+f:
+      phrase.to.at(cut, next => phrase.to.go(f, next))
+
+# the reason phrase of the head parse.to stops at: interim 1xx heads with
+# text after them skipped, empty when no head ends
+def phrase.to(+raw: String) -> String:
+  phrase.to.go(String.length(raw), divide(raw, "\r\n\r\n"))

@@ -344,6 +344,11 @@ def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
     case True{}:
       Http.parse.to(method, wire.text(raw))
 
+# the reason phrase of the response an exchange's answer holds (SPEC.md
+# HTTP-CLI-11); a failed exchange's is read from its reason and not used
+def wire.phrase(raw: String) -> String:
+  Http.phrase.to(wire.text(raw))
+
 # the response an exchange's answer holds
 def wire.heard(+method: String, +raw: String) -> Http.Reply:
   wire.heard.of(method, raw, wire.ok(raw))

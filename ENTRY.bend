@@ -18,6 +18,7 @@ import ./src/cookie.bend as Cookie
 import ./src/cache.bend as Cache
 import ./src/cors.bend as Cors
 import ./src/client.bend as Client
+import ./src/wirespec.bend as Spec
 import ./main.bend as Ez
 
 # LAW: parse_url is Url.parse
@@ -39,6 +40,24 @@ law quote_component_is_pct_quote:
 law parse_response_is_http_parse:
   for raw: String
   {Ez.parse_response(raw) == Http.parse(raw) : Http.Reply}
+
+# LAW: reason_phrase is Http.phrase.to
+law reason_phrase_is_phrase_to:
+  for +raw: String
+  {Ez.reason_phrase(raw) == Http.phrase.to(raw) : String}
+
+# LAW: a response's reason is the reason phrase read from the exchange's
+# answer, and its status, fields and body are the reply's
+law heard_reason:
+  for +method: String
+  for +raw: String
+  for st: U32
+  for hs: List<&2, Http.Header>
+  for body: String
+  for e: {Http.Reply{st, hs, body} == Spec.wire.heard(method, raw)
+    : Http.Reply}
+  {Client.http.heard(method, raw)
+    == Client.Response{st, hs, body, Spec.wire.phrase(raw)} : Client.Response}
 
 # LAW: parse_response_to is Http.parse.to
 law parse_response_to_is_parse_to:
@@ -177,7 +196,9 @@ law timed_out_reply:
   for status: U32
   for hs: List<&2, Http.Header>
   for body: String
-  {Ez.http.timed_out(Client.Response{status, hs, body}) == False{} : Bool}
+  for reason: String
+  {Ez.http.timed_out(Client.Response{status, hs, body, reason}) == False{}
+    : Bool}
 
 # LAW: a failed exchange is a timeout exactly when its reason says so
 law timed_out_err:
@@ -201,6 +222,16 @@ def quote_component_is_pct_quote(_s):
 
 # parse_response_is_http_parse holds by unfolding the re-export
 def parse_response_is_http_parse(_raw):
+  {==}
+
+# reason_phrase_is_phrase_to holds by unfolding the re-export
+def reason_phrase_is_phrase_to(_raw):
+  {==}
+
+# heard_reason holds by rewriting the reply the exchange's answer holds
+def heard_reason(_method, raw, st, hs, body, e):
+  %e : {Client.from.reply(_, Spec.wire.phrase(raw))
+    == Client.Response{st, hs, body, Spec.wire.phrase(raw)} : Client.Response}
   {==}
 
 # parse_response_to_is_parse_to holds by unfolding the re-export
@@ -292,7 +323,7 @@ def html_escape_is_escape(_s):
   {==}
 
 # timed_out_reply holds by unfolding client.timed_out
-def timed_out_reply(_status, _hs, _body):
+def timed_out_reply(_status, _hs, _body, _reason):
   {==}
 
 # timed_out_err holds by unfolding client.timed_out and wire.timed_out

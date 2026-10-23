@@ -10,24 +10,27 @@ import ./wirespec.bend as Spec
 import ./redirect.bend as Redirect
 import ./auth.bend as Auth
 
-# structured client result: transport/parse error, or an HTTP response
+# structured client result: transport/parse error, or an HTTP response with
+# its status line's reason phrase (SPEC.md HTTP-CLI-11)
 type Response is Data:
   Err{why: String}
-  Response{status: U32, headers: List<&2, Http.Header>, body: String}
+  Response{status: U32, headers: List<&2, Http.Header>, body: String,
+    reason: String}
 
-# a torn or successful HTTP parse as a client Response
-def from.reply(r: Http.Reply) -> Response:
+# a torn or successful HTTP parse as a client Response, with the reason
+# phrase read from the same text
+def from.reply(r: Http.Reply, reason: String) -> Response:
   match r:
     case Http.Torn{why}:
       Err{why}
     case Http.Reply{status, headers, body}:
-      Response{status, headers, body}
+      Response{status, headers, body, reason}
 
 # an exchange's answer as a client Response, read by the request's method
 # (wirespec.bend wire.heard: interim 1xx heads skipped, no body for HEAD,
 # 1xx, 204 or 304; a failed exchange keeps its reason)
 def http.heard(+method: String, +raw: String) -> Response:
-  from.reply(Spec.wire.heard(method, raw))
+  from.reply(Spec.wire.heard(method, raw), Spec.wire.phrase(raw))
 
 # an exchange as wirespec.bend wrote it, with the body's tail of octets: sent
 # and read by its own method, or the URL's reason
@@ -76,7 +79,7 @@ def client.hop(left: Nat, url: String, r: Response) -> Redirect.Hop:
   match r:
     case Err{why}:
       Redirect.Stop{}
-    case Response{status, headers, body}:
+    case Response{status, headers, body, reason}:
       Redirect.redirect.plan(left, url, status, headers)
 
 # a response, or the GET its hop asks for
@@ -130,7 +133,7 @@ def client.timed_out(r: Response) -> Bool:
   match r:
     case Err{why}:
       Spec.wire.timed_out(why)
-    case Response{status, headers, body}:
+    case Response{status, headers, body, reason}:
       False{}
 
 # GET
