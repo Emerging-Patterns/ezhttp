@@ -133,16 +133,26 @@ def wire.timed_out(why: String) -> Bool:
 # --- what is sent ---
 
 # what a request to a URL becomes: nothing when the URL did not parse, else
-# the scheme (secure or not), host, port and request text the effect is given
+# the scheme (secure or not), host, port, method and request text the effect
+# is given; the answer is read by that method (wire.read.next)
 type Exchange is Data:
   NoUrl{why: String}
-  Exchange{secure: Bool, host: String, port: U32, req: String}
+  Exchange{secure: Bool, host: String, port: U32, method: String, req: String}
 
 # the exchange once it is known whether the scheme wants TLS
-def wire.exchange.at(method: String, +secure: Bool, +host: String, +port: U32,
-  path: String, headers: List<&2, Http.Header>, body: String) -> Exchange:
-  Exchange{secure, host, port,
+def wire.exchange.at(+method: String, +secure: Bool, +host: String,
+  +port: U32, path: String, headers: List<&2, Http.Header>, body: String)
+  -> Exchange:
+  Exchange{secure, host, port, method,
     Http.request.at(method, secure, host, port, path, headers, body)}
+
+# the method an exchange is sent and read by, none when nothing is sent
+def wire.exchange.method(ex: Exchange) -> Maybe<&2, String>:
+  match ex:
+    case NoUrl{why}:
+      None{}
+    case Exchange{secure, host, port, method, req}:
+      Some{method}
 
 # a request with this method, headers and body to a URL that came apart
 def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,

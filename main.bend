@@ -123,6 +123,51 @@ def http.get_opts(
 ) -> IO(Client.Response):
   Client.client.get.opts(url, headers, timeout_ms, follow)
 
+# a request with any method, headers, a body and a timeout in milliseconds
+# that bounds connecting, sending and receiving; with `follow`, a GET follows
+# redirects (at most 10 hops, see src/redirect.bend) and every other method
+# answers a redirect as its response
+def http.request_opts(
+  method: String,
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body,
+  timeout_ms: U32,
+  follow: Bool
+) -> IO(Client.Response):
+  Client.client.request.opts(method, url, headers, Body.body.payload(body),
+    timeout_ms, follow)
+
+# POST with headers, a body and a timeout in milliseconds; redirects are not
+# followed
+def http.post_opts(
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body,
+  timeout_ms: U32
+) -> IO(Client.Response):
+  http.request_opts("POST", url, headers, body, timeout_ms, False{})
+
+# PUT with headers, a body and a timeout in milliseconds; redirects are not
+# followed
+def http.put_opts(
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body,
+  timeout_ms: U32
+) -> IO(Client.Response):
+  http.request_opts("PUT", url, headers, body, timeout_ms, False{})
+
+# DELETE with headers, a body and a timeout in milliseconds; redirects are
+# not followed
+def http.delete_opts(
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body,
+  timeout_ms: U32
+) -> IO(Client.Response):
+  http.request_opts("DELETE", url, headers, body, timeout_ms, False{})
+
 # whether a response is an exchange that ran out of time
 def http.timed_out(r: Client.Response) -> Bool:
   Client.client.timed_out(r)

@@ -296,3 +296,8 @@ def redirect.next(left: Nat, url: String, +status: U32, +loc: String) -> Hop:
 def redirect.plan(left: Nat, url: String, +status: U32,
   headers: List<&2, Http.Header>) -> Hop:
   redirect.next(left, url, status, Http.headers.find(headers, "location"))
+
+# whether a request with this method follows redirects when asked to: only a
+# GET does (method names are case-sensitive, RFC 9110 §9.1)
+def redirect.follows(+method: String, follow: Bool) -> Bool:
+  Bool.and(follow, String.eq(method, "GET"))

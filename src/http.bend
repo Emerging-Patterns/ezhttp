@@ -414,27 +414,151 @@ def headers.lines(hs: List<&2, Header>) -> String:
     case h <> t:
       header.line(h) ++ headers.lines(t)
 
-# Content-Length line when the body is not empty (RFC 9110 §8.6)
-def clen.line(+n: Nat, empty: Bool) -> String:
+# the Content-Length field when the body is not empty (RFC 9110 §8.6)
+def clen.field(+n: Nat, empty: Bool) -> List<&2, Header>:
   match empty:
     case True{}:
-      ""
+      []
     case False{}:
-      "Content-Length: " ++ Nat.show(n) ++ "\r\n"
+      [H{"Content-Length", Nat.show(n)}]
+
+# Content-Length line when the body is not empty (RFC 9110 §8.6)
+def clen.line(+n: Nat, empty: Bool) -> String:
+  headers.lines(clen.field(n, empty))
+
+# the fields a request names: the ones ezhttp writes a default for, the ones
+# it always computes, and every other (SPEC.md HTTP-CLI-8)
+type Field is Data:
+  FHost{}
+  FAgent{}
+  FAccept{}
+  FConn{}
+  FClen{}
+  FOther{}
+
+# a field's place in the order above
+def field.rank(f: Field) -> U32:
+  match f:
+    case FHost{}:
+      0
+    case FAgent{}:
+      1
+    case FAccept{}:
+      2
+    case FConn{}:
+      3
+    case FClen{}:
+      4
+    case FOther{}:
+      5
+
+# whether two fields are the same one
+def field.same(a: Field, b: Field) -> Bool:
+  U32.is_eq(field.rank(a), field.rank(b))
+
+# a lower-case name that is not content-length
+def field.of.clen(hit: Bool) -> Field:
+  match hit:
+    case True{}:
+      FClen{}
+    case False{}:
+      FOther{}
+
+# a lower-case name that is not connection
+def field.of.conn(hit: Bool, +l: String) -> Field:
+  match hit:
+    case True{}:
+      FConn{}
+    case False{}:
+      field.of.clen(String.eq(l, "content-length"))
+
+# a lower-case name that is not accept
+def field.of.accept(hit: Bool, +l: String) -> Field:
+  match hit:
+    case True{}:
+      FAccept{}
+    case False{}:
+      field.of.conn(String.eq(l, "connection"), l)
+
+# a lower-case name that is not user-agent
+def field.of.agent(hit: Bool, +l: String) -> Field:
+  match hit:
+    case True{}:
+      FAgent{}
+    case False{}:
+      field.of.accept(String.eq(l, "accept"), l)
+
+# a lower-case name that is not host
+def field.of.host(hit: Bool, +l: String) -> Field:
+  match hit:
+    case True{}:
+      FHost{}
+    case False{}:
+      field.of.agent(String.eq(l, "user-agent"), l)
+
+# the field a lower-case name names
+def field.of(+l: String) -> Field:
+  field.of.host(String.eq(l, "host"), l)
+
+# the field a name names, compared case-insensitively (RFC 9110 §5.1)
+def field.name(name: String) -> Field:
+  field.of(String.to_lower(name))
+
+# the field a header line names
+def header.field(h: Header) -> Field:
+  match h:
+    case H{name, value}:
+      field.name(name)
+
+# keep a header in front of the rest, or not
+def fields.put(keep: Bool, h: Header, rest: List<&2, Header>)
+  -> List<&2, Header>:
+  match keep:
+    case True{}:
+      h <> rest
+    case False{}:
+      rest
+
+# the headers that name one field, in order
+def fields.of(+f: Field, hs: List<&2, Header>) -> List<&2, Header>:
+  match hs:
+    case []:
+      []
+    case +h <> t:
+      fields.put(field.same(f, header.field(h)), h, fields.of(f, t))
+
+# the caller's fields of a name, or the default when it gave none
+def fields.or(given: List<&2, Header>, dflt: List<&2, Header>)
+  -> List<&2, Header>:
+  match given:
+    case []:
+      dflt
+    case h <> t:
+      h <> t
+
+# a request's header fields: Host, User-Agent and Accept (the caller's, or
+# the default), Connection: close, the caller's other fields, Content-Length.
+# A caller's Connection or Content-Length is not sent: Connection: close lets
+# the connection end frame the body when no Content-Length / chunked framing
+# applies (RFC 9112 §9.6 / §6.3), and the body's length is computed.
+def request.fields(host: String, +hs: List<&2, Header>, +body: String)
+  -> List<&2, Header>:
+  +n = utf8.len(body)
+  List.append(&2, Header, fields.or(fields.of(FHost{}, hs), [H{"Host", host}]),
+    List.append(&2, Header,
+      fields.or(fields.of(FAgent{}, hs), [H{"User-Agent", "ezhttp"}]),
+      List.append(&2, Header,
+        fields.or(fields.of(FAccept{}, hs), [H{"Accept", "*/*"}]),
+        H{"Connection", "close"}
+          <> List.append(&2, Header, fields.of(FOther{}, hs),
+            clen.field(n, Nat.is_eq(n, 0n))))))
 
 # a request-line and headers (RFC 9112 §3, §5). Absolute-path request-target
-# (RFC 9112 §3.2.1). Connection: close so the connection end frames the body
-# when no Content-Length / chunked framing applies (RFC 9112 §9.6 / §6.3).
+# (RFC 9112 §3.2.1); the fields are request.fields'.
 def request(method: String, host: String, path: String,
   headers: List<&2, Header>, +body: String) -> String:
-  +n = utf8.len(body)
   method ++ " " ++ path ++ " HTTP/1.1\r\n"
-    ++ "Host: " ++ host ++ "\r\n"
-    ++ "User-Agent: ezhttp\r\n"
-    ++ "Accept: */*\r\n"
-    ++ "Connection: close\r\n"
-    ++ headers.lines(headers)
-    ++ clen.line(n, Nat.is_eq(n, 0n))
+    ++ headers.lines(request.fields(host, headers, body))
     ++ "\r\n"
     ++ body
 
