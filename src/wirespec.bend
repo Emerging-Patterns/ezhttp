@@ -328,12 +328,21 @@ def wire.errno.name(+n: U32) -> String:
 def wire.cause(+n: U32) -> String:
   wire.errno.name(n) ++ " (" ++ U32.show(n) ++ ")"
 
+# a resolve's failure: bend-kit-dns reports a name with no address as
+# ENOENT, whose name would read as a missing file, so only the host is named
+def wire.fail.resolve(host: String, +n: U32, none: Bool) -> String:
+  match none:
+    case True{}:
+      "6\ncould not resolve " ++ host
+    case False{}:
+      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+
 # a call that ran out of time, by its phase
 def wire.fail.late(p: Phase, host: String, +port: U32, +ms: U32, +n: U32)
   -> String:
   match p:
     case Resolve{}:
-      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+      wire.fail.resolve(host, n, U32.is_eq(n, 2))
     case Connect{}:
       "28\nconnecting to " ++ host ++ " port " ++ U32.show(port)
         ++ " took over " ++ U32.show(ms) ++ " ms"
@@ -351,7 +360,7 @@ def wire.fail.other(p: Phase, host: String, +port: U32, +n: U32, why: String)
   -> String:
   match p:
     case Resolve{}:
-      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+      wire.fail.resolve(host, n, U32.is_eq(n, 2))
     case Connect{}:
       "7\ncould not reach " ++ host ++ " port " ++ U32.show(port) ++ ": "
         ++ wire.cause(n)

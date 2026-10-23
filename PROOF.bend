@@ -5984,20 +5984,52 @@ def Laws.ms_zero(ms, e):
   %e : {Spec.wire.ms.pick(ms, _) == 1 : U32}
   {==}
 
-# a resolve's failure reads the same whether it ran out of time or not
+# a resolve's failure is fail.resolve, ran out of time or not
 def fail.resolve.any(host: String, +port: U32, +ms: U32, +n: U32, why: String,
   late: Bool)
   -> {Spec.wire.fail.of(Spec.Resolve{}, host, port, ms, n, why, late)
-    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
-    : String}:
+    == Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)) : String}:
   match late:
     case True{}:
       {==}
     case False{}:
       {==}
 
-def Laws.fail_resolve(host, port, ms, n, why):
-  fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110))
+# a resolve that failed with another number names the cause
+def fail.resolve.some(host: String, +n: U32,
+  e: {False{} == U32.is_eq(n, 2) : Bool})
+  -> {Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2))
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
+    : String}:
+  %e : {Spec.wire.fail.resolve(host, n, _)
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
+    : String}
+  {==}
+
+# a name with no address names the host alone
+def fail.resolve.none(host: String, +n: U32,
+  e: {True{} == U32.is_eq(n, 2) : Bool})
+  -> {Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2))
+    == "6\ncould not resolve " ++ host : String}:
+  %e : {Spec.wire.fail.resolve(host, n, _) == "6\ncould not resolve " ++ host
+    : String}
+  {==}
+
+def Laws.fail_resolve(host, port, ms, n, e, why):
+  Equal.trans(String,
+    Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why),
+    Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)),
+    "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n),
+    fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110)),
+    fail.resolve.some(host, n, e))
+
+def Laws.fail_resolve_none(host, port, ms, n, e, why):
+  Equal.trans(String,
+    Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why),
+    Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)),
+    "6\ncould not resolve " ++ host,
+    fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110)),
+    fail.resolve.none(host, n, e))
 
 # a call that ran out of time is reported by fail.late
 def fail.at.late(p: Spec.Phase, host: String, +port: U32, +ms: U32, +n: U32,

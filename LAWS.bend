@@ -1672,17 +1672,30 @@ law why_late_timed_out:
   for why: String
   {Spec.wire.timed_out(Spec.wire.why(Some{28}, why)) == True{} : Bool}
 
-# LAW (HTTP-CLI-13): a resolve that fails is status 6 and names the host and
-# the cause, whatever the error number
+# LAW (HTTP-CLI-13): a resolve that fails with any number but ENOENT is
+# status 6 and names the host and the cause, ran out of time or not
 # HTTP-CLI-13
 law fail_resolve:
-  for host: String
+  for +host: String
   for +port: U32
   for +ms: U32
   for +n: U32
-  for why: String
+  for e: {False{} == U32.is_eq(n, 2) : Bool}
+  for +why: String
   {Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why)
     == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n) : String}
+
+# LAW: a name with no address (ENOENT) is status 6 and the host alone
+# HTTP-CLI-13
+law fail_resolve_none:
+  for +host: String
+  for +port: U32
+  for +ms: U32
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 2) : Bool}
+  for +why: String
+  {Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why)
+    == "6\ncould not resolve " ++ host : String}
 
 # LAW: a connect that ran out of time is status 28 and says how long it took
 # HTTP-CLI-13
