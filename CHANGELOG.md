@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.12.0...v0.13.0) (2026-10-23)
+
+
+### Features
+
+* **client:** timed requests for every method; fix method on the wire and default-header overrides ([#38](https://github.com/Emerging-Patterns/ezhttp/issues/38)) ([91af3fb](https://github.com/Emerging-Patterns/ezhttp/commit/91af3fb92cbae3fd08a7387e97b1a76f9657e61c))
+
 ## [0.12.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.11.0...v0.12.0) (2026-10-23)
 
 
