@@ -1,7 +1,8 @@
 # ezhttp: the laws. Closed equalities for URL parsing (RFC 3986), HTTP/1.1
 # message framing (RFC 9112), HTTP semantics (RFC 9110), TLS selection
 # (RFC 2818), Basic and Bearer credentials (RFC 7617, RFC 4648, RFC 6750),
-# cookies (RFC 6265), caching directives (RFC 9111), and Fetch CORS.
+# cookies (RFC 6265), caching directives (RFC 9111), Fetch CORS, query strings
+# (WHATWG URL §5) and HTML character references (HTML §13.2.5).
 # PROOF.bend fills them. `bend PROOF.bend` is the gate.
 import Base
 import ./src/http.bend as Http
@@ -19,6 +20,10 @@ import ./src/pct.bend as Pct
 import ./src/html.bend as Html
 import ./src/redirect.bend as Redirect
 import ./src/form.bend as Form
+import ./src/qs.bend as Qs
+import ./src/unescape.bend as Ref
+import ./src/entities.bend as Ents
+import ./src/echo.bend as Echo
 import 0xa81e161008ecc2f297c0a3065cb9b188/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -65,6 +70,8 @@ def avoids(s: String, +c: Char) -> Bool:
       Bool.and(Bool.not(Char.is_eq(h, c)), avoids(t, c))
 
 # LAW: a string that holds the character nowhere splits into itself
+# HTTP-QS-6
+# HTTP-CK-1
 law split_whole:
   for +s: String
   for +c: Char
@@ -72,6 +79,8 @@ law split_whole:
   {String.split(s, c) == [s] : List<&2, String>}
 
 # LAW: a string that holds the character first at a known place splits there
+# HTTP-QS-6
+# HTTP-CK-1
 law split_cut:
   for +s: String
   for +c: Char
@@ -3579,3 +3588,1336 @@ law fq_other:
   for e3: {False{} == U32.is_eq(c, 10) : Bool}
   for rest: String
   {Form.form.one(c, rest) == SCon{Chr{c}, rest} : String}
+
+# --- percent-decoding and query strings (SPEC.md HTTP-QS) ---
+
+# LAW: unquote reads a string into bytes and characters from plain text, then
+# decodes them as UTF-8 from between characters
+# HTTP-QS-1
+law qs_unquote:
+  for s: String
+  {Qs.unquote(s) == Qs.utf.dec(Qs.toks(s, False{}, Qs.Plain{}), Qs.Idle{})
+    : String}
+
+# LAW: unquote_plus is the same reading with `+` as a space
+# HTTP-QS-3
+law qs_unquote_plus:
+  for s: String
+  {Qs.unquote.plus(s)
+    == Qs.utf.dec(Qs.toks(s, True{}, Qs.Plain{}), Qs.Idle{}) : String}
+
+# LAW: at the end of the text, what is left open is written as it stands
+# HTTP-QS-1
+law qs_toks_nil:
+  for plus: Bool
+  for st: Qs.Esc
+  {Qs.toks("", plus, st) == Qs.tok.end(st) : List<&2, Qs.Tok>}
+
+# LAW: the text is read one character at a time, from where the reading stands
+# HTTP-QS-1
+law qs_toks_cons:
+  for +c: Char
+  for t: String
+  for +plus: Bool
+  for st: Qs.Esc
+  {Qs.toks(SCon{c, t}, plus, st)
+    == Qs.tok.step(plus, st, c, st2 => Qs.toks(t, plus, st2))
+    : List<&2, Qs.Tok>}
+
+# LAW: in plain text, a character outside ASCII is kept as itself
+# HTTP-QS-1
+law qs_tok_wide:
+  for plus: Bool
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e: {True{} == U32.is_ge(Char.to_u32(c), 128) : Bool}
+  {Qs.tok.step(plus, Qs.Plain{}, c, k) == Qs.W{c} <> k(Qs.Plain{})
+    : List<&2, Qs.Tok>}
+
+# LAW (RFC 3986 §2.1): in plain text, `%` opens an escape
+# HTTP-QS-1
+law qs_tok_open:
+  for plus: Bool
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e1: {False{} == U32.is_ge(Char.to_u32(c), 128) : Bool}
+  for e2: {True{} == Char.is_eq(c, '%') : Bool}
+  {Qs.tok.step(plus, Qs.Plain{}, c, k) == k(Qs.Pct{}) : List<&2, Qs.Tok>}
+
+# LAW: in plain text, every other ASCII character is a byte
+# HTTP-QS-1
+# HTTP-QS-3
+law qs_tok_byte:
+  for plus: Bool
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e1: {False{} == U32.is_ge(Char.to_u32(c), 128) : Bool}
+  for e2: {False{} == Char.is_eq(c, '%') : Bool}
+  {Qs.tok.step(plus, Qs.Plain{}, c, k)
+    == Qs.B{Qs.tok.byte(plus, c)} <> k(Qs.Plain{}) : List<&2, Qs.Tok>}
+
+# LAW (WHATWG URL §5.1 step 3.3): with `plus`, `+` is the byte of a space
+# HTTP-QS-3
+law qs_byte_plus:
+  for +c: Char
+  for e: {True{} == Char.is_eq(c, '+') : Bool}
+  {Qs.tok.byte(True{}, c) == 32 : U32}
+
+# LAW: any other plain character is the byte of its own code
+# HTTP-QS-1
+# HTTP-QS-3
+law qs_byte_other:
+  for plus: Bool
+  for +c: Char
+  for e: {False{} == Bool.and(plus, Char.is_eq(c, '+')) : Bool}
+  {Qs.tok.byte(plus, c) == Char.to_u32(c) : U32}
+
+# LAW (RFC 3986 §2.1): after `%`, a hex digit is held for the next one
+# HTTP-QS-1
+law qs_tok_pct_hex:
+  for plus: Bool
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e: {True{} == Qs.tok.hex(c) : Bool}
+  {Qs.tok.step(plus, Qs.Pct{}, c, k) == k(Qs.Pct1{c}) : List<&2, Qs.Tok>}
+
+# LAW: after `%`, any other character leaves the `%` as written and is read
+# in plain text
+# HTTP-QS-1
+law qs_tok_pct_other:
+  for +plus: Bool
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e: {False{} == Qs.tok.hex(c) : Bool}
+  {Qs.tok.step(plus, Qs.Pct{}, c, k)
+    == Qs.B{37} <> Qs.tok.step(plus, Qs.Plain{}, c, k) : List<&2, Qs.Tok>}
+
+# LAW (RFC 3986 §2.1): `%` and two hex digits are the byte they name, the
+# first digit high
+# HTTP-QS-1
+law qs_tok_pct1_hex:
+  for plus: Bool
+  for +d: Char
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e: {True{} == Qs.tok.hex(c) : Bool}
+  {Qs.tok.step(plus, Qs.Pct1{d}, c, k)
+    == Qs.B{U32.add(U32.mul(Http.hex.val(d), 16), Http.hex.val(c))}
+      <> k(Qs.Plain{}) : List<&2, Qs.Tok>}
+
+# LAW: `%` and one hex digit before anything else are written as they stand
+# and the character is read in plain text
+# HTTP-QS-1
+law qs_tok_pct1_other:
+  for +plus: Bool
+  for +d: Char
+  for +c: Char
+  for k: Qs.Esc -> List<&2, Qs.Tok>
+  for e: {False{} == Qs.tok.hex(c) : Bool}
+  {Qs.tok.step(plus, Qs.Pct1{d}, c, k)
+    == Qs.B{37} <> (Qs.B{Char.to_u32(d)}
+      <> Qs.tok.step(plus, Qs.Plain{}, c, k)) : List<&2, Qs.Tok>}
+
+# LAW: plain text ends with nothing left open
+# HTTP-QS-1
+law qs_tok_end_plain:
+  for st: Qs.Esc
+  for e: {Qs.Plain{} == st : Qs.Esc}
+  {Qs.tok.end(st) == [] : List<&2, Qs.Tok>}
+
+# LAW: a `%` at the end is written as it stands
+# HTTP-QS-1
+law qs_tok_end_pct:
+  for st: Qs.Esc
+  for e: {Qs.Pct{} == st : Qs.Esc}
+  {Qs.tok.end(st) == [Qs.B{37}] : List<&2, Qs.Tok>}
+
+# LAW: a `%` and one hex digit at the end are written as they stand
+# HTTP-QS-1
+law qs_tok_end_pct1:
+  for +d: Char
+  {Qs.tok.end(Qs.Pct1{d}) == [Qs.B{37}, Qs.B{Char.to_u32(d)}]
+    : List<&2, Qs.Tok>}
+
+# LAW: a hex digit is a character whose hex value is below 16
+# HTTP-QS-1
+law qs_tok_hex:
+  for c: Char
+  {Qs.tok.hex(c) == U32.is_lt(Http.hex.val(c), 16) : Bool}
+
+# LAW: `0`-`9` are worth 0 to 9
+# HTTP-QS-1
+law qs_hexval_dec:
+  for +u: U32
+  for e: {True{} == Bool.and(U32.is_ge(u, 48), U32.is_le(u, 57)) : Bool}
+  {Http.hex.val(Chr{u}) == U32.sub(u, 48) : U32}
+
+# LAW: `A`-`F` are worth 10 to 15
+# HTTP-QS-1
+law qs_hexval_upper:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_ge(u, 48), U32.is_le(u, 57)) : Bool}
+  for e2: {False{} == Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)) : Bool}
+  for e3: {True{} == Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)) : Bool}
+  {Http.hex.val(Chr{u}) == U32.sub(u, 55) : U32}
+
+# LAW: `a`-`f` are worth 10 to 15
+# HTTP-QS-1
+law qs_hexval_lower:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_ge(u, 48), U32.is_le(u, 57)) : Bool}
+  for e2: {True{} == Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)) : Bool}
+  {Http.hex.val(Chr{u}) == U32.sub(u, 87) : U32}
+
+# LAW: every other character is no hex digit (16)
+# HTTP-QS-1
+law qs_hexval_none:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_ge(u, 48), U32.is_le(u, 57)) : Bool}
+  for e2: {False{} == Bool.and(U32.is_ge(u, 97), U32.is_le(u, 102)) : Bool}
+  for e3: {False{} == Bool.and(U32.is_ge(u, 65), U32.is_le(u, 70)) : Bool}
+  {Http.hex.val(Chr{u}) == 16 : U32}
+
+# LAW: decoding ends where the pieces end
+# HTTP-QS-2
+law qs_dec_nil:
+  for st: Qs.Utf
+  {Qs.utf.dec([], st) == Qs.utf.end(st) : String}
+
+# LAW: pieces are decoded one at a time, from where the decoding stands
+# HTTP-QS-2
+law qs_dec_cons:
+  for t: Qs.Tok
+  for rest: List<&2, Qs.Tok>
+  for st: Qs.Utf
+  {Qs.utf.dec(t <> rest, st)
+    == Qs.utf.step(st, t, st2 => Qs.utf.dec(rest, st2)) : String}
+
+# LAW: between characters, the end leaves nothing
+# HTTP-QS-2
+law qs_end_idle:
+  for st: Qs.Utf
+  for e: {Qs.Idle{} == st : Qs.Utf}
+  {Qs.utf.end(st) == "" : String}
+
+# LAW (Unicode §3.9): a sequence the end leaves unfinished is one U+FFFD
+# HTTP-QS-2
+law qs_end_need:
+  for cp: U32
+  for left: Nat
+  for lo: U32
+  for hi: U32
+  {Qs.utf.end(Qs.Need{cp, left, lo, hi}) == SCon{Chr{65533}, ""} : String}
+
+# LAW: between characters, a character outside ASCII is itself
+# HTTP-QS-2
+law qs_idle_wide:
+  for c: Char
+  for k: Qs.Utf -> String
+  {Qs.utf.step(Qs.Idle{}, Qs.W{c}, k) == SCon{c, k(Qs.Idle{})} : String}
+
+# LAW: between characters, a byte is read by what it leads
+# HTTP-QS-2
+law qs_idle_byte:
+  for +b: U32
+  for k: Qs.Utf -> String
+  {Qs.utf.step(Qs.Idle{}, Qs.B{b}, k) == Qs.utf.lead(b, k, Qs.lead(b))
+    : String}
+
+# LAW: an ASCII byte is its character
+# HTTP-QS-2
+law qs_lead_on_ascii:
+  for +b: U32
+  for k: Qs.Utf -> String
+  {Qs.utf.lead(b, k, Qs.Ascii{}) == SCon{Chr{b}, k(Qs.Idle{})} : String}
+
+# LAW (Unicode §3.9): a byte no sequence starts with is one U+FFFD
+# HTTP-QS-2
+law qs_lead_on_bad:
+  for +b: U32
+  for k: Qs.Utf -> String
+  {Qs.utf.lead(b, k, Qs.Bad{}) == SCon{Chr{65533}, k(Qs.Idle{})} : String}
+
+# LAW: a lead byte opens its sequence
+# HTTP-QS-2
+law qs_lead_on_opens:
+  for +b: U32
+  for k: Qs.Utf -> String
+  for cp: U32
+  for left: Nat
+  for lo: U32
+  for hi: U32
+  {Qs.utf.lead(b, k, Qs.Opens{cp, left, lo, hi})
+    == k(Qs.Need{cp, left, lo, hi}) : String}
+
+# LAW (RFC 3629 §4): 00 to 7F is ASCII
+# HTTP-QS-2
+law qs_lead_ascii:
+  for +b: U32
+  for e: {True{} == U32.is_lt(b, 128) : Bool}
+  {Qs.lead(b) == Qs.Ascii{} : Qs.Lead}
+
+# LAW (RFC 3629 §4): 80 to C1 start no sequence
+# HTTP-QS-2
+law qs_lead_low:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {True{} == U32.is_lt(b, 194) : Bool}
+  {Qs.lead(b) == Qs.Bad{} : Qs.Lead}
+
+# LAW (RFC 3629 §4): C2 to DF need one byte 80 to BF
+# HTTP-QS-2
+law qs_lead_two:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {True{} == U32.is_lt(b, 224) : Bool}
+  {Qs.lead(b) == Qs.Opens{U32.and(b, 31), 0n, 128, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): E0 needs A0 to BF, then one byte
+# HTTP-QS-2
+law qs_lead_e0:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {True{} == U32.is_eq(b, 224) : Bool}
+  {Qs.lead(b) == Qs.Opens{0, 1n, 160, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): E1 to EC need 80 to BF, then one byte
+# HTTP-QS-2
+law qs_lead_e1:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {True{} == U32.is_lt(b, 237) : Bool}
+  {Qs.lead(b) == Qs.Opens{U32.and(b, 15), 1n, 128, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): ED needs 80 to 9F (no surrogates), then one byte
+# HTTP-QS-2
+law qs_lead_ed:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {True{} == U32.is_eq(b, 237) : Bool}
+  {Qs.lead(b) == Qs.Opens{13, 1n, 128, 159} : Qs.Lead}
+
+# LAW (RFC 3629 §4): EE and EF need 80 to BF, then one byte
+# HTTP-QS-2
+law qs_lead_ee:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {False{} == U32.is_eq(b, 237) : Bool}
+  for e7: {True{} == U32.is_lt(b, 240) : Bool}
+  {Qs.lead(b) == Qs.Opens{U32.and(b, 15), 1n, 128, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): F0 needs 90 to BF, then two bytes
+# HTTP-QS-2
+law qs_lead_f0:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {False{} == U32.is_eq(b, 237) : Bool}
+  for e7: {False{} == U32.is_lt(b, 240) : Bool}
+  for e8: {True{} == U32.is_eq(b, 240) : Bool}
+  {Qs.lead(b) == Qs.Opens{0, 2n, 144, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): F1 to F3 need 80 to BF, then two bytes
+# HTTP-QS-2
+law qs_lead_f1:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {False{} == U32.is_eq(b, 237) : Bool}
+  for e7: {False{} == U32.is_lt(b, 240) : Bool}
+  for e8: {False{} == U32.is_eq(b, 240) : Bool}
+  for e9: {True{} == U32.is_lt(b, 244) : Bool}
+  {Qs.lead(b) == Qs.Opens{U32.and(b, 7), 2n, 128, 191} : Qs.Lead}
+
+# LAW (RFC 3629 §4): F4 needs 80 to 8F (up to U+10FFFF), then two bytes
+# HTTP-QS-2
+law qs_lead_f4:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {False{} == U32.is_eq(b, 237) : Bool}
+  for e7: {False{} == U32.is_lt(b, 240) : Bool}
+  for e8: {False{} == U32.is_eq(b, 240) : Bool}
+  for e9: {False{} == U32.is_lt(b, 244) : Bool}
+  for e10: {True{} == U32.is_eq(b, 244) : Bool}
+  {Qs.lead(b) == Qs.Opens{4, 2n, 128, 143} : Qs.Lead}
+
+# LAW (RFC 3629 §4): F5 and up start no sequence
+# HTTP-QS-2
+law qs_lead_high:
+  for +b: U32
+  for e1: {False{} == U32.is_lt(b, 128) : Bool}
+  for e2: {False{} == U32.is_lt(b, 194) : Bool}
+  for e3: {False{} == U32.is_lt(b, 224) : Bool}
+  for e4: {False{} == U32.is_eq(b, 224) : Bool}
+  for e5: {False{} == U32.is_lt(b, 237) : Bool}
+  for e6: {False{} == U32.is_eq(b, 237) : Bool}
+  for e7: {False{} == U32.is_lt(b, 240) : Bool}
+  for e8: {False{} == U32.is_eq(b, 240) : Bool}
+  for e9: {False{} == U32.is_lt(b, 244) : Bool}
+  for e10: {False{} == U32.is_eq(b, 244) : Bool}
+  {Qs.lead(b) == Qs.Bad{} : Qs.Lead}
+
+# LAW (Unicode §3.9): a character outside ASCII inside a sequence ends it
+# unfinished, one U+FFFD, and is itself
+# HTTP-QS-2
+law qs_need_wide:
+  for cp: U32
+  for left: Nat
+  for lo: U32
+  for hi: U32
+  for c: Char
+  for k: Qs.Utf -> String
+  {Qs.utf.step(Qs.Need{cp, left, lo, hi}, Qs.W{c}, k)
+    == SCon{Chr{65533}, SCon{c, k(Qs.Idle{})}} : String}
+
+# LAW (RFC 3629 §3): the last byte that fits ends the character
+# HTTP-QS-2
+law qs_need_last:
+  for +cp: U32
+  for +lo: U32
+  for +hi: U32
+  for +b: U32
+  for k: Qs.Utf -> String
+  for e: {True{} == Bool.and(U32.is_le(lo, b), U32.is_le(b, hi)) : Bool}
+  {Qs.utf.step(Qs.Need{cp, 0n, lo, hi}, Qs.B{b}, k)
+    == SCon{Chr{Qs.utf.add(cp, b)}, k(Qs.Idle{})} : String}
+
+# LAW (RFC 3629 §3): a byte that fits with more to come adds its bits and
+# needs the next in 80 to BF
+# HTTP-QS-2
+law qs_need_more:
+  for +cp: U32
+  for l: Nat
+  for +lo: U32
+  for +hi: U32
+  for +b: U32
+  for k: Qs.Utf -> String
+  for e: {True{} == Bool.and(U32.is_le(lo, b), U32.is_le(b, hi)) : Bool}
+  {Qs.utf.step(Qs.Need{cp, 1n+l, lo, hi}, Qs.B{b}, k)
+    == k(Qs.Need{Qs.utf.add(cp, b), l, 128, 191}) : String}
+
+# LAW (Unicode §3.9): a byte that does not fit ends the sequence unfinished,
+# one U+FFFD, and is read again between characters
+# HTTP-QS-2
+law qs_need_miss:
+  for +cp: U32
+  for left: Nat
+  for +lo: U32
+  for +hi: U32
+  for +b: U32
+  for k: Qs.Utf -> String
+  for e: {False{} == Bool.and(U32.is_le(lo, b), U32.is_le(b, hi)) : Bool}
+  {Qs.utf.step(Qs.Need{cp, left, lo, hi}, Qs.B{b}, k)
+    == SCon{Chr{65533}, Qs.utf.lead(b, k, Qs.lead(b))} : String}
+
+# LAW (RFC 3629 §3): a continuation byte adds its six low bits
+# HTTP-QS-2
+law qs_add:
+  for +cp: U32
+  for +b: U32
+  {Qs.utf.add(cp, b) == U32.or(U32.shln(cp, 6n), U32.and(b, 63)) : U32}
+
+# LAW: quote_plus writes nothing for the empty string
+# HTTP-QS-4
+law qs_qp_nil:
+  for s: String
+  for e: {"" == s : String}
+  {Qs.quote.plus(s) == "" : String}
+
+# LAW: a space is written `+`
+# HTTP-QS-4
+law qs_qp_space:
+  for t: String
+  {Qs.quote.plus(SCon{' ', t}) == SCon{'+', Qs.quote.plus(t)} : String}
+
+# LAW: every other character is written as quote_component writes it
+# HTTP-QS-4
+law qs_qp_other:
+  for +cp: U32
+  for t: String
+  for e: {False{} == U32.is_eq(cp, 32) : Bool}
+  {Qs.quote.plus(SCon{Chr{cp}, t}) == Pct.one(False{}, cp, Qs.quote.plus(t))
+    : String}
+
+# LAW: no pairs are the empty query
+# HTTP-QS-5
+law qs_ue_nil:
+  for ps: List<&2, Qs.Kv()>
+  for e: {[] == ps : List<&2, Qs.Kv()>}
+  {Qs.urlencode(ps) == "" : String}
+
+# LAW: the first pair, then the others each after `&`
+# HTTP-QS-5
+law qs_ue_cons:
+  for name: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  {Qs.urlencode((name, value) <> t) == Qs.form.pair(name, value)
+    ++ Qs.form.more(t) : String}
+
+# LAW: after the last pair, nothing
+# HTTP-QS-5
+law qs_more_nil:
+  for ps: List<&2, Qs.Kv()>
+  for e: {[] == ps : List<&2, Qs.Kv()>}
+  {Qs.form.more(ps) == "" : String}
+
+# LAW: each pair after the first is written after `&`
+# HTTP-QS-5
+law qs_more_cons:
+  for name: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  {Qs.form.more((name, value) <> t)
+    == "&" ++ Qs.form.pair(name, value) ++ Qs.form.more(t) : String}
+
+# LAW: a pair is its quote_plus'd name, `=` and its quote_plus'd value
+# HTTP-QS-5
+law qs_pair:
+  for name: String
+  for value: String
+  {Qs.form.pair(name, value)
+    == Qs.quote.plus(name) ++ "=" ++ Qs.quote.plus(value) : String}
+
+# LAW (WHATWG URL §5.1 step 1): a query is split on every `&`
+# HTTP-QS-6
+law qs_parse:
+  for text: String
+  {Qs.parse(text) == Qs.fields(String.split(text, '&'))
+    : List<&2, Qs.Kv()>}
+
+# LAW: no pieces, no pairs
+# HTTP-QS-6
+law qs_fields_nil:
+  for ps: List<&2, String>
+  for e: {[] == ps : List<&2, String>}
+  {Qs.fields(ps) == [] : List<&2, Qs.Kv()>}
+
+# LAW (WHATWG URL §5.1 step 3.1): an empty piece is skipped
+# HTTP-QS-6
+law qs_fields_skip:
+  for t: List<&2, String>
+  {Qs.fields("" <> t) == Qs.fields(t) : List<&2, Qs.Kv()>}
+
+# LAW: any other piece is a pair, in front of the rest's, in order
+# HTTP-QS-6
+law qs_fields_keep:
+  for +p: String
+  for t: List<&2, String>
+  for e: {False{} == String.is_empty(p) : Bool}
+  {Qs.fields(p <> t) == Qs.field(p) <> Qs.fields(t) : List<&2, Qs.Kv()>}
+
+# LAW: a piece is read by where its first `=` is
+# HTTP-QS-6
+law qs_field:
+  for +piece: String
+  {Qs.field(piece) == Qs.field.of(Qs.cut(piece), piece) : Qs.Kv()}
+
+# LAW (WHATWG URL §5.1 step 3.2): a piece with no `=` is a name with an
+# empty value
+# HTTP-QS-6
+law qs_field_none:
+  for whole: String
+  {Qs.field.of(None{}, whole) == (Qs.unquote.plus(whole), "") : Qs.Kv()}
+
+# LAW (WHATWG URL §5.1 steps 3.2 to 3.4): a piece cut at its first `=` is the
+# name before it and the value after it, both unquote_plus'd
+# HTTP-QS-6
+law qs_field_some:
+  for name: String
+  for value: String
+  for whole: String
+  {Qs.field.of(Some{(name, value)}, whole)
+    == (Qs.unquote.plus(name), Qs.unquote.plus(value)) : Qs.Kv()}
+
+# LAW: a text with no `=` before one is cut at that one
+# HTTP-QS-6
+# HTTP-CK-1
+law qs_cut_found:
+  for +s: String
+  for r: String
+  for +e: {avoids(s, '=') == True{} : Bool}
+  {Qs.cut(String.append(s, SCon{'=', r})) == Some{(s, r)}
+    : Maybe<&2, Qs.Kv()>}
+
+# LAW: a text with no `=` is not cut
+# HTTP-QS-6
+# HTTP-CK-1
+law qs_cut_none:
+  for +s: String
+  for +e: {avoids(s, '=') == True{} : Bool}
+  {Qs.cut(s) == None{} : Maybe<&2, Qs.Kv()>}
+
+# LAW: no pairs give no value
+# HTTP-QS-7
+law qs_get_nil:
+  for name: String
+  {Qs.get([], name) == None{} : Maybe<&2, String>}
+
+# LAW: a later pair with the name wins
+# HTTP-QS-7
+law qs_get_later:
+  for key: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  for +name: String
+  for x: String
+  for e: {Some{x} == Qs.get(t, name) : Maybe<&2, String>}
+  {Qs.get((key, value) <> t, name) == Some{x} : Maybe<&2, String>}
+
+# LAW: with no later pair with the name, this one's value when it has it
+# HTTP-QS-7
+law qs_get_here:
+  for key: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  for +name: String
+  for e1: {None{} == Qs.get(t, name) : Maybe<&2, String>}
+  for e2: {True{} == String.eq(key, name) : Bool}
+  {Qs.get((key, value) <> t, name) == Some{value} : Maybe<&2, String>}
+
+# LAW: and none when it does not
+# HTTP-QS-7
+law qs_get_miss:
+  for key: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  for +name: String
+  for e1: {None{} == Qs.get(t, name) : Maybe<&2, String>}
+  for e2: {False{} == String.eq(key, name) : Bool}
+  {Qs.get((key, value) <> t, name) == None{} : Maybe<&2, String>}
+
+# --- HTML character references (SPEC.md HTTP-REF) ---
+
+# LAW: html_unescape scans a text from text
+# HTTP-REF-1
+law ref_unescape:
+  for s: String
+  {Ref.unescape(s) == Ref.scan(s, Ref.Txt{}) : String}
+
+# LAW: at the end of the text, what is open ends there
+# HTTP-REF-1
+law ref_scan_nil:
+  for st: Ref.Scan
+  {Ref.scan("", st) == Ref.end(st) : String}
+
+# LAW: the text is scanned one character at a time
+# HTTP-REF-1
+law ref_scan_cons:
+  for +c: Char
+  for t: String
+  for st: Ref.Scan
+  {Ref.scan(SCon{c, t}, st) == Ref.step(st, c, st2 => Ref.scan(t, st2))
+    : String}
+
+# LAW: in text, `&` may open a reference
+# HTTP-REF-1
+law ref_text_amp:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == Char.is_eq(c, '&') : Bool}
+  {Ref.step(Ref.Txt{}, c, k) == k(Ref.Amp{}) : String}
+
+# LAW: in text, every other character is itself
+# HTTP-REF-1
+law ref_text_other:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {False{} == Char.is_eq(c, '&') : Bool}
+  {Ref.step(Ref.Txt{}, c, k) == SCon{c, k(Ref.Txt{})} : String}
+
+# LAW (§13.2.5.72): after `&`, `#` opens a number
+# HTTP-REF-1
+law ref_amp_hash:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == Char.is_eq(c, '#') : Bool}
+  {Ref.step(Ref.Amp{}, c, k) == k(Ref.Hash{}) : String}
+
+# LAW (§13.2.5.73): after `&`, a name character opens a name
+# HTTP-REF-1
+law ref_amp_name:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == Char.is_eq(c, '#') : Bool}
+  for e2: {True{} == Ref.name.char(c) : Bool}
+  {Ref.step(Ref.Amp{}, c, k) == k(Ref.Name{SCon{c, ""}, 1n}) : String}
+
+# LAW: after `&`, anything else leaves the `&` as text and is read in text
+# HTTP-REF-1
+law ref_amp_other:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == Char.is_eq(c, '#') : Bool}
+  for e2: {False{} == Ref.name.char(c) : Bool}
+  {Ref.step(Ref.Amp{}, c, k) == SCon{'&', Ref.step(Ref.Txt{}, c, k)}
+    : String}
+
+# LAW (§13.2.5.78): after `&#`, a decimal digit opens a decimal number
+# HTTP-REF-1
+law ref_hash_dec:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == U32.is_lt(Ref.digit(False{}, c), 16) : Bool}
+  {Ref.step(Ref.Hash{}, c, k) == k(Ref.Num{False{}, Ref.digit(False{}, c)})
+    : String}
+
+# LAW (§13.2.5.76): after `&#`, `x` or `X` may open a hex number
+# HTTP-REF-1
+law ref_hash_x:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == U32.is_lt(Ref.digit(False{}, c), 16) : Bool}
+  for e2: {True{} == Bool.or(Char.is_eq(c, 'x'), Char.is_eq(c, 'X')) : Bool}
+  {Ref.step(Ref.Hash{}, c, k) == k(Ref.HashX{c}) : String}
+
+# LAW: after `&#`, anything else leaves `&#` as text and is read in text
+# HTTP-REF-1
+law ref_hash_other:
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == U32.is_lt(Ref.digit(False{}, c), 16) : Bool}
+  for e2: {False{} == Bool.or(Char.is_eq(c, 'x'), Char.is_eq(c, 'X')) : Bool}
+  {Ref.step(Ref.Hash{}, c, k) == "&#" ++ Ref.step(Ref.Txt{}, c, k) : String}
+
+# LAW (§13.2.5.77): after `&#x`, a hex digit opens a hex number
+# HTTP-REF-1
+law ref_hashx_digit:
+  for +x: Char
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == U32.is_lt(Ref.digit(True{}, c), 16) : Bool}
+  {Ref.step(Ref.HashX{x}, c, k) == k(Ref.Num{True{}, Ref.digit(True{}, c)})
+    : String}
+
+# LAW: after `&#x`, anything else leaves `&#x` as text and is read in text
+# HTTP-REF-1
+law ref_hashx_other:
+  for +x: Char
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {False{} == U32.is_lt(Ref.digit(True{}, c), 16) : Bool}
+  {Ref.step(Ref.HashX{x}, c, k)
+    == SCon{'&', SCon{'#', SCon{x, Ref.step(Ref.Txt{}, c, k)}}} : String}
+
+# LAW: inside a number, a digit of its base grows it
+# HTTP-REF-1
+law ref_num_digit:
+  for +hex: Bool
+  for +n: U32
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == U32.is_lt(Ref.digit(hex, c), 16) : Bool}
+  {Ref.step(Ref.Num{hex, n}, c, k)
+    == k(Ref.Num{hex, Ref.grow(hex, n, Ref.digit(hex, c))}) : String}
+
+# LAW (§13.2.5.79): inside a number, `;` ends the reference with it
+# HTTP-REF-1
+law ref_num_semi:
+  for +hex: Bool
+  for +n: U32
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == U32.is_lt(Ref.digit(hex, c), 16) : Bool}
+  for e2: {True{} == Char.is_eq(c, ';') : Bool}
+  {Ref.step(Ref.Num{hex, n}, c, k) == Ref.code(n) ++ k(Ref.Txt{}) : String}
+
+# LAW: inside a number, anything else ends the reference and is read in text
+# HTTP-REF-1
+law ref_num_other:
+  for +hex: Bool
+  for +n: U32
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == U32.is_lt(Ref.digit(hex, c), 16) : Bool}
+  for e2: {False{} == Char.is_eq(c, ';') : Bool}
+  {Ref.step(Ref.Num{hex, n}, c, k) == Ref.code(n) ++ Ref.step(Ref.Txt{}, c, k)
+    : String}
+
+# LAW: inside a name, `;` ends the reference with it
+# HTTP-REF-1
+law ref_name_semi:
+  for +s: String
+  for +len: Nat
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e: {True{} == Char.is_eq(c, ';') : Bool}
+  {Ref.step(Ref.Name{s, len}, c, k) == Ref.named(s ++ ";") ++ k(Ref.Txt{})
+    : String}
+
+# LAW: inside a name of fewer than 32 characters, a name character joins it
+# HTTP-REF-1
+law ref_name_join:
+  for +s: String
+  for +len: Nat
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == Char.is_eq(c, ';') : Bool}
+  for e2: {True{} == Bool.and(Ref.name.char(c), Nat.is_lt(len, 32n)) : Bool}
+  {Ref.step(Ref.Name{s, len}, c, k) == k(Ref.Name{s ++ SCon{c, ""}, 1n+len})
+    : String}
+
+# LAW: inside a name, anything else ends the reference and is read in text
+# HTTP-REF-1
+law ref_name_stop:
+  for +s: String
+  for +len: Nat
+  for +c: Char
+  for k: Ref.Scan -> String
+  for e1: {False{} == Char.is_eq(c, ';') : Bool}
+  for e2: {False{} == Bool.and(Ref.name.char(c), Nat.is_lt(len, 32n)) : Bool}
+  {Ref.step(Ref.Name{s, len}, c, k) == Ref.named(s) ++ Ref.step(Ref.Txt{}, c, k)
+    : String}
+
+# LAW: text ends with nothing open
+# HTTP-REF-1
+law ref_end_text:
+  for st: Ref.Scan
+  for e: {Ref.Txt{} == st : Ref.Scan}
+  {Ref.end(st) == "" : String}
+
+# LAW: an `&` at the end is text
+# HTTP-REF-1
+law ref_end_amp:
+  for st: Ref.Scan
+  for e: {Ref.Amp{} == st : Ref.Scan}
+  {Ref.end(st) == "&" : String}
+
+# LAW: an `&#` at the end is text
+# HTTP-REF-1
+law ref_end_hash:
+  for st: Ref.Scan
+  for e: {Ref.Hash{} == st : Ref.Scan}
+  {Ref.end(st) == "&#" : String}
+
+# LAW: an `&#x` at the end is text
+# HTTP-REF-1
+law ref_end_hashx:
+  for x: Char
+  {Ref.end(Ref.HashX{x}) == SCon{'&', SCon{'#', SCon{x, ""}}} : String}
+
+# LAW: a number at the end ends its reference
+# HTTP-REF-1
+law ref_end_num:
+  for hex: Bool
+  for +n: U32
+  {Ref.end(Ref.Num{hex, n}) == Ref.code(n) : String}
+
+# LAW: a name at the end ends its reference
+# HTTP-REF-1
+law ref_end_name:
+  for +s: String
+  for len: Nat
+  {Ref.end(Ref.Name{s, len}) == Ref.named(s) : String}
+
+# LAW (§13.2.5.73): a name character is anything but TAB, LF, FF, space, `<`,
+# `&`, `#` and `;`
+# HTTP-REF-1
+law ref_name_char:
+  for +c: Char
+  {Ref.name.char(c) == Bool.not(Bool.or(Char.is_eq(c, '\t'),
+    Bool.or(Char.is_eq(c, '\n'), Bool.or(Char.is_eq(c, '\u{C}'),
+      Bool.or(Char.is_eq(c, ' '), Bool.or(Char.is_eq(c, '<'),
+        Bool.or(Char.is_eq(c, '&'), Bool.or(Char.is_eq(c, '#'),
+          Char.is_eq(c, ';'))))))))) : Bool}
+
+# LAW: a decimal digit `0`-`9` is worth 0 to 9
+# HTTP-REF-1
+law ref_digit_dec:
+  for +u: U32
+  for e: {True{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  {Ref.digit(False{}, Chr{u}) == U32.sub(u, 48) : U32}
+
+# LAW: any other character is no decimal digit
+# HTTP-REF-1
+law ref_digit_dec_none:
+  for +u: U32
+  for e: {False{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  {Ref.digit(False{}, Chr{u}) == 16 : U32}
+
+# LAW: a hex digit `0`-`9` is worth 0 to 9
+# HTTP-REF-1
+law ref_digit_hex_dec:
+  for +u: U32
+  for e: {True{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  {Ref.digit(True{}, Chr{u}) == U32.sub(u, 48) : U32}
+
+# LAW: a hex digit `A`-`F` is worth 10 to 15
+# HTTP-REF-1
+law ref_digit_hex_upper:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  for e2: {True{} == Bool.and(U32.is_le(65, u), U32.is_le(u, 70)) : Bool}
+  {Ref.digit(True{}, Chr{u}) == U32.sub(u, 55) : U32}
+
+# LAW: a hex digit `a`-`f` is worth 10 to 15
+# HTTP-REF-1
+law ref_digit_hex_lower:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  for e2: {False{} == Bool.and(U32.is_le(65, u), U32.is_le(u, 70)) : Bool}
+  for e3: {True{} == Bool.and(U32.is_le(97, u), U32.is_le(u, 102)) : Bool}
+  {Ref.digit(True{}, Chr{u}) == U32.sub(u, 87) : U32}
+
+# LAW: any other character is no hex digit
+# HTTP-REF-1
+law ref_digit_hex_none:
+  for +u: U32
+  for e1: {False{} == Bool.and(U32.is_le(48, u), U32.is_le(u, 57)) : Bool}
+  for e2: {False{} == Bool.and(U32.is_le(65, u), U32.is_le(u, 70)) : Bool}
+  for e3: {False{} == Bool.and(U32.is_le(97, u), U32.is_le(u, 102)) : Bool}
+  {Ref.digit(True{}, Chr{u}) == 16 : U32}
+
+# LAW: a digit grows a number as n times the base plus the digit, held at
+# 0x110000
+# HTTP-REF-1
+law ref_grow:
+  for +hex: Bool
+  for +n: U32
+  for +d: U32
+  {Ref.grow(hex, n, d)
+    == U32.min(U32.add(U32.mul(n, Bool.pick(U32, hex, 16, 10)), d), 1114112)
+    : U32}
+
+# LAW (§13.2.5.80): a number is read from 0 on
+# HTTP-REF-2
+law ref_code:
+  for +n: U32
+  {Ref.code(n) == Ref.code.zero(n, U32.is_eq(n, 0)) : String}
+
+# LAW (§13.2.5.80): 0 is U+FFFD
+# HTTP-REF-2
+law ref_code_zero:
+  for +n: U32
+  for e: {True{} == U32.is_eq(n, 0) : Bool}
+  {Ref.code(n) == SCon{Chr{65533}, ""} : String}
+
+# LAW (§13.2.5.80): 0x0D is a carriage return
+# HTTP-REF-2
+law ref_code_cr:
+  for +n: U32
+  for e1: {False{} == U32.is_eq(n, 0) : Bool}
+  for e2: {True{} == U32.is_eq(n, 13) : Bool}
+  {Ref.code(n) == "\r" : String}
+
+# LAW (§13.2.5.80): 0x80 to 0x9F are the table's
+# HTTP-REF-2
+law ref_code_c1:
+  for +n: U32
+  for e1: {False{} == U32.is_eq(n, 0) : Bool}
+  for e2: {False{} == U32.is_eq(n, 13) : Bool}
+  for e3: {True{} == Bool.and(U32.is_le(128, n), U32.is_le(n, 159)) : Bool}
+  {Ref.code(n)
+    == SCon{Chr{Ref.nth(Ref.w1252(), U32.to_nat(U32.sub(n, 128)))}, ""}
+    : String}
+
+# LAW (§13.2.5.80): a surrogate or a number past U+10FFFF is U+FFFD
+# HTTP-REF-2
+law ref_code_bad:
+  for +n: U32
+  for e1: {False{} == U32.is_eq(n, 0) : Bool}
+  for e2: {False{} == U32.is_eq(n, 13) : Bool}
+  for e3: {False{} == Bool.and(U32.is_le(128, n), U32.is_le(n, 159)) : Bool}
+  for e4: {True{} == Bool.or(Bool.and(U32.is_le(55296, n),
+    U32.is_le(n, 57343)), U32.is_lt(1114111, n)) : Bool}
+  {Ref.code(n) == SCon{Chr{65533}, ""} : String}
+
+# LAW: a control or noncharacter Python drops is nothing
+# HTTP-REF-2
+law ref_code_dropped:
+  for +n: U32
+  for e1: {False{} == U32.is_eq(n, 0) : Bool}
+  for e2: {False{} == U32.is_eq(n, 13) : Bool}
+  for e3: {False{} == Bool.and(U32.is_le(128, n), U32.is_le(n, 159)) : Bool}
+  for e4: {False{} == Bool.or(Bool.and(U32.is_le(55296, n),
+    U32.is_le(n, 57343)), U32.is_lt(1114111, n)) : Bool}
+  for e5: {True{} == Ref.dropped(n) : Bool}
+  {Ref.code(n) == "" : String}
+
+# LAW: every other number is its character
+# HTTP-REF-2
+law ref_code_kept:
+  for +n: U32
+  for e1: {False{} == U32.is_eq(n, 0) : Bool}
+  for e2: {False{} == U32.is_eq(n, 13) : Bool}
+  for e3: {False{} == Bool.and(U32.is_le(128, n), U32.is_le(n, 159)) : Bool}
+  for e4: {False{} == Bool.or(Bool.and(U32.is_le(55296, n),
+    U32.is_le(n, 57343)), U32.is_lt(1114111, n)) : Bool}
+  for e5: {False{} == Ref.dropped(n) : Bool}
+  {Ref.code(n) == SCon{Chr{n}, ""} : String}
+
+# LAW: what Python drops: 0x01 to 0x08, 0x0B, 0x0E to 0x1F, 0x7F to 0x9F,
+# 0xFDD0 to 0xFDEF, and low 16 bits 0xFFFE or 0xFFFF
+# HTTP-REF-2
+law ref_dropped:
+  for +n: U32
+  {Ref.dropped(n) == Bool.or(Bool.and(U32.is_le(1, n), U32.is_le(n, 8)),
+    Bool.or(U32.is_eq(n, 11),
+      Bool.or(Bool.and(U32.is_le(14, n), U32.is_le(n, 31)),
+        Bool.or(Bool.and(U32.is_le(127, n), U32.is_le(n, 159)),
+          Bool.or(Bool.and(U32.is_le(64976, n), U32.is_le(n, 65007)),
+            U32.is_eq(U32.and(n, 65534), 65534)))))) : Bool}
+
+# LAW (§13.2.5.73): a name is read against the whole table, with no best yet
+# HTTP-REF-3
+law ref_named:
+  for +s: String
+  {Ref.named(s) == Ref.named.of(Ref.best(Ents.table(), s, None{}), s)
+    : String}
+
+# LAW: with no name the text starts with, `&` and the text are written as
+# they are
+# HTTP-REF-3
+law ref_named_none:
+  for s: String
+  {Ref.named.of(None{}, s) == SCon{'&', s} : String}
+
+# LAW: with one, its characters, then the text after it as written
+# HTTP-REF-3
+law ref_named_some:
+  for +name: String
+  for first: U32
+  for second: U32
+  for s: String
+  {Ref.named.of(Some{Ents.Ref{name, first, second}}, s)
+    == Ref.chars(first, second) ++ String.drop(s, String.length(name))
+    : String}
+
+# LAW: after the last row, the best so far
+# HTTP-REF-3
+law ref_best_nil:
+  for s: String
+  for sofar: Maybe<&2, Ents.Ref>
+  {Ref.best([], s, sofar) == sofar : Maybe<&2, Ents.Ref>}
+
+# LAW: the rows are read in order, each against the best so far
+# HTTP-REF-3
+law ref_best_cons:
+  for r: Ents.Ref
+  for t: List<&2, Ents.Ref>
+  for +s: String
+  for +sofar: Maybe<&2, Ents.Ref>
+  {Ref.best(r <> t, s, sofar) == Ref.best(t, s, Ref.best.step(sofar, r, s))
+    : Maybe<&2, Ents.Ref>}
+
+# LAW: a row is a candidate when the text starts with its name
+# HTTP-REF-3
+law ref_step:
+  for +sofar: Maybe<&2, Ents.Ref>
+  for +name: String
+  for first: U32
+  for second: U32
+  for +s: String
+  {Ref.best.step(sofar, Ents.Ref{name, first, second}, s)
+    == Ref.best.hit(sofar, Ents.Ref{name, first, second}, name,
+      String.starts_with(s, name)) : Maybe<&2, Ents.Ref>}
+
+# LAW: a row whose name the text does not start with keeps the best
+# HTTP-REF-3
+law ref_hit_miss:
+  for sofar: Maybe<&2, Ents.Ref>
+  for r: Ents.Ref
+  for name: String
+  {Ref.best.hit(sofar, r, name, False{}) == sofar : Maybe<&2, Ents.Ref>}
+
+# LAW: a candidate is compared by length with the best
+# HTTP-REF-3
+law ref_hit_take:
+  for +sofar: Maybe<&2, Ents.Ref>
+  for +r: Ents.Ref
+  for +name: String
+  {Ref.best.hit(sofar, r, name, True{})
+    == Ref.best.take(sofar, r, Nat.is_lt(Ref.best.len(sofar),
+      String.length(name))) : Maybe<&2, Ents.Ref>}
+
+# LAW: a longer candidate is the new best
+# HTTP-REF-3
+law ref_take_longer:
+  for sofar: Maybe<&2, Ents.Ref>
+  for r: Ents.Ref
+  {Ref.best.take(sofar, r, True{}) == Some{r} : Maybe<&2, Ents.Ref>}
+
+# LAW: any other keeps the best
+# HTTP-REF-3
+law ref_take_keep:
+  for sofar: Maybe<&2, Ents.Ref>
+  for r: Ents.Ref
+  {Ref.best.take(sofar, r, False{}) == sofar : Maybe<&2, Ents.Ref>}
+
+# LAW: no best yet is length 0
+# HTTP-REF-3
+law ref_len_none:
+  for m: Maybe<&2, Ents.Ref>
+  for e: {None{} == m : Maybe<&2, Ents.Ref>}
+  {Ref.best.len(m) == 0n : Nat}
+
+# LAW: a best is its name's length
+# HTTP-REF-3
+law ref_len_some:
+  for +name: String
+  for first: U32
+  for second: U32
+  {Ref.best.len(Some{Ents.Ref{name, first, second}}) == String.length(name)
+    : Nat}
+
+# LAW: a row with one code point stands for that character
+# HTTP-REF-3
+law ref_chars_one:
+  for first: U32
+  for +second: U32
+  for e: {True{} == U32.is_eq(second, 0) : Bool}
+  {Ref.chars(first, second) == SCon{Chr{first}, ""} : String}
+
+# LAW: a row with two stands for both, in order
+# HTTP-REF-3
+law ref_chars_two:
+  for first: U32
+  for +second: U32
+  for e: {False{} == U32.is_eq(second, 0) : Bool}
+  {Ref.chars(first, second) == SCon{Chr{first}, SCon{Chr{second}, ""}}
+    : String}
+
+# --- cookies sent back (SPEC.md HTTP-CK) ---
+
+# LAW (RFC 6265 §5.2 step 1): a Set-Cookie value's name-value-pair is the
+# text before its first `;`, cut at its first `=`
+# HTTP-CK-1
+law ck_pair:
+  for line: String
+  {Echo.pair(line) == Echo.pair.cut(Qs.cut(Http.first(String.split(line, ';'))))
+    : Maybe<&2, Qs.Kv()>}
+
+# LAW (§5.2 step 2): a pair with no `=` sets nothing
+# HTTP-CK-1
+law ck_pair_none:
+  for u: Maybe<&2, Qs.Kv()>
+  for e: {None{} == u : Maybe<&2, Qs.Kv()>}
+  {Echo.pair.cut(u) == None{} : Maybe<&2, Qs.Kv()>}
+
+# LAW (§5.2 steps 3, 4): the name and the value without leading and trailing
+# WSP
+# HTTP-CK-1
+law ck_pair_some:
+  for before: String
+  for after: String
+  {Echo.pair.cut(Some{(before, after)})
+    == Echo.pair.named(Echo.wsp.trim(before), Echo.wsp.trim(after),
+      String.is_empty(Echo.wsp.trim(before))) : Maybe<&2, Qs.Kv()>}
+
+# LAW (§5.2 step 5): an empty name sets nothing
+# HTTP-CK-1
+law ck_named_empty:
+  for name: String
+  for value: String
+  {Echo.pair.named(name, value, True{}) == None{} : Maybe<&2, Qs.Kv()>}
+
+# LAW: any other name sets the cookie
+# HTTP-CK-1
+law ck_named_kept:
+  for name: String
+  for value: String
+  {Echo.pair.named(name, value, False{}) == Some{(name, value)}
+    : Maybe<&2, Qs.Kv()>}
+
+# LAW: trimming strips leading WSP, then (reversed) trailing WSP
+# HTTP-CK-1
+law ck_trim:
+  for s: String
+  {Echo.wsp.trim(s)
+    == String.reverse(Echo.wsp.lead(String.reverse(Echo.wsp.lead(s))))
+    : String}
+
+# LAW: the empty string has no WSP to strip
+# HTTP-CK-1
+law ck_lead_nil:
+  for s: String
+  for e: {"" == s : String}
+  {Echo.wsp.lead(s) == "" : String}
+
+# LAW: a leading WSP character is dropped
+# HTTP-CK-1
+law ck_lead_wsp:
+  for +h: Char
+  for +t: String
+  for e: {True{} == Echo.wsp(h) : Bool}
+  {Echo.wsp.lead(SCon{h, t}) == Echo.wsp.lead(t) : String}
+
+# LAW: stripping stops at the first other character
+# HTTP-CK-1
+law ck_lead_other:
+  for +h: Char
+  for +t: String
+  for e: {False{} == Echo.wsp(h) : Bool}
+  {Echo.wsp.lead(SCon{h, t}) == SCon{h, t} : String}
+
+# LAW (RFC 5234 WSP): whitespace is SP or HTAB
+# HTTP-CK-1
+law ck_wsp:
+  for +c: Char
+  {Echo.wsp(c) == Bool.or(Char.is_eq(c, ' '), Char.is_eq(c, '\t')) : Bool}
+
+# LAW: the header sent back is the store after the values, written out
+# HTTP-CK-2
+law ck_echo:
+  for lines: List<&2, String>
+  {Echo.echo(lines) == Echo.line(Echo.store(lines, [])) : String}
+
+# LAW: with no more values, the store is as it is
+# HTTP-CK-2
+law ck_store_nil:
+  for jar: List<&2, Qs.Kv()>
+  {Echo.store([], jar) == jar : List<&2, Qs.Kv()>}
+
+# LAW: values are stored in the order they came
+# HTTP-CK-2
+law ck_store_cons:
+  for l: String
+  for t: List<&2, String>
+  for jar: List<&2, Qs.Kv()>
+  {Echo.store(l <> t, jar) == Echo.store(t, Echo.add(jar, Echo.pair(l)))
+    : List<&2, Qs.Kv()>}
+
+# LAW: a value that sets nothing leaves the store
+# HTTP-CK-2
+law ck_add_none:
+  for jar: List<&2, Qs.Kv()>
+  {Echo.add(jar, None{}) == jar : List<&2, Qs.Kv()>}
+
+# LAW: a cookie is put in the store
+# HTTP-CK-2
+law ck_add_some:
+  for jar: List<&2, Qs.Kv()>
+  for name: String
+  for value: String
+  {Echo.add(jar, Some{(name, value)}) == Echo.put(jar, name, value)
+    : List<&2, Qs.Kv()>}
+
+# LAW (§5.3): a cookie no stored one is named like goes last
+# HTTP-CK-2
+law ck_put_nil:
+  for +name: String
+  for +value: String
+  {Echo.put([], name, value) == [(name, value)] : List<&2, Qs.Kv()>}
+
+# LAW (§5.3 step 11): a stored cookie of the same name takes the new value
+# in its place
+# HTTP-CK-2
+law ck_put_hit:
+  for +key: String
+  for old: String
+  for +t: List<&2, Qs.Kv()>
+  for +name: String
+  for +value: String
+  for e: {True{} == String.eq(key, name) : Bool}
+  {Echo.put((key, old) <> t, name, value) == (key, value) <> t
+    : List<&2, Qs.Kv()>}
+
+# LAW: any other stored cookie stays, and the rest of the store is looked at
+# HTTP-CK-2
+law ck_put_miss:
+  for +key: String
+  for old: String
+  for +t: List<&2, Qs.Kv()>
+  for +name: String
+  for +value: String
+  for e: {False{} == String.eq(key, name) : Bool}
+  {Echo.put((key, old) <> t, name, value) == (key, old) <> Echo.put(t, name,
+    value) : List<&2, Qs.Kv()>}
+
+# LAW (§5.4): an empty store sends the empty value
+# HTTP-CK-2
+law ck_line_nil:
+  for jar: List<&2, Qs.Kv()>
+  for e: {[] == jar : List<&2, Qs.Kv()>}
+  {Echo.line(jar) == "" : String}
+
+# LAW (§5.4 step 4): the first cookie, then the others
+# HTTP-CK-2
+law ck_line_cons:
+  for name: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  {Echo.line((name, value) <> t) == Echo.one(name, value) ++ Echo.more(t)
+    : String}
+
+# LAW: after the last cookie, nothing
+# HTTP-CK-2
+law ck_more_nil:
+  for jar: List<&2, Qs.Kv()>
+  for e: {[] == jar : List<&2, Qs.Kv()>}
+  {Echo.more(jar) == "" : String}
+
+# LAW (§5.4 step 4.2): each cookie after the first follows `; `
+# HTTP-CK-2
+law ck_more_cons:
+  for name: String
+  for value: String
+  for t: List<&2, Qs.Kv()>
+  {Echo.more((name, value) <> t) == "; " ++ Echo.one(name, value)
+    ++ Echo.more(t) : String}
+
+# LAW (§5.4 step 4.1): a cookie is its name, `=` and its value
+# HTTP-CK-2
+law ck_one:
+  for name: String
+  for value: String
+  {Echo.one(name, value) == name ++ "=" ++ value : String}
+
+# LAW: no header fields, no Set-Cookie values
+# HTTP-CK-3
+law ck_values_nil:
+  for hs: List<&2, Http.Header>
+  for e: {[] == hs : List<&2, Http.Header>}
+  {Echo.values(hs) == [] : List<&2, String>}
+
+# LAW (RFC 9110 §5.1): a field named Set-Cookie in any case gives its value,
+# in order
+# HTTP-CK-3
+law ck_values_hit:
+  for +name: String
+  for value: String
+  for t: List<&2, Http.Header>
+  for e: {True{} == String.eq(String.to_lower(name), "set-cookie") : Bool}
+  {Echo.values(Http.H{name, value} <> t) == value <> Echo.values(t)
+    : List<&2, String>}
+
+# LAW: any other field gives nothing
+# HTTP-CK-3
+law ck_values_miss:
+  for +name: String
+  for value: String
+  for t: List<&2, Http.Header>
+  for e: {False{} == String.eq(String.to_lower(name), "set-cookie") : Bool}
+  {Echo.values(Http.H{name, value} <> t) == Echo.values(t)
+    : List<&2, String>}
+
+# LAW: unescaping undoes html_escape: for every string, html_unescape of its
+# escape is the string
+# HTTP-REF-4
+law ref_round:
+  for s: String
+  {Ref.unescape(Html.escape(s)) == s : String}
