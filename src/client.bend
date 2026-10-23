@@ -36,29 +36,31 @@ def from.raw(+raw: String, ok: Bool) -> Response:
 def http.heard(+raw: String) -> Response:
   from.raw(raw, Spec.wire.ok(raw))
 
-# an exchange as wirespec.bend wrote it: sent, or the URL's reason
-def http.send(method: String, ex: Spec.Exchange) -> IO(Response):
+# an exchange as wirespec.bend wrote it: sent and read by its own method, or
+# the URL's reason
+def http.send(ex: Spec.Exchange) -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
-    case Spec.Exchange{secure, host, port, req}:
+    case Spec.Exchange{secure, host, port, method, req}:
       do IO<Response>:
         +raw : String <- Wire.wire.talk(secure, host, port, method, req)
         IO.pure(Response, http.heard(raw))
 
 # a URL that came apart (or not) into an HTTP exchange
-def http.loc(+method: String, l: Url.Loc, headers: List<&2, Http.Header>,
+def http.loc(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
   body: String) -> IO(Response):
-  http.send(method, Spec.wire.exchange(method, l, headers, body))
+  http.send(Spec.wire.exchange(method, l, headers, body))
 
-# an exchange as wirespec.bend wrote it, bounded by a timeout
+# an exchange as wirespec.bend wrote it, bounded by a timeout, sent and read
+# by its own method
 def http.send.timed(ms: U32, ex: Spec.Exchange) -> IO(Response):
   match ex:
     case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
-    case Spec.Exchange{secure, host, port, req}:
+    case Spec.Exchange{secure, host, port, method, req}:
       do IO<Response>:
-        +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, "GET",
+        +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, method,
           req)
         IO.pure(Response, http.heard(raw))
 

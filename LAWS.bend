@@ -1700,8 +1700,10 @@ law exchange_bad:
     : Spec.Exchange}
 
 # LAW: a URL that parses is sent to its host and port, over TLS exactly when
-# its scheme is https, as the request request.at writes for them
+# its scheme is https, with the method it was given and the request
+# request.at writes for them
 # HTTP-CLI-4
+# HTTP-CLI-7
 law exchange_loc:
   for method: String
   for +scheme: String
@@ -1711,9 +1713,38 @@ law exchange_loc:
   for hs: List<&2, Http.Header>
   for body: String
   {Spec.wire.exchange(method, Url.Loc{scheme, host, port, path}, hs, body)
-    == Spec.Exchange{String.eq(scheme, "https"), host, port,
+    == Spec.Exchange{String.eq(scheme, "https"), host, port, method,
       Http.request.at(method, String.eq(scheme, "https"), host, port, path, hs,
         body)} : Spec.Exchange}
+
+# LAW: the method the wire layer reads the answer by is the method the
+# exchange was built for, for every method and every URL that parses
+# HTTP-CLI-7
+law exchange_method:
+  for method: String
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Spec.wire.exchange.method(
+    Spec.wire.exchange(method, Url.Loc{scheme, host, port, path}, hs, body))
+    == Some{method} : Maybe<&2, String>}
+
+# LAW (RFC 9112 §3): for every method, the request a client writes opens with
+# that method, the path and the protocol version on its request line
+# HTTP-CLI-7
+law request_line:
+  for +method: String
+  for secure: Bool
+  for host: String
+  for port: U32
+  for +path: String
+  for hs: List<&2, Http.Header>
+  for +body: String
+  {String.starts_with(Http.request.at(method, secure, host, port, path, hs,
+    body), method ++ " " ++ path ++ " HTTP/1.1\r\n") == True{} : Bool}
 
 # --- the request's header fields (SPEC.md HTTP-CLI-8) ---
 
