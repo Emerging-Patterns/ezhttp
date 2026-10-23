@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.17.0...v0.18.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **client:** EZ_LIBSSL is no longer read; set BEND_LIBSSL. A failed resolve names an errno (ENOENT, EAGAIN, ...) instead of an EAI_ code; a failed TLS handshake is `<name> (<n>): <reason>` instead of an SSL_ERROR code; a send over TLS is not bounded by the timeout; a body octet past 255 is sent as its low 8 bits instead of being refused.
+
+### Features
+
+* **client:** run the client over bend-kit-wire's sockets ([#52](https://github.com/Emerging-Patterns/ezhttp/issues/52)) ([6e3170c](https://github.com/Emerging-Patterns/ezhttp/commit/6e3170c89e29d59cfb567bf7e891a3052cfe0a93))
+
 ## [0.17.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.16.0...v0.17.0) (2026-10-23)
 
 
