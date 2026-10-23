@@ -136,7 +136,7 @@ def show.resp(r: Client.Response) -> String:
   match r:
     case Client.Err{why}:
       "ERR\n" ++ why
-    case Client.Response{status, headers, body, reason}:
+    case Client.Response{status, headers, body, reason, bytes}:
       U32.show(status) ++ "\n" ++ body
 
 # one timing line: MS SUM BY N
@@ -156,13 +156,23 @@ def octets.go(s: String, acc: List<&2, U32>) -> List<&2, U32>:
 def octets.of(s: String) -> List<&2, U32>:
   octets.go(s, [])
 
+# a text body's text
+def json.text(b: Body.Body) -> String:
+  match b:
+    case Body.Plain{text}:
+      text
+    case Body.Empty{}:
+      ""
+    case Body.Octets{bytes}:
+      ""
+
 # compact JSON text from a parsed value, or "" when it is not JSON
 def json.out(m: Maybe<&2, V.Json>) -> String:
   match m:
     case None{}:
       ""
     case Some{j}:
-      Body.body.payload(Json.json.body(j))
+      json.text(Json.json.body(j))
 
 # 1 when parse fails, otherwise the printed length plus one
 def json.touch.of(m: Maybe<&2, V.Json>) -> U32:
@@ -181,7 +191,7 @@ def step.sum(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body, reason}:
+    case Client.Response{status, headers, body, reason, bytes}:
       (sum + status + U32.from_nat(String.length(body)) : U32)
 
 # fold a JSON response: status plus printed length
@@ -189,7 +199,7 @@ def step.json(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body, reason}:
+    case Client.Response{status, headers, body, reason, bytes}:
       (sum + status + json.touch(body) : U32)
 
 # add the bytes we sent so the encode is used
@@ -225,7 +235,7 @@ def loop.bytes(+url: String, +s: String, n: Nat, +sum: U32) -> IO(U32):
     case 1n+p:
       do IO<U32>:
         r : Client.Response <- Http.http.post_with(url, [hdr.bytes()],
-          Body.body.octets(octets.of(s)))
+          Body.body.list(octets.of(s)))
         loop.bytes(url, s, p, step.sum(sum, r))
 
 # repeat GET plus JSON parse/print
@@ -355,7 +365,7 @@ def cmd.bytes(url: String, src: String, dst: String) -> IO(Unit):
   do IO<Unit>:
     s : String <- read.text(src)
     r : Client.Response <- Http.http.post_with(url, [hdr.bytes()],
-      Body.body.octets(octets.of(s)))
+      Body.body.list(octets.of(s)))
     write.text(dst, show.resp(r))
 
 # POST the reprinted JSON

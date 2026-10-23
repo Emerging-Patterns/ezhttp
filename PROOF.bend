@@ -13,6 +13,7 @@ import ./src/qs.bend as Qs
 import ./src/unescape.bend as Ref
 import ./src/entities.bend as Ents
 import ./src/echo.bend as Echo
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./LAWS.bend as Laws
 
 # --- Base facts used by the framing proofs ---
@@ -119,10 +120,10 @@ law utf8_split.arm:
   for -t: String
   for -m: Nat
   for b: Bool
-  for ih: {String.append(Http.utf8.take(t, m), Http.utf8.drop(t, m)) == t : String}
+  for ih: {String.append(Http.octs.take(t, m), Http.octs.drop(t, m)) == t : String}
   {String.append(
-    Http.utf8.take.step(b, h, _u => Http.utf8.take(t, m)),
-    Http.utf8.drop.step(b, h, t, _u => Http.utf8.drop(t, m))) == SCon{h, t} : String}
+    Http.octs.take.step(b, h, _u => Http.octs.take(t, m)),
+    Http.octs.drop.step(b, h, t, _u => Http.octs.drop(t, m))) == SCon{h, t} : String}
 
 def utf8_split.arm(h, t, m, b, ih):
   match b:
@@ -130,16 +131,16 @@ def utf8_split.arm(h, t, m, b, ih):
       {==}
     case False{}:
       Equal.cong(String, String, x => SCon{h, x},
-        String.append(Http.utf8.take(t, m), Http.utf8.drop(t, m)), t, ih)
+        String.append(Http.octs.take(t, m), Http.octs.drop(t, m)), t, ih)
 
 def Laws.utf8_split(s, n):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      utf8_split.arm(h, t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))),
-        Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))),
-        Laws.utf8_split(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))))
+      utf8_split.arm(h, t, Nat.sub(n, Http.octs.width(Char.to_u32(h))),
+        Nat.is_lt(n, Http.octs.width(Char.to_u32(h))),
+        Laws.utf8_split(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))))
 
 law lt_zero:
   for n: Nat
@@ -200,7 +201,7 @@ def sub_add(a, b):
 
 law take_all:
   for +s: String
-  {Http.utf8.take(s, Http.utf8.len(s)) == s : String}
+  {Http.octs.take(s, Http.octs.len(s)) == s : String}
 
 def take_all(s):
   match s:
@@ -208,44 +209,44 @@ def take_all(s):
       {==}
     case SCon{+h, +t}:
       Equal.trans(String,
-        Http.utf8.take(SCon{h, t}, Http.utf8.len(SCon{h, t})),
-        SCon{h, Http.utf8.take(t, Nat.sub(
-          Nat.add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t)),
-          Http.utf8.width(Char.to_u32(h))))},
+        Http.octs.take(SCon{h, t}, Http.octs.len(SCon{h, t})),
+        SCon{h, Http.octs.take(t, Nat.sub(
+          Nat.add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t)),
+          Http.octs.width(Char.to_u32(h))))},
         SCon{h, t},
         Equal.cong(Bool, String,
-          b => Http.utf8.take.step(b, h, _u => Http.utf8.take(t, Nat.sub(
-            Nat.add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t)),
-            Http.utf8.width(Char.to_u32(h))))),
-          Nat.is_lt(Nat.add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t)),
-            Http.utf8.width(Char.to_u32(h))),
+          b => Http.octs.take.step(b, h, _u => Http.octs.take(t, Nat.sub(
+            Nat.add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t)),
+            Http.octs.width(Char.to_u32(h))))),
+          Nat.is_lt(Nat.add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t)),
+            Http.octs.width(Char.to_u32(h))),
           False{},
-          lt_add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t))),
+          lt_add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t))),
         Equal.trans(String,
-          SCon{h, Http.utf8.take(t, Nat.sub(
-            Nat.add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t)),
-            Http.utf8.width(Char.to_u32(h))))},
-          SCon{h, Http.utf8.take(t, Http.utf8.len(t))},
+          SCon{h, Http.octs.take(t, Nat.sub(
+            Nat.add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t)),
+            Http.octs.width(Char.to_u32(h))))},
+          SCon{h, Http.octs.take(t, Http.octs.len(t))},
           SCon{h, t},
-          Equal.cong(Nat, String, m => SCon{h, Http.utf8.take(t, m)},
-            Nat.sub(Nat.add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t)),
-              Http.utf8.width(Char.to_u32(h))),
-            Http.utf8.len(t),
-            sub_add(Http.utf8.width(Char.to_u32(h)), Http.utf8.len(t))),
+          Equal.cong(Nat, String, m => SCon{h, Http.octs.take(t, m)},
+            Nat.sub(Nat.add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t)),
+              Http.octs.width(Char.to_u32(h))),
+            Http.octs.len(t),
+            sub_add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t))),
           Equal.cong(String, String, x => SCon{h, x},
-            Http.utf8.take(t, Http.utf8.len(t)), t, take_all(t))))
+            Http.octs.take(t, Http.octs.len(t)), t, take_all(t))))
 
 def Laws.clen_exact(st, hs, body):
   Equal.trans(Http.Reply,
-    Http.parse.clen(st, hs, Http.utf8.len(body), body),
-    Http.parse.short(st, hs, Http.utf8.len(body), body, False{}),
+    Http.parse.clen(st, hs, Http.octs.len(body), body),
+    Http.parse.short(st, hs, Http.octs.len(body), body, False{}),
     Http.Reply{st, hs, body},
     Equal.cong(Bool, Http.Reply,
-      b => Http.parse.short(st, hs, Http.utf8.len(body), body, b),
-      Nat.is_lt(Http.utf8.len(body), Http.utf8.len(body)), False{},
-      lt_self(Http.utf8.len(body))),
+      b => Http.parse.short(st, hs, Http.octs.len(body), body, b),
+      Nat.is_lt(Http.octs.len(body), Http.octs.len(body)), False{},
+      lt_self(Http.octs.len(body))),
     Equal.cong(String, Http.Reply, x => Http.Reply{st, hs, x},
-      Http.utf8.take(body, Http.utf8.len(body)), body, take_all(body)))
+      Http.octs.take(body, Http.octs.len(body)), body, take_all(body)))
 
 def Laws.clen_short(st, hs, n, body, e):
   %e : {Http.parse.short(st, hs, n, body, _)
@@ -367,7 +368,7 @@ def Laws.head_req_names_path(host, path, hs):
       ++ "\r\n")
 
 def Laws.post_req_names_path(host, path, hs, body):
-  +payload = Body.body.payload(body)
+  +payload = body
   eq.starts_append(path,
     " HTTP/1.1\r\n"
       ++ Http.headers.lines(Http.request.fields(host, hs, payload))
@@ -423,16 +424,16 @@ def Laws.ask_needs_request_line(_body):
 
 def Laws.ask_clen_exact(method, target, hs, body):
   Equal.trans(Http.Request,
-    Http.ask.clen(method, target, hs, Http.utf8.len(body), body),
-    Http.ask.short(method, target, hs, Http.utf8.len(body), body, False{}),
+    Http.ask.clen(method, target, hs, Http.octs.len(body), body),
+    Http.ask.short(method, target, hs, Http.octs.len(body), body, False{}),
     Http.Request{method, target, hs, body},
     Equal.cong(Bool, Http.Request,
-      b => Http.ask.short(method, target, hs, Http.utf8.len(body), body, b),
-      Nat.is_lt(Http.utf8.len(body), Http.utf8.len(body)), False{},
-      lt_self(Http.utf8.len(body))),
+      b => Http.ask.short(method, target, hs, Http.octs.len(body), body, b),
+      Nat.is_lt(Http.octs.len(body), Http.octs.len(body)), False{},
+      lt_self(Http.octs.len(body))),
     Equal.cong(String, Http.Request,
       x => Http.Request{method, target, hs, x},
-      Http.utf8.take(body, Http.utf8.len(body)), body, take_all(body)))
+      Http.octs.take(body, Http.octs.len(body)), body, take_all(body)))
 
 def Laws.ask_clen_short(method, target, hs, n, body, e):
   %e : {Http.ask.short(method, target, hs, n, body, _)
@@ -501,14 +502,14 @@ def Laws.respond_writes_reason_and_close(_status, _hs, _body):
   {==}
 
 def Laws.put_req_names_path(host, path, hs, body):
-  +payload = Body.body.payload(body)
+  +payload = body
   eq.starts_append(path,
     " HTTP/1.1\r\n"
       ++ Http.headers.lines(Http.request.fields(host, hs, payload))
       ++ "\r\n" ++ payload)
 
 def Laws.delete_req_names_path(host, path, hs, body):
-  +payload = Body.body.payload(body)
+  +payload = body
   eq.starts_append(path,
     " HTTP/1.1\r\n"
       ++ Http.headers.lines(Http.request.fields(host, hs, payload))
@@ -2629,7 +2630,7 @@ law has_len.arm:
   for b: Bool
   for e: {b == Nat.is_lt(n, w) : Bool}
   for ih: {r == Bool.not(Nat.is_lt(l, Nat.sub(n, w))) : Bool}
-  {Http.utf8.has.step(b, _u => r) == Bool.not(Nat.is_lt(Nat.add(w, l), n))
+  {Http.octs.has.step(b, _u => r) == Bool.not(Nat.is_lt(Nat.add(w, l), n))
     : Bool}
 
 def has_len.arm(n, w, l, r, b, e, ih):
@@ -2650,15 +2651,15 @@ def has_len.arm(n, w, l, r, b, e, ih):
 law has_len:
   for s: String
   for +n: Nat
-  {Http.utf8.has(s, n) == Bool.not(Nat.is_lt(Http.utf8.len(s), n)) : Bool}
+  {Http.octs.has(s, n) == Bool.not(Nat.is_lt(Http.octs.len(s), n)) : Bool}
 
 def has_len(s, n):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      +w = Http.utf8.width(Char.to_u32(h))
-      has_len.arm(n, w, Http.utf8.len(t), Http.utf8.has(t, Nat.sub(n, w)),
+      +w = Http.octs.width(Char.to_u32(h))
+      has_len.arm(n, w, Http.octs.len(t), Http.octs.has(t, Nat.sub(n, w)),
         Nat.is_lt(n, w), {==}, has_len(t, Nat.sub(n, w)))
 
 def Laws.whole_bare(_body):
@@ -2693,13 +2694,13 @@ def Laws.ended_last(f, before, after, e1, e2):
 
 def Laws.ended_next(f, before, after, e1, e2, e3):
   %e1 : {Http.chunks.ended.hex(before, after, _,
-    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.octs.drop(after,
       Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
   %e2 : {Http.chunks.ended.size(after, Http.hexlen(before), _,
-    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.octs.drop(after,
       Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
   %e3 : {Http.chunks.ended.data(after, Http.hexlen(before), _,
-    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.octs.drop(after,
       Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
   {==}
 
@@ -2717,9 +2718,9 @@ def Laws.trailer_ended(_after):
 
 def Laws.chunk_ready(after, n):
   Equal.cong(Bool, Bool,
-    x => Bool.and(x, String.starts_with(Http.utf8.drop(after, n), "\r\n")),
-    Http.utf8.has(after, Nat.add(n, 2n)),
-    Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
+    x => Bool.and(x, String.starts_with(Http.octs.drop(after, n), "\r\n")),
+    Http.octs.has(after, Nat.add(n, 2n)),
+    Bool.not(Nat.is_lt(Http.octs.len(after), Nat.add(n, 2n))),
     has_len(after, Nat.add(n, 2n)))
 
 def eq.drop_zero(s: String) -> {String.drop(s, 0n) == s : String}:
@@ -2743,9 +2744,9 @@ def sk.text(s: Http.Skip) -> String:
 def sk.has(s: Http.Skip, +j: Nat) -> Bool:
   match s:
     case Http.Short{o}:
-      Http.utf8.has("", Nat.add(o, j))
+      Http.octs.has("", Nat.add(o, j))
     case Http.Over{l, r}:
-      Http.utf8.has(r, Nat.add(l, j))
+      Http.octs.has(r, Nat.add(l, j))
 
 # the text after the skipped octets and j more
 def sk.drop(s: Http.Skip, +j: Nat) -> String:
@@ -2753,68 +2754,50 @@ def sk.drop(s: Http.Skip, +j: Nat) -> String:
     case Http.Short{o}:
       ""
     case Http.Over{l, r}:
-      Http.utf8.drop(r, Nat.add(l, j))
+      Http.octs.drop(r, Nat.add(l, j))
 
 # a skip carried on into more text
 def sk.then(s: Http.Skip, b: String) -> Http.Skip:
   match s:
     case Http.Short{o}:
-      Http.utf8.skip(b, o)
+      Http.octs.skip(b, o)
     case Http.Over{l, r}:
       Http.Over{l, r ++ b}
 
-law width_pos.pick:
-  for b1: Bool
-  for b2: Bool
-  for b3: Bool
-  {Nat.is_lt(0n, Bool.pick(Nat, b1, 1n, Bool.pick(Nat, b2, 2n,
-    Bool.pick(Nat, b3, 3n, 4n)))) == True{} : Bool}
-
-def width_pos.pick(b1, b2, b3):
-  match b1 b2 b3:
-    case True{} _ _:
-      {==}
-    case False{} True{} _:
-      {==}
-    case False{} False{} True{}:
-      {==}
-    case False{} False{} False{}:
-      {==}
-
 law width_pos:
   for +u: U32
-  {Nat.is_lt(0n, Http.utf8.width(u)) == True{} : Bool}
+  {Nat.is_lt(0n, Http.octs.width(u)) == True{} : Bool}
 
-def width_pos(u):
-  width_pos.pick(U32.is_lt(u, 128), U32.is_lt(u, 2048), U32.is_lt(u, 65536))
+def width_pos(_u):
+  {==}
 
 law has_zero:
   for s: String
-  {Http.utf8.has(s, 0n) == True{} : Bool}
+  {Http.octs.has(s, 0n) == True{} : Bool}
 
 def has_zero(s):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, t}:
-      +w = Http.utf8.width(Char.to_u32(h))
+      +w = Http.octs.width(Char.to_u32(h))
       %Equal.sym(Bool, Nat.is_lt(0n, w), True{}, width_pos(Char.to_u32(h)))
-        : {Http.utf8.has.step(_, _u => Http.utf8.has(t, Nat.sub(0n, w)))
+        : {Http.octs.has.step(_, _u => Http.octs.has(t, Nat.sub(0n, w)))
           == True{} : Bool}
       {==}
 
 law drop_zero8:
   for s: String
-  {Http.utf8.drop(s, 0n) == s : String}
+  {Http.octs.drop(s, 0n) == s : String}
 
 def drop_zero8(s):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      +w = Http.utf8.width(Char.to_u32(h))
+      +w = Http.octs.width(Char.to_u32(h))
       %Equal.sym(Bool, Nat.is_lt(0n, w), True{}, width_pos(Char.to_u32(h)))
-        : {Http.utf8.drop.step(_, h, t, _u => Http.utf8.drop(t, Nat.sub(0n, w)))
+        : {Http.octs.drop.step(_, h, t, _u => Http.octs.drop(t, Nat.sub(0n, w)))
           == SCon{h, t} : String}
       {==}
 
@@ -2861,11 +2844,11 @@ law skip_text.arm:
   for -n: Nat
   for -w: Nat
   for b: Bool
-  for ih: {Http.utf8.drop(t, Nat.sub(n, w))
-    == sk.text(Http.utf8.skip(t, Nat.sub(n, w))) : String}
-  {Http.utf8.drop.step(b, h, t, _u => Http.utf8.drop(t, Nat.sub(n, w)))
-    == sk.text(Http.utf8.skip.step(b, n, h, t,
-      _u => Http.utf8.skip(t, Nat.sub(n, w)))) : String}
+  for ih: {Http.octs.drop(t, Nat.sub(n, w))
+    == sk.text(Http.octs.skip(t, Nat.sub(n, w))) : String}
+  {Http.octs.drop.step(b, h, t, _u => Http.octs.drop(t, Nat.sub(n, w)))
+    == sk.text(Http.octs.skip.step(b, n, h, t,
+      _u => Http.octs.skip(t, Nat.sub(n, w)))) : String}
 
 def skip_text.arm(_h, _t, _n, _w, b, ih):
   match b:
@@ -2877,14 +2860,14 @@ def skip_text.arm(_h, _t, _n, _w, b, ih):
 law skip_text:
   for s: String
   for +n: Nat
-  {Http.utf8.drop(s, n) == sk.text(Http.utf8.skip(s, n)) : String}
+  {Http.octs.drop(s, n) == sk.text(Http.octs.skip(s, n)) : String}
 
 def skip_text(s, n):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      +w = Http.utf8.width(Char.to_u32(h))
+      +w = Http.octs.width(Char.to_u32(h))
       skip_text.arm(h, t, n, w, Nat.is_lt(n, w), skip_text(t, Nat.sub(n, w)))
 
 law skip_has.arm:
@@ -2893,43 +2876,43 @@ law skip_has.arm:
   for +n: Nat
   for +j: Nat
   for b: Bool
-  for +e: {b == Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))) : Bool}
-  for ih: {Http.utf8.has(t, Nat.add(Nat.sub(n, Http.utf8.width(Char.to_u32(h))), j))
-    == sk.has(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : Bool}
-  {Http.utf8.has(SCon{h, t}, Nat.add(n, j))
-    == sk.has(Http.utf8.skip.step(b, n, h, t,
-      _u => Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))))), j) : Bool}
+  for +e: {b == Nat.is_lt(n, Http.octs.width(Char.to_u32(h))) : Bool}
+  for ih: {Http.octs.has(t, Nat.add(Nat.sub(n, Http.octs.width(Char.to_u32(h))), j))
+    == sk.has(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : Bool}
+  {Http.octs.has(SCon{h, t}, Nat.add(n, j))
+    == sk.has(Http.octs.skip.step(b, n, h, t,
+      _u => Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h))))), j) : Bool}
 
 def skip_has.arm(h, t, n, j, b, e, ih):
   match b:
     case True{}:
       {==}
     case False{}:
-      %Equal.sym(Bool, Nat.is_lt(Nat.add(n, j), Http.utf8.width(Char.to_u32(h))), False{}, lt_grow(n,
-          Http.utf8.width(Char.to_u32(h)), j, e))
-        : {Http.utf8.has.step(_,
-          _u => Http.utf8.has(t, Nat.sub(Nat.add(n, j), Http.utf8.width(Char.to_u32(h)))))
-          == sk.has(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : Bool}
-      %Equal.sym(Nat, Nat.sub(Nat.add(n, j), Http.utf8.width(Char.to_u32(h))), Nat.add(Nat.sub(n,
-          Http.utf8.width(Char.to_u32(h))), j),
-        sub_grow(n, Http.utf8.width(Char.to_u32(h)), j, e))
-        : {Http.utf8.has(t, _)
-          == sk.has(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : Bool}
+      %Equal.sym(Bool, Nat.is_lt(Nat.add(n, j), Http.octs.width(Char.to_u32(h))), False{}, lt_grow(n,
+          Http.octs.width(Char.to_u32(h)), j, e))
+        : {Http.octs.has.step(_,
+          _u => Http.octs.has(t, Nat.sub(Nat.add(n, j), Http.octs.width(Char.to_u32(h)))))
+          == sk.has(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : Bool}
+      %Equal.sym(Nat, Nat.sub(Nat.add(n, j), Http.octs.width(Char.to_u32(h))), Nat.add(Nat.sub(n,
+          Http.octs.width(Char.to_u32(h))), j),
+        sub_grow(n, Http.octs.width(Char.to_u32(h)), j, e))
+        : {Http.octs.has(t, _)
+          == sk.has(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : Bool}
       ih
 
 law skip_has:
   for s: String
   for +n: Nat
   for +j: Nat
-  {Http.utf8.has(s, Nat.add(n, j)) == sk.has(Http.utf8.skip(s, n), j) : Bool}
+  {Http.octs.has(s, Nat.add(n, j)) == sk.has(Http.octs.skip(s, n), j) : Bool}
 
 def skip_has(s, n, j):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      skip_has.arm(h, t, n, j, Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))), {==},
-        skip_has(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))), j))
+      skip_has.arm(h, t, n, j, Nat.is_lt(n, Http.octs.width(Char.to_u32(h))), {==},
+        skip_has(t, Nat.sub(n, Http.octs.width(Char.to_u32(h))), j))
 
 law skip_drop.arm:
   for +h: Char
@@ -2937,35 +2920,35 @@ law skip_drop.arm:
   for +n: Nat
   for +j: Nat
   for b: Bool
-  for +e: {b == Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))) : Bool}
-  for ih: {Http.utf8.drop(t, Nat.add(Nat.sub(n, Http.utf8.width(Char.to_u32(h))), j))
-    == sk.drop(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : String}
-  {Http.utf8.drop(SCon{h, t}, Nat.add(n, j))
-    == sk.drop(Http.utf8.skip.step(b, n, h, t,
-      _u => Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))))), j) : String}
+  for +e: {b == Nat.is_lt(n, Http.octs.width(Char.to_u32(h))) : Bool}
+  for ih: {Http.octs.drop(t, Nat.add(Nat.sub(n, Http.octs.width(Char.to_u32(h))), j))
+    == sk.drop(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : String}
+  {Http.octs.drop(SCon{h, t}, Nat.add(n, j))
+    == sk.drop(Http.octs.skip.step(b, n, h, t,
+      _u => Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h))))), j) : String}
 
 def skip_drop.arm(h, t, n, j, b, e, ih):
   match b:
     case True{}:
       {==}
     case False{}:
-      %Equal.sym(Bool, Nat.is_lt(Nat.add(n, j), Http.utf8.width(Char.to_u32(h))), False{}, lt_grow(n,
-          Http.utf8.width(Char.to_u32(h)), j, e))
-        : {Http.utf8.drop.step(_, h, t,
-          _u => Http.utf8.drop(t, Nat.sub(Nat.add(n, j), Http.utf8.width(Char.to_u32(h)))))
-          == sk.drop(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : String}
-      %Equal.sym(Nat, Nat.sub(Nat.add(n, j), Http.utf8.width(Char.to_u32(h))), Nat.add(Nat.sub(n,
-          Http.utf8.width(Char.to_u32(h))), j),
-        sub_grow(n, Http.utf8.width(Char.to_u32(h)), j, e))
-        : {Http.utf8.drop(t, _)
-          == sk.drop(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), j) : String}
+      %Equal.sym(Bool, Nat.is_lt(Nat.add(n, j), Http.octs.width(Char.to_u32(h))), False{}, lt_grow(n,
+          Http.octs.width(Char.to_u32(h)), j, e))
+        : {Http.octs.drop.step(_, h, t,
+          _u => Http.octs.drop(t, Nat.sub(Nat.add(n, j), Http.octs.width(Char.to_u32(h)))))
+          == sk.drop(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : String}
+      %Equal.sym(Nat, Nat.sub(Nat.add(n, j), Http.octs.width(Char.to_u32(h))), Nat.add(Nat.sub(n,
+          Http.octs.width(Char.to_u32(h))), j),
+        sub_grow(n, Http.octs.width(Char.to_u32(h)), j, e))
+        : {Http.octs.drop(t, _)
+          == sk.drop(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), j) : String}
       ih
 
 law skip_drop:
   for s: String
   for +n: Nat
   for +j: Nat
-  {Http.utf8.drop(s, Nat.add(n, j)) == sk.drop(Http.utf8.skip(s, n), j)
+  {Http.octs.drop(s, Nat.add(n, j)) == sk.drop(Http.octs.skip(s, n), j)
     : String}
 
 def skip_drop(s, n, j):
@@ -2973,8 +2956,8 @@ def skip_drop(s, n, j):
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      skip_drop.arm(h, t, n, j, Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))), {==},
-        skip_drop(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))), j))
+      skip_drop.arm(h, t, n, j, Nat.is_lt(n, Http.octs.width(Char.to_u32(h))), {==},
+        skip_drop(t, Nat.sub(n, Http.octs.width(Char.to_u32(h))), j))
 
 law skip_app.arm:
   for +h: Char
@@ -2982,12 +2965,12 @@ law skip_app.arm:
   for +b: String
   for +n: Nat
   for c: Bool
-  for ih: {Http.utf8.skip(t ++ b, Nat.sub(n, Http.utf8.width(Char.to_u32(h))))
-    == sk.then(Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))), b) : Http.Skip}
-  {Http.utf8.skip.step(c, n, h, t ++ b,
-    _u => Http.utf8.skip(t ++ b, Nat.sub(n, Http.utf8.width(Char.to_u32(h)))))
-    == sk.then(Http.utf8.skip.step(c, n, h, t,
-      _u => Http.utf8.skip(t, Nat.sub(n, Http.utf8.width(Char.to_u32(h))))), b) : Http.Skip}
+  for ih: {Http.octs.skip(t ++ b, Nat.sub(n, Http.octs.width(Char.to_u32(h))))
+    == sk.then(Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h)))), b) : Http.Skip}
+  {Http.octs.skip.step(c, n, h, t ++ b,
+    _u => Http.octs.skip(t ++ b, Nat.sub(n, Http.octs.width(Char.to_u32(h)))))
+    == sk.then(Http.octs.skip.step(c, n, h, t,
+      _u => Http.octs.skip(t, Nat.sub(n, Http.octs.width(Char.to_u32(h))))), b) : Http.Skip}
 
 def skip_app.arm(_h, _t, _b, _n, c, ih):
   match c:
@@ -3000,15 +2983,15 @@ law skip_app:
   for s: String
   for +b: String
   for +n: Nat
-  {Http.utf8.skip(s ++ b, n) == sk.then(Http.utf8.skip(s, n), b) : Http.Skip}
+  {Http.octs.skip(s ++ b, n) == sk.then(Http.octs.skip(s, n), b) : Http.Skip}
 
 def skip_app(s, b, n):
   match s:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      skip_app.arm(h, t, b, n, Nat.is_lt(n, Http.utf8.width(Char.to_u32(h))), skip_app(t, b, Nat.sub(n,
-          Http.utf8.width(Char.to_u32(h)))))
+      skip_app.arm(h, t, b, n, Nat.is_lt(n, Http.octs.width(Char.to_u32(h))), skip_app(t, b, Nat.sub(n,
+          Http.octs.width(Char.to_u32(h)))))
 
 law has_app.arm:
   for +h: Char
@@ -3016,11 +2999,11 @@ law has_app.arm:
   for +b: String
   for +k: Nat
   for c: Bool
-  for e: {True{} == Http.utf8.has.step(c, _u => Http.utf8.has(t, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))))
+  for e: {True{} == Http.octs.has.step(c, _u => Http.octs.has(t, Nat.sub(k, Http.octs.width(Char.to_u32(h)))))
     : Bool}
-  for ih: @e2: {True{} == Http.utf8.has(t, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))) : Bool} ->
-    {Http.utf8.has(t ++ b, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))) == True{} : Bool}
-  {Http.utf8.has.step(c, _u => Http.utf8.has(t ++ b, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))))
+  for ih: @e2: {True{} == Http.octs.has(t, Nat.sub(k, Http.octs.width(Char.to_u32(h)))) : Bool} ->
+    {Http.octs.has(t ++ b, Nat.sub(k, Http.octs.width(Char.to_u32(h)))) == True{} : Bool}
+  {Http.octs.has.step(c, _u => Http.octs.has(t ++ b, Nat.sub(k, Http.octs.width(Char.to_u32(h)))))
     == True{} : Bool}
 
 def has_app.arm(_h, _t, _b, _k, c, e, ih):
@@ -3034,19 +3017,19 @@ law has_app:
   for s: String
   for +b: String
   for +k: Nat
-  for e: {True{} == Http.utf8.has(s, k) : Bool}
-  {Http.utf8.has(s ++ b, k) == True{} : Bool}
+  for e: {True{} == Http.octs.has(s, k) : Bool}
+  {Http.octs.has(s ++ b, k) == True{} : Bool}
 
 def has_app(s, b, k, e):
   match s k:
     case SNil{} 0n:
       has_zero(b)
     case SNil{} 1n+p:
-      eq.bit.absurd(&2, {Http.utf8.has(b, 1n+p) == True{} : Bool},
+      eq.bit.absurd(&2, {Http.octs.has(b, 1n+p) == True{} : Bool},
         Equal.sym(Bool, True{}, False{}, e))
     case SCon{+h, +t} _:
-      has_app.arm(h, t, b, k, Nat.is_lt(k, Http.utf8.width(Char.to_u32(h))), e,
-        e2 => has_app(t, b, Nat.sub(k, Http.utf8.width(Char.to_u32(h))), e2))
+      has_app.arm(h, t, b, k, Nat.is_lt(k, Http.octs.width(Char.to_u32(h))), e,
+        e2 => has_app(t, b, Nat.sub(k, Http.octs.width(Char.to_u32(h))), e2))
 
 law drop_app.arm:
   for +h: Char
@@ -3054,14 +3037,14 @@ law drop_app.arm:
   for +b: String
   for +k: Nat
   for c: Bool
-  for e: {True{} == Http.utf8.has.step(c, _u => Http.utf8.has(t, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))))
+  for e: {True{} == Http.octs.has.step(c, _u => Http.octs.has(t, Nat.sub(k, Http.octs.width(Char.to_u32(h)))))
     : Bool}
-  for ih: @e2: {True{} == Http.utf8.has(t, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))) : Bool} ->
-    {Http.utf8.drop(t ++ b, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))) == Http.utf8.drop(t, Nat.sub(k,
-        Http.utf8.width(Char.to_u32(h)))) ++ b
+  for ih: @e2: {True{} == Http.octs.has(t, Nat.sub(k, Http.octs.width(Char.to_u32(h)))) : Bool} ->
+    {Http.octs.drop(t ++ b, Nat.sub(k, Http.octs.width(Char.to_u32(h)))) == Http.octs.drop(t, Nat.sub(k,
+        Http.octs.width(Char.to_u32(h)))) ++ b
       : String}
-  {Http.utf8.drop.step(c, h, t ++ b, _u => Http.utf8.drop(t ++ b, Nat.sub(k, Http.utf8.width(Char.to_u32(h)))))
-    == Http.utf8.drop.step(c, h, t, _u => Http.utf8.drop(t, Nat.sub(k, Http.utf8.width(Char.to_u32(h))))) ++ b
+  {Http.octs.drop.step(c, h, t ++ b, _u => Http.octs.drop(t ++ b, Nat.sub(k, Http.octs.width(Char.to_u32(h)))))
+    == Http.octs.drop.step(c, h, t, _u => Http.octs.drop(t, Nat.sub(k, Http.octs.width(Char.to_u32(h))))) ++ b
     : String}
 
 def drop_app.arm(_h, _t, _b, _k, c, e, ih):
@@ -3075,19 +3058,19 @@ law drop_app:
   for s: String
   for +b: String
   for +k: Nat
-  for e: {True{} == Http.utf8.has(s, k) : Bool}
-  {Http.utf8.drop(s ++ b, k) == Http.utf8.drop(s, k) ++ b : String}
+  for e: {True{} == Http.octs.has(s, k) : Bool}
+  {Http.octs.drop(s ++ b, k) == Http.octs.drop(s, k) ++ b : String}
 
 def drop_app(s, b, k, e):
   match s k:
     case SNil{} 0n:
       drop_zero8(b)
     case SNil{} 1n+p:
-      eq.bit.absurd(&2, {Http.utf8.drop(b, 1n+p) == b : String},
+      eq.bit.absurd(&2, {Http.octs.drop(b, 1n+p) == b : String},
         Equal.sym(Bool, True{}, False{}, e))
     case SCon{+h, +t} _:
-      drop_app.arm(h, t, b, k, Nat.is_lt(k, Http.utf8.width(Char.to_u32(h))), e,
-        e2 => drop_app(t, b, Nat.sub(k, Http.utf8.width(Char.to_u32(h))), e2))
+      drop_app.arm(h, t, b, k, Nat.is_lt(k, Http.octs.width(Char.to_u32(h))), e,
+        e2 => drop_app(t, b, Nat.sub(k, Http.octs.width(Char.to_u32(h))), e2))
 
 law sw_app.arm:
   for +xt: String
@@ -3548,8 +3531,8 @@ law walk_done.crlf:
   for +after: String
   for +n: Nat
   for rd: Bool
-  for +ed: {Http.utf8.drop(after, Nat.add(n, 2n))
-    == Http.utf8.drop(r, Nat.add(l, 2n)) : String}
+  for +ed: {Http.octs.drop(after, Nat.add(n, 2n))
+    == Http.octs.drop(r, Nat.add(l, 2n)) : String}
   for ih: @s: String ->
     {Http.walk.done(Http.walk(g, s)) == Http.chunks.ended(g, Http.divide(s, "\r\n"))
       : Bool}
@@ -3559,11 +3542,11 @@ law walk_done.crlf:
 def walk_done.crlf(g, l, r, after, n, rd, ed, ih):
   match rd:
     case True{}:
-      %Equal.sym(String, Http.utf8.drop(after, Nat.add(n, 2n)),
-        Http.utf8.drop(r, Nat.add(l, 2n)), ed)
-        : {Http.walk.done(Http.walk(g, Http.utf8.drop(r, Nat.add(l, 2n))))
+      %Equal.sym(String, Http.octs.drop(after, Nat.add(n, 2n)),
+        Http.octs.drop(r, Nat.add(l, 2n)), ed)
+        : {Http.walk.done(Http.walk(g, Http.octs.drop(r, Nat.add(l, 2n))))
         == Http.chunks.ended(g, Http.divide(_, "\r\n")) : Bool}
-      ih(Http.utf8.drop(r, Nat.add(l, 2n)))
+      ih(Http.octs.drop(r, Nat.add(l, 2n)))
     case False{}:
       {==}
 
@@ -3572,9 +3555,9 @@ law walk_done.data.arm:
   for +after: String
   for +n: Nat
   for sk: Http.Skip
-  for +eh: {Http.utf8.has(after, Nat.add(n, 2n)) == sk.has(sk, 2n) : Bool}
-  for +et: {Http.utf8.drop(after, n) == sk.text(sk) : String}
-  for +ed: {Http.utf8.drop(after, Nat.add(n, 2n)) == sk.drop(sk, 2n) : String}
+  for +eh: {Http.octs.has(after, Nat.add(n, 2n)) == sk.has(sk, 2n) : Bool}
+  for +et: {Http.octs.drop(after, n) == sk.text(sk) : String}
+  for +ed: {Http.octs.drop(after, Nat.add(n, 2n)) == sk.drop(sk, 2n) : String}
   for ih: @s: String ->
     {Http.walk.done(Http.walk(g, s)) == Http.chunks.ended(g, Http.divide(s, "\r\n"))
       : Bool}
@@ -3585,30 +3568,30 @@ law walk_done.data.arm:
 def walk_done.data.arm(g, after, n, sk, eh, et, ed, ih):
   match sk:
     case Http.Short{+o}:
-      +hf = Equal.trans(Bool, Http.utf8.has(after, Nat.add(n, 2n)),
+      +hf = Equal.trans(Bool, Http.octs.has(after, Nat.add(n, 2n)),
         Bool.not(Nat.is_lt(0n, Nat.add(o, 2n))), False{}, eh,
         Equal.cong(Bool, Bool, x => Bool.not(x), Nat.is_lt(0n, Nat.add(o, 2n)),
           True{}, lt0_add2(o)))
-      %Equal.sym(Bool, Http.utf8.has(after, Nat.add(n, 2n)), False{}, hf)
+      %Equal.sym(Bool, Http.octs.has(after, Nat.add(n, 2n)), False{}, hf)
         : {False{} == Http.chunks.ended.data(after, n,
-          Bool.and(_, String.starts_with(Http.utf8.drop(after, n), "\r\n")),
+          Bool.and(_, String.starts_with(Http.octs.drop(after, n), "\r\n")),
           cut => Http.chunks.ended(g, cut)) : Bool}
       {==}
     case Http.Over{+l, +r}:
-      %Equal.sym(Bool, Http.utf8.has(after, Nat.add(n, 2n)),
-        Http.utf8.has(r, Nat.add(l, 2n)), eh)
+      %Equal.sym(Bool, Http.octs.has(after, Nat.add(n, 2n)),
+        Http.octs.has(r, Nat.add(l, 2n)), eh)
         : {Http.walk.done(Http.walk.crlf(g, l, r, Bool.and(
-          Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), s => Http.walk(g, s)))
+          Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), s => Http.walk(g, s)))
           == Http.chunks.ended.data(after, n,
-          Bool.and(_, String.starts_with(Http.utf8.drop(after, n), "\r\n")),
+          Bool.and(_, String.starts_with(Http.octs.drop(after, n), "\r\n")),
           cut => Http.chunks.ended(g, cut)) : Bool}
-      %Equal.sym(String, Http.utf8.drop(after, n), r, et)
+      %Equal.sym(String, Http.octs.drop(after, n), r, et)
         : {Http.walk.done(Http.walk.crlf(g, l, r, Bool.and(
-          Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), s => Http.walk(g, s)))
+          Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), s => Http.walk(g, s)))
           == Http.chunks.ended.data(after, n,
-          Bool.and(Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(_, "\r\n")),
+          Bool.and(Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(_, "\r\n")),
           cut => Http.chunks.ended(g, cut)) : Bool}
-      walk_done.crlf(g, l, r, after, n, Bool.and(Http.utf8.has(r, Nat.add(l, 2n)),
+      walk_done.crlf(g, l, r, after, n, Bool.and(Http.octs.has(r, Nat.add(l, 2n)),
         String.starts_with(r, "\r\n")), ed, ih)
 
 law walk_done.data:
@@ -3616,7 +3599,7 @@ law walk_done.data:
   for +after: String
   for +n: Nat
   for sk: Http.Skip
-  for +esk: {sk == Http.utf8.skip(after, n) : Http.Skip}
+  for +esk: {sk == Http.octs.skip(after, n) : Http.Skip}
   for ih: @s: String ->
     {Http.walk.done(Http.walk(g, s)) == Http.chunks.ended(g, Http.divide(s, "\r\n"))
       : Bool}
@@ -3625,21 +3608,21 @@ law walk_done.data:
     : Bool}
 
 def walk_done.data(g, after, n, sk, esk, ih):
-  +eh = Equal.trans(Bool, Http.utf8.has(after, Nat.add(n, 2n)),
-    sk.has(Http.utf8.skip(after, n), 2n), sk.has(sk, 2n),
+  +eh = Equal.trans(Bool, Http.octs.has(after, Nat.add(n, 2n)),
+    sk.has(Http.octs.skip(after, n), 2n), sk.has(sk, 2n),
     skip_has(after, n, 2n),
-    Equal.cong(Http.Skip, Bool, x => sk.has(x, 2n), Http.utf8.skip(after, n), sk,
-      Equal.sym(Http.Skip, sk, Http.utf8.skip(after, n), esk)))
-  +et = Equal.trans(String, Http.utf8.drop(after, n),
-    sk.text(Http.utf8.skip(after, n)), sk.text(sk),
+    Equal.cong(Http.Skip, Bool, x => sk.has(x, 2n), Http.octs.skip(after, n), sk,
+      Equal.sym(Http.Skip, sk, Http.octs.skip(after, n), esk)))
+  +et = Equal.trans(String, Http.octs.drop(after, n),
+    sk.text(Http.octs.skip(after, n)), sk.text(sk),
     skip_text(after, n),
-    Equal.cong(Http.Skip, String, x => sk.text(x), Http.utf8.skip(after, n), sk,
-      Equal.sym(Http.Skip, sk, Http.utf8.skip(after, n), esk)))
-  +ed = Equal.trans(String, Http.utf8.drop(after, Nat.add(n, 2n)),
-    sk.drop(Http.utf8.skip(after, n), 2n), sk.drop(sk, 2n),
+    Equal.cong(Http.Skip, String, x => sk.text(x), Http.octs.skip(after, n), sk,
+      Equal.sym(Http.Skip, sk, Http.octs.skip(after, n), esk)))
+  +ed = Equal.trans(String, Http.octs.drop(after, Nat.add(n, 2n)),
+    sk.drop(Http.octs.skip(after, n), 2n), sk.drop(sk, 2n),
     skip_drop(after, n, 2n),
-    Equal.cong(Http.Skip, String, x => sk.drop(x, 2n), Http.utf8.skip(after, n), sk,
-      Equal.sym(Http.Skip, sk, Http.utf8.skip(after, n), esk)))
+    Equal.cong(Http.Skip, String, x => sk.drop(x, 2n), Http.octs.skip(after, n), sk,
+      Equal.sym(Http.Skip, sk, Http.octs.skip(after, n), esk)))
   walk_done.data.arm(g, after, n, sk, eh, et, ed, ih)
 
 law walk_done.trail:
@@ -3672,7 +3655,7 @@ def walk_done.size(g, rest, after, n, z, ih):
     case True{}:
       walk_done.trail(g, rest, Http.chunks.trailer(after))
     case False{}:
-      walk_done.data(g, after, n, Http.utf8.skip(after, n), {==}, ih)
+      walk_done.data(g, after, n, Http.octs.skip(after, n), {==}, ih)
 
 law walk_done.hex:
   for +g: Nat
@@ -3727,53 +3710,53 @@ law wm.ready:
   for +b: String
   for +l: Nat
   for +r: String
-  for +erd: {Bool.and(Http.utf8.has(r, Nat.add(l, 2n)),
+  for +erd: {Bool.and(Http.octs.has(r, Nat.add(l, 2n)),
     String.starts_with(r, "\r\n")) == True{} : Bool}
   for +s1: {Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b) == Http.walk.crlf(Nat.add(g,
       String.length(b)), l, r ++ b, Bool.and(
-    Http.utf8.has(r ++ b, Nat.add(l, 2n)), String.starts_with(r ++ b, "\r\n")), s => Http.walk(Nat.add(g,
+    Http.octs.has(r ++ b, Nat.add(l, 2n)), String.starts_with(r ++ b, "\r\n")), s => Http.walk(Nat.add(g,
         String.length(b)), s))
     : Http.Walk}
   for ih: @s: String ->
     {Http.walk(Nat.add(g, String.length(b)), s ++ b) == Http.walk.more(Http.walk(g, s), String.length(b), b)
       : Http.Walk}
-  {Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b) == Http.walk.more(Http.walk(g, Http.utf8.drop(r,
+  {Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b) == Http.walk.more(Http.walk(g, Http.octs.drop(r,
       Nat.add(l, 2n))), String.length(b), b)
     : Http.Walk}
 
 def wm.ready(g, rest, b, l, r, erd, s1, ih):
-  +eh = Equal.sym(Bool, Http.utf8.has(r, Nat.add(l, 2n)), True{},
-    eq.and.left(Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n"), erd))
+  +eh = Equal.sym(Bool, Http.octs.has(r, Nat.add(l, 2n)), True{},
+    eq.and.left(Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n"), erd))
   +es = Equal.sym(Bool, String.starts_with(r, "\r\n"), True{},
-    eq.and.right(Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n"), erd))
+    eq.and.right(Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n"), erd))
   +h2 = has_app(r, b, Nat.add(l, 2n), eh)
   +s2 = sw_app(r, "\r\n", b, es)
-  +rd2 = Equal.trans(Bool, Bool.and(Http.utf8.has(r ++ b, Nat.add(l, 2n)),
+  +rd2 = Equal.trans(Bool, Bool.and(Http.octs.has(r ++ b, Nat.add(l, 2n)),
       String.starts_with(r ++ b, "\r\n")),
     Bool.and(True{}, String.starts_with(r ++ b, "\r\n")), True{},
     Equal.cong(Bool, Bool, x => Bool.and(x, String.starts_with(r ++ b, "\r\n")),
-      Http.utf8.has(r ++ b, Nat.add(l, 2n)), True{}, h2), s2)
+      Http.octs.has(r ++ b, Nat.add(l, 2n)), True{}, h2), s2)
   Equal.trans(Http.Walk, Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b),
     Http.walk.crlf(Nat.add(g, String.length(b)), l, r ++ b, True{}, s => Http.walk(Nat.add(g, String.length(b)), s)),
-    Http.walk.more(Http.walk(g, Http.utf8.drop(r, Nat.add(l, 2n))), String.length(b), b),
+    Http.walk.more(Http.walk(g, Http.octs.drop(r, Nat.add(l, 2n))), String.length(b), b),
     Equal.trans(Http.Walk, Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b),
       Http.walk.crlf(Nat.add(g, String.length(b)), l, r ++ b, Bool.and(
-        Http.utf8.has(r ++ b, Nat.add(l, 2n)), String.starts_with(r ++ b, "\r\n")), s => Http.walk(Nat.add(g,
+        Http.octs.has(r ++ b, Nat.add(l, 2n)), String.starts_with(r ++ b, "\r\n")), s => Http.walk(Nat.add(g,
             String.length(b)), s)),
       Http.walk.crlf(Nat.add(g, String.length(b)), l, r ++ b, True{}, s => Http.walk(Nat.add(g,
           String.length(b)), s)), s1,
       Equal.cong(Bool, Http.Walk, x => Http.walk.crlf(Nat.add(g, String.length(b)), l, r ++ b, x,
           s => Http.walk(Nat.add(g, String.length(b)), s)),
-        Bool.and(Http.utf8.has(r ++ b, Nat.add(l, 2n)),
+        Bool.and(Http.octs.has(r ++ b, Nat.add(l, 2n)),
           String.starts_with(r ++ b, "\r\n")), True{}, rd2)),
     Equal.trans(Http.Walk,
-      Http.walk(Nat.add(g, String.length(b)), Http.utf8.drop(r ++ b, Nat.add(l, 2n))),
-      Http.walk(Nat.add(g, String.length(b)), Http.utf8.drop(r, Nat.add(l, 2n)) ++ b),
-      Http.walk.more(Http.walk(g, Http.utf8.drop(r, Nat.add(l, 2n))), String.length(b), b),
+      Http.walk(Nat.add(g, String.length(b)), Http.octs.drop(r ++ b, Nat.add(l, 2n))),
+      Http.walk(Nat.add(g, String.length(b)), Http.octs.drop(r, Nat.add(l, 2n)) ++ b),
+      Http.walk.more(Http.walk(g, Http.octs.drop(r, Nat.add(l, 2n))), String.length(b), b),
       Equal.cong(String, Http.Walk, x => Http.walk(Nat.add(g, String.length(b)), x),
-        Http.utf8.drop(r ++ b, Nat.add(l, 2n)),
-        Http.utf8.drop(r, Nat.add(l, 2n)) ++ b, drop_app(r, b, Nat.add(l, 2n), eh)),
-      ih(Http.utf8.drop(r, Nat.add(l, 2n)))))
+        Http.octs.drop(r ++ b, Nat.add(l, 2n)),
+        Http.octs.drop(r, Nat.add(l, 2n)) ++ b, drop_app(r, b, Nat.add(l, 2n), eh)),
+      ih(Http.octs.drop(r, Nat.add(l, 2n)))))
 
 law wm.crlf:
   for +g: Nat
@@ -3782,7 +3765,7 @@ law wm.crlf:
   for +l: Nat
   for +r: String
   for rd: Bool
-  for +erd: {rd == Bool.and(Http.utf8.has(r, Nat.add(l, 2n)),
+  for +erd: {rd == Bool.and(Http.octs.has(r, Nat.add(l, 2n)),
     String.starts_with(r, "\r\n")) : Bool}
   for +s1: {Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b) == Http.walk.data(Nat.add(g,
       String.length(b)), Http.Over{l, r ++ b}, s => Http.walk(Nat.add(g, String.length(b)), s))
@@ -3797,7 +3780,7 @@ def wm.crlf(g, rest, b, l, r, rd, erd, s1, ih):
   match rd:
     case True{}:
       wm.ready(g, rest, b, l, r, Equal.sym(Bool, True{}, Bool.and(
-        Http.utf8.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), erd), s1, ih)
+        Http.octs.has(r, Nat.add(l, 2n)), String.starts_with(r, "\r\n")), erd), s1, ih)
     case False{}:
       s1
 
@@ -3819,7 +3802,7 @@ def wm.data(g, rest, b, sk, s1, ih):
     case Http.Short{o}:
       s1
     case Http.Over{+l, +r}:
-      wm.crlf(g, rest, b, l, r, Bool.and(Http.utf8.has(r, Nat.add(l, 2n)),
+      wm.crlf(g, rest, b, l, r, Bool.and(Http.octs.has(r, Nat.add(l, 2n)),
         String.starts_with(r, "\r\n")), {==}, s1, ih)
 
 law wm.trail:
@@ -3868,15 +3851,15 @@ def wm.size(g, rest, b, after, n, z, s1, ih):
     case True{}:
       wm.trail(g, rest, b, after, Http.chunks.trailer(after), {==}, s1)
     case False{}:
-      wm.data(g, rest, b, Http.utf8.skip(after, n),
+      wm.data(g, rest, b, Http.octs.skip(after, n),
         Equal.trans(Http.Walk, Http.walk(Nat.add(1n+g, String.length(b)), rest ++ b),
-          Http.walk.data(Nat.add(g, String.length(b)), Http.utf8.skip(after ++ b, n),
+          Http.walk.data(Nat.add(g, String.length(b)), Http.octs.skip(after ++ b, n),
               s => Http.walk(Nat.add(g, String.length(b)), s)),
-          Http.walk.data(Nat.add(g, String.length(b)), sk.then(Http.utf8.skip(after, n), b),
+          Http.walk.data(Nat.add(g, String.length(b)), sk.then(Http.octs.skip(after, n), b),
               s => Http.walk(Nat.add(g, String.length(b)), s)), s1,
           Equal.cong(Http.Skip, Http.Walk, x => Http.walk.data(Nat.add(g, String.length(b)), x,
               s => Http.walk(Nat.add(g, String.length(b)), s)),
-            Http.utf8.skip(after ++ b, n), sk.then(Http.utf8.skip(after, n), b),
+            Http.octs.skip(after ++ b, n), sk.then(Http.octs.skip(after, n), b),
             skip_app(after, b, n))), ih)
 
 law wm.hex:
@@ -4034,22 +4017,22 @@ def add_assoc(x, y, z):
 law u8len_app:
   for a: String
   for +b: String
-  {Http.utf8.len(a ++ b) == Nat.add(Http.utf8.len(a), Http.utf8.len(b)) : Nat}
+  {Http.octs.len(a ++ b) == Nat.add(Http.octs.len(a), Http.octs.len(b)) : Nat}
 
 def u8len_app(a, b):
   match a:
     case SNil{}:
       {==}
     case SCon{+h, +t}:
-      +w = Http.utf8.width(Char.to_u32(h))
-      Equal.trans(Nat, Nat.add(w, Http.utf8.len(t ++ b)),
-        Nat.add(w, Nat.add(Http.utf8.len(t), Http.utf8.len(b))),
-        Nat.add(Nat.add(w, Http.utf8.len(t)), Http.utf8.len(b)),
-        Equal.cong(Nat, Nat, k => Nat.add(w, k), Http.utf8.len(t ++ b),
-          Nat.add(Http.utf8.len(t), Http.utf8.len(b)), u8len_app(t, b)),
-        Equal.sym(Nat, Nat.add(Nat.add(w, Http.utf8.len(t)), Http.utf8.len(b)),
-          Nat.add(w, Nat.add(Http.utf8.len(t), Http.utf8.len(b))),
-          add_assoc(w, Http.utf8.len(t), Http.utf8.len(b))))
+      +w = Http.octs.width(Char.to_u32(h))
+      Equal.trans(Nat, Nat.add(w, Http.octs.len(t ++ b)),
+        Nat.add(w, Nat.add(Http.octs.len(t), Http.octs.len(b))),
+        Nat.add(Nat.add(w, Http.octs.len(t)), Http.octs.len(b)),
+        Equal.cong(Nat, Nat, k => Nat.add(w, k), Http.octs.len(t ++ b),
+          Nat.add(Http.octs.len(t), Http.octs.len(b)), u8len_app(t, b)),
+        Equal.sym(Nat, Nat.add(Nat.add(w, Http.octs.len(t)), Http.octs.len(b)),
+          Nat.add(w, Nat.add(Http.octs.len(t), Http.octs.len(b))),
+          add_assoc(w, Http.octs.len(t), Http.octs.len(b))))
 
 law hm.body:
   for f: Http.Frame
@@ -4063,8 +4046,8 @@ def hm.body(f, after, b):
     case Http.Bare{}:
       {==}
     case Http.Sized{+n}:
-      Equal.cong(Nat, Http.Hear, k => Http.Count{n, k}, Http.utf8.len(after ++ b),
-        Nat.add(Http.utf8.len(after), Http.utf8.len(b)), u8len_app(after, b))
+      Equal.cong(Nat, Http.Hear, k => Http.Count{n, k}, Http.octs.len(after ++ b),
+        Nat.add(Http.octs.len(after), Http.octs.len(b)), u8len_app(after, b))
     case Http.Chunked{}:
       Equal.cong(Http.Walk, Http.Hear, w => Http.Walking{w},
         Http.walk(String.length(after ++ b), after ++ b),
@@ -4482,7 +4465,7 @@ def Laws.exchange_body_text(_method, _l, _hs, _text):
 def Laws.exchange_body_empty(_method, _l, _hs):
   {==}
 
-def Laws.exchange_body_octets(_method, _l, _hs, _bytes):
+def Laws.exchange_body_octets(_method, _l, _hs, _n, _buf):
   {==}
 
 def Laws.exchange_octets_bad(_method, _why, _hs, _n):
@@ -4522,16 +4505,6 @@ def Laws.fields_clen_n(host, hs, n):
         Http.fields.of(Http.FClen{}, Http.fields.of(Http.FOther{}, hs)), [],
       hd.disj(Http.FClen{}, Http.FOther{}, {==}, hs)),
       hd.clen_self(n, Nat.is_eq(n, 0n)))
-
-def Laws.tail_octets(_bytes):
-  {==}
-
-def Laws.tail_text(_text):
-  {==}
-
-def Laws.tail_empty(_b, e):
-  %e : {Spec.wire.tail(_) == [] : List<&2, U32>}
-  {==}
 
 def Laws.reply_to(_method, _raw):
   {==}
@@ -4610,36 +4583,36 @@ def Laws.any_step(hit, _rest):
 
 def Laws.form_bad_boundary(b, ps, e):
   %e : {Form.form.check(b, ps, _)
-    == Form.NoForm{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
-    : Form.Form}
+    == Form.NoPlan{"the boundary must be 1 to 70 of A-Z a-z 0-9 - _ ."}
+    : Form.Plan}
   {==}
 
 def Laws.form_clash(b, ps, e1, e2):
   %e1 : {Form.form.check(b, ps, _)
-    == Form.NoForm{"the boundary occurs in a part's content"} : Form.Form}
+    == Form.NoPlan{"the boundary occurs in a part's content"} : Form.Plan}
   %e2 : {Form.form.check.clash(b, ps, _)
-    == Form.NoForm{"the boundary occurs in a part's content"} : Form.Form}
+    == Form.NoPlan{"the boundary occurs in a part's content"} : Form.Plan}
   {==}
 
 def Laws.form_bad_type(b, ps, e1, e2, e3):
   %e1 : {Form.form.check(b, ps, _)
-    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+    == Form.NoPlan{"a file part's content type holds a CR or LF"} : Form.Plan}
   %e2 : {Form.form.check.clash(b, ps, _)
-    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+    == Form.NoPlan{"a file part's content type holds a CR or LF"} : Form.Plan}
   %e3 : {Form.form.check.type(b, ps, _)
-    == Form.NoForm{"a file part's content type holds a CR or LF"} : Form.Form}
+    == Form.NoPlan{"a file part's content type holds a CR or LF"} : Form.Plan}
   {==}
 
 def Laws.form_ok(b, ps, e1, e2, e3):
   %e1 : {Form.form.check(b, ps, _)
-    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
-    : Form.Form}
+    == Form.Plan{Form.form.type(b), Form.form.parts(b, ps)}
+    : Form.Plan}
   %e2 : {Form.form.check.clash(b, ps, _)
-    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
-    : Form.Form}
+    == Form.Plan{Form.form.type(b), Form.form.parts(b, ps)}
+    : Form.Plan}
   %e3 : {Form.form.check.type(b, ps, _)
-    == Form.Form{Form.form.type(b), Body.Octets{Form.form.parts(b, ps)}}
-    : Form.Form}
+    == Form.Plan{Form.form.type(b), Form.form.parts(b, ps)}
+    : Form.Plan}
   {==}
 
 def Laws.form_type(_b):
@@ -4665,8 +4638,7 @@ def Laws.clash_nil(_b):
   {==}
 
 def Laws.clash_cons(b, p, t):
-  Laws.any_step(Form.octets.has(Form.form.content(p, []), Form.form.delim(b)),
-    _u => Form.form.clash(b, t))
+  Laws.any_step(Form.form.hit(b, p), _u => Form.form.clash(b, t))
 
 def Laws.has_nil(_pat):
   {==}
@@ -4690,7 +4662,7 @@ def Laws.starts_cons(x, t, p, q):
 def Laws.content_field(_name, _value, _rest):
   {==}
 
-def Laws.content_file(_name, _filename, _ctype, _bytes, _rest):
+def Laws.content_file(_name, _filename, _ctype, _clash, _rest):
   {==}
 
 def Laws.badtype_nil(_ps, e):
@@ -4703,7 +4675,7 @@ def Laws.badtype_cons(p, t):
 def Laws.badtype_field(_name, _value):
   {==}
 
-def Laws.badtype_file(_name, _filename, _ctype, _bytes):
+def Laws.badtype_file(_name, _filename, _ctype, _clash):
   {==}
 
 def Laws.parts_nil(_b):
@@ -4721,16 +4693,16 @@ def Laws.onto_nil(_rest):
 def Laws.onto_cons(_c, _t, _rest):
   {==}
 
-def Laws.field_is(_name, _value):
+def Laws.field_is(_d, _name, _value):
   {==}
 
-def Laws.file_is(_name, _filename, _ctype, _bytes):
+def Laws.file_is(_name, _filename, _ctype, _n, _buf, _hit):
   {==}
 
 def Laws.head_field(_name, _value):
   {==}
 
-def Laws.head_file(_name, _filename, _ctype, _bytes):
+def Laws.head_file(_name, _filename, _ctype, _clash):
   {==}
 
 def Laws.disposition(_name):
@@ -5984,20 +5956,52 @@ def Laws.ms_zero(ms, e):
   %e : {Spec.wire.ms.pick(ms, _) == 1 : U32}
   {==}
 
-# a resolve's failure reads the same whether it ran out of time or not
+# a resolve's failure is fail.resolve, ran out of time or not
 def fail.resolve.any(host: String, +port: U32, +ms: U32, +n: U32, why: String,
   late: Bool)
   -> {Spec.wire.fail.of(Spec.Resolve{}, host, port, ms, n, why, late)
-    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
-    : String}:
+    == Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)) : String}:
   match late:
     case True{}:
       {==}
     case False{}:
       {==}
 
-def Laws.fail_resolve(host, port, ms, n, why):
-  fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110))
+# a resolve that failed with another number names the cause
+def fail.resolve.some(host: String, +n: U32,
+  e: {False{} == U32.is_eq(n, 2) : Bool})
+  -> {Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2))
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
+    : String}:
+  %e : {Spec.wire.fail.resolve(host, n, _)
+    == "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n)
+    : String}
+  {==}
+
+# a name with no address names the host alone
+def fail.resolve.none(host: String, +n: U32,
+  e: {True{} == U32.is_eq(n, 2) : Bool})
+  -> {Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2))
+    == "6\ncould not resolve " ++ host : String}:
+  %e : {Spec.wire.fail.resolve(host, n, _) == "6\ncould not resolve " ++ host
+    : String}
+  {==}
+
+def Laws.fail_resolve(host, port, ms, n, e, why):
+  Equal.trans(String,
+    Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why),
+    Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)),
+    "6\ncould not resolve " ++ host ++ ": " ++ Spec.wire.cause(n),
+    fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110)),
+    fail.resolve.some(host, n, e))
+
+def Laws.fail_resolve_none(host, port, ms, n, e, why):
+  Equal.trans(String,
+    Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why),
+    Spec.wire.fail.resolve(host, n, U32.is_eq(n, 2)),
+    "6\ncould not resolve " ++ host,
+    fail.resolve.any(host, port, ms, n, why, U32.is_eq(n, 110)),
+    fail.resolve.none(host, n, e))
 
 # a call that ran out of time is reported by fail.late
 def fail.at.late(p: Spec.Phase, host: String, +port: U32, +ms: U32, +n: U32,
@@ -6064,8 +6068,180 @@ def Laws.errno_or_named(s, e):
 
 # --- what is sent (SPEC.md HTTP-CLI-10) ---
 
-def Laws.payload_nil(_tail):
+def Laws.payload_nil(_rest):
   {==}
 
-def Laws.payload_cons(_cp, _t, _tail):
+def Laws.payload_cons(_cp, _t, _rest):
   {==}
+
+# --- octets after a prefix (SPEC.md HTTP-BODY-2, 3) ---
+
+# the first |b| characters of b ++ r are b
+def take_prefix(b: String, r: String)
+  -> {String.take(String.append(b, r), String.length(b)) == b : String}:
+  match b:
+    case SNil{}:
+      match r:
+        case SNil{}:
+          {==}
+        case SCon{h, t}:
+          {==}
+    case SCon{h, t}:
+      Equal.cong(String, String, x => SCon{h, x},
+        String.take(String.append(t, r), String.length(t)), t,
+        take_prefix(t, r))
+
+# what follows |b| + k characters of b ++ r is what follows k of r
+def drop_prefix(b: String, r: String, k: Nat)
+  -> {String.drop(String.append(b, r), Nat.add(String.length(b), k))
+    == String.drop(r, k) : String}:
+  match b:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      drop_prefix(t, r, k)
+
+# b ++ r is never shorter than b
+def lt_prefix(b: String, r: String)
+  -> {Nat.is_lt(String.length(String.append(b, r)), String.length(b))
+    == False{} : Bool}:
+  match b:
+    case SNil{}:
+      match r:
+        case SNil{}:
+          {==}
+        case SCon{h, t}:
+          {==}
+    case SCon{h, t}:
+      lt_prefix(t, r)
+
+def Laws.octs_len(s):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      Equal.cong(Nat, Nat, x => 1n+x, Http.octs.len(t), String.length(t),
+        Laws.octs_len(t))
+
+
+def Laws.octs_take(s, n):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      match n:
+        case 0n:
+          {==}
+        case 1n+k:
+          match k:
+            case 0n:
+              Equal.cong(String, String, x => SCon{h, x}, Http.octs.take(t, 0n),
+                String.take(t, 0n), Laws.octs_take(t, 0n))
+            case 1n+j:
+              Equal.cong(String, String, x => SCon{h, x},
+                Http.octs.take(t, 1n+j), String.take(t, 1n+j),
+                Laws.octs_take(t, 1n+j))
+
+
+def Laws.octs_drop(s, n):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      match n:
+        case 0n:
+          {==}
+        case 1n+k:
+          match k:
+            case 0n:
+              Laws.octs_drop(t, 0n)
+            case 1n+j:
+              Laws.octs_drop(t, 1n+j)
+
+
+def Laws.clen_prefix(st, hs, b, r):
+  +br = String.append(b, r)
+  +n = String.length(b)
+  %Equal.sym(Nat, Http.octs.len(br), String.length(br), Laws.octs_len(br))
+    : {Http.parse.short(st, hs, n, br, Nat.is_lt(_, n))
+      == Http.Reply{st, hs, b} : Http.Reply}
+  %Equal.sym(Bool, Nat.is_lt(String.length(br), n), False{}, lt_prefix(b, r))
+    : {Http.parse.short(st, hs, n, br, _) == Http.Reply{st, hs, b}
+      : Http.Reply}
+  %Equal.sym(String, Http.octs.take(br, n), String.take(br, n),
+    Laws.octs_take(br, n))
+    : {Http.Reply{st, hs, _} == Http.Reply{st, hs, b} : Http.Reply}
+  %Equal.sym(String, String.take(br, n), b, take_prefix(b, r))
+    : {Http.Reply{st, hs, _} == Http.Reply{st, hs, b} : Http.Reply}
+  {==}
+
+
+def Laws.chunk_data(f, h, d, r, e, el):
+  +a = String.append(d, "\r\n" ++ r)
+  +rhs = String.append(d, Http.chunks(f, Http.divide(r, "\r\n")))
+  %e : {Http.chunks.more(Http.hexlen(h), a,
+    _u => Http.chunks(f, Http.divide(Http.octs.drop(a,
+      Nat.add(Http.hexlen(h), 2n)), "\r\n")), _) == rhs : String}
+  %el : {String.append(Http.octs.take(a, _),
+    Http.chunks(f, Http.divide(Http.octs.drop(a, Nat.add(_, 2n)), "\r\n")))
+    == rhs : String}
+  +n = String.length(d)
+  %Equal.sym(String, Http.octs.take(a, n), String.take(a, n),
+    Laws.octs_take(a, n))
+    : {String.append(_, Http.chunks(f, Http.divide(Http.octs.drop(a,
+      Nat.add(n, 2n)), "\r\n"))) == rhs : String}
+  %Equal.sym(String, String.take(a, n), d, take_prefix(d, "\r\n" ++ r))
+    : {String.append(_, Http.chunks(f, Http.divide(Http.octs.drop(a,
+      Nat.add(n, 2n)), "\r\n"))) == rhs : String}
+  %Equal.sym(String, Http.octs.drop(a, Nat.add(n, 2n)),
+    String.drop(a, Nat.add(n, 2n)), Laws.octs_drop(a, Nat.add(n, 2n)))
+    : {String.append(d, Http.chunks(f, Http.divide(_, "\r\n"))) == rhs
+      : String}
+  %Equal.sym(String, String.drop(a, Nat.add(n, 2n)), r,
+    Equal.trans(String, String.drop(a, Nat.add(n, 2n)), String.drop(r, 0n), r,
+      drop_prefix(d, "\r\n" ++ r, 2n), eq.drop_zero(r)))
+    : {String.append(d, Http.chunks(f, Http.divide(_, "\r\n"))) == rhs
+      : String}
+  {==}
+
+def Laws.chunk_last(_f, h, after, e):
+  %e : {Http.chunks.more(Http.hexlen(h), after,
+    _u => Http.chunks(_f, Http.divide(Http.octs.drop(after,
+      Nat.add(Http.hexlen(h), 2n)), "\r\n")), _) == "" : String}
+  {==}
+
+
+def Laws.octets_text(_o):
+  {==}
+
+def Laws.octets_toks_nil(_s, e):
+  %e : {Qs.octets.toks(_) == [] : List<&2, Qs.Tok>}
+  {==}
+
+
+def Laws.octets_toks_cons(_c, _t):
+  {==}
+
+def Laws.octets_headers_cons(_name, _value, _t):
+  {==}
+
+def Laws.octets_headers_nil(_hs, e):
+  %e : {Qs.octets.headers(_) == [] : List<&2, Http.Header>}
+  {==}
+
+
+def Laws.step_text(_method, _target, _hs, _body):
+  {==}
+
+def Laws.step_text_bad(_why):
+  {==}
+
+def Laws.hit_field(_b, _name, _value):
+  {==}
+
+def Laws.hit_file(_b, _name, _filename, _ctype, _clash):
+  {==}
+
+def Laws.payload_is(_req):
+  {==}
+

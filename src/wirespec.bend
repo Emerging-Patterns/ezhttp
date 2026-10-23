@@ -104,7 +104,7 @@ def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
       wire.exchange.at(method, secure, host, port, path, headers, body)
 
 # a request with n octets of body to a URL that came apart: the request text
-# ends at the blank line, and the octets go after it as the tail (wire.tail)
+# ends at the blank line, and the octets go after it
 def wire.exchange.octets(+method: String, l: Url.Loc,
   headers: List<&2, Http.Header>, n: Nat) -> Exchange:
   match l:
@@ -115,27 +115,15 @@ def wire.exchange.octets(+method: String, l: Url.Loc,
       Exchange{secure, host, port, method,
         Http.request.head.at(method, secure, host, port, path, headers, n)}
 
-# a request with this body to a URL that came apart: text inside the request
-# text as UTF-8, octets after it (SPEC.md HTTP-CLI-10)
+# a request with a body of this shape to a URL that came apart: text inside
+# the request text as UTF-8, octets after it (SPEC.md HTTP-CLI-10)
 def wire.exchange.body(method: String, l: Url.Loc,
-  headers: List<&2, Http.Header>, b: Body.Body) -> Exchange:
+  headers: List<&2, Http.Header>, b: Body.Shape) -> Exchange:
   match b:
-    case Body.Empty{}:
-      wire.exchange(method, l, headers, "")
-    case Body.Plain{text}:
+    case Body.ShapeText{text}:
       wire.exchange(method, l, headers, text)
-    case Body.Octets{bytes}:
-      wire.exchange.octets(method, l, headers, List.length(&2, U32, bytes))
-
-# the octets sent after the request text: an octet body's, else none
-def wire.tail(b: Body.Body) -> List<&2, U32>:
-  match b:
-    case Body.Empty{}:
-      []
-    case Body.Plain{text}:
-      []
-    case Body.Octets{bytes}:
-      bytes
+    case Body.ShapeOctets{n}:
+      wire.exchange.octets(method, l, headers, U32.to_nat(n))
 
 # --- what is heard ---
 
@@ -276,10 +264,10 @@ def wire.payload.text(s: String, rest: String) -> String:
     case SCon{Chr{+cp}, t}:
       Body.octets.chars(Pct.utf8(cp)) ++ wire.payload.text(t, rest)
 
-# the octets an exchange sends, one character each: the request text as
-# UTF-8, then the body's tail
-def wire.payload(req: String, tail: List<&2, U32>) -> String:
-  wire.payload.text(req, Body.octets.chars(tail))
+# the octets of a request text, one character each: its UTF-8 (the body's
+# octets go after them)
+def wire.payload(req: String) -> String:
+  wire.payload.text(req, "")
 
 # --- what a failed socket call is reported as (SPEC.md HTTP-CLI-13, 14) ---
 
@@ -328,12 +316,21 @@ def wire.errno.name(+n: U32) -> String:
 def wire.cause(+n: U32) -> String:
   wire.errno.name(n) ++ " (" ++ U32.show(n) ++ ")"
 
+# a resolve's failure: bend-kit-dns reports a name with no address as
+# ENOENT, whose name would read as a missing file, so only the host is named
+def wire.fail.resolve(host: String, +n: U32, none: Bool) -> String:
+  match none:
+    case True{}:
+      "6\ncould not resolve " ++ host
+    case False{}:
+      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+
 # a call that ran out of time, by its phase
 def wire.fail.late(p: Phase, host: String, +port: U32, +ms: U32, +n: U32)
   -> String:
   match p:
     case Resolve{}:
-      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+      wire.fail.resolve(host, n, U32.is_eq(n, 2))
     case Connect{}:
       "28\nconnecting to " ++ host ++ " port " ++ U32.show(port)
         ++ " took over " ++ U32.show(ms) ++ " ms"
@@ -351,7 +348,7 @@ def wire.fail.other(p: Phase, host: String, +port: U32, +n: U32, why: String)
   -> String:
   match p:
     case Resolve{}:
-      "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
+      wire.fail.resolve(host, n, U32.is_eq(n, 2))
     case Connect{}:
       "7\ncould not reach " ++ host ++ " port " ++ U32.show(port) ++ ": "
         ++ wire.cause(n)
@@ -377,71 +374,3 @@ def wire.fail.of(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
 def wire.fail(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
   why: String) -> String:
   wire.fail.of(p, host, port, ms, n, why, U32.is_eq(n, wire.etimedout()))
-
-# --- received octets as text (SPEC.md HTTP-TRUST-5) ---
-
-# how many continuation octets a lead octet asks for (RFC 3629 §3); 0 for an
-# octet that opens no sequence
-def wire.utf8.wants(+b: U32) -> Nat:
-  Bool.pick(Nat, U32.is_lt(b, 194), 0n,
-    Bool.pick(Nat, U32.is_lt(b, 224), 1n,
-      Bool.pick(Nat, U32.is_lt(b, 240), 2n,
-        Bool.pick(Nat, U32.is_lt(b, 245), 3n, 0n))))
-
-# whether an octet continues a sequence (10xxxxxx)
-def wire.utf8.cont(+b: U32) -> Bool:
-  Bool.and(U32.is_le(128, b), U32.is_lt(b, 192))
-
-# the octet before k continuation octets: hold the k + 1 when it opens a
-# sequence that wants more than k
-def wire.utf8.lead(+b: U32, +k: Nat) -> Nat:
-  Bool.pick(Nat, Nat.is_lt(k, wire.utf8.wants(b)), 1n+k, 0n)
-
-# one octet from the end: another continuation octet, or the one before them
-def wire.utf8.back(+b: U32, +k: Nat, more: Bool, rest: Unit -> Nat) -> Nat:
-  match more:
-    case True{}:
-      rest(Unit{})
-    case False{}:
-      wire.utf8.lead(b, k)
-
-# how many octets at the end of a list, given newest first, are a sequence
-# still waiting for octets; k continuation octets have been passed
-def wire.utf8.open(r: List<&2, U32>, +k: Nat) -> Nat:
-  match r:
-    case []:
-      0n
-    case +b <> t:
-      wire.utf8.back(b, k, Bool.and(wire.utf8.cont(b), Nat.is_lt(k, 3n)),
-        _u => wire.utf8.open(t, 1n+k))
-
-# octets as the pieces Qs.utf.dec reads
-def wire.utf8.toks(bs: List<&2, U32>) -> List<&2, Qs.Tok>:
-  match bs:
-    case []:
-      []
-    case b <> t:
-      Qs.B{b} <> wire.utf8.toks(t)
-
-# octets, one character each, as a list
-def wire.utf8.bytes(s: String) -> List<&2, U32>:
-  match s:
-    case SNil{}:
-      []
-    case SCon{c, t}:
-      Char.to_u32(c) <> wire.utf8.bytes(t)
-
-# the octets held from before and a receive's octets: the text of all but a
-# sequence still open at the end, and that sequence, held for the next
-def wire.utf8.feed(held: List<&2, U32>, got: String)
-  -> String & List<&2, U32>:
-  +bs = List.append(&2, U32, held, wire.utf8.bytes(got))
-  +n = List.length(&2, U32, bs)
-  +m = wire.utf8.open(List.reverse(&2, U32, bs), 0n)
-  +k = Nat.sub(n, m)
-  (Qs.utf.dec(wire.utf8.toks(List.take(&2, U32, bs, k)), Qs.Idle{}),
-    List.drop(&2, U32, bs, k))
-
-# what was held once the server has closed: decoded as it is
-def wire.utf8.flush(held: List<&2, U32>) -> String:
-  Qs.utf.dec(wire.utf8.toks(held), Qs.Idle{})

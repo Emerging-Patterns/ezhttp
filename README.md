@@ -30,8 +30,8 @@ ez add Emerging-Patterns/ezhttp
 ## Usage
 
 Shared types cover both sides: `Header`, structured `Request` / `Reply`
-(status or method, headers, body). Bodies are empty, UTF-8 text, or an octet
-list. The HTTP API does not need JSON: `Request`, `Reply`, and the client
+(status or method, headers, body). Request bodies are empty, UTF-8 text, or
+packed octets (bend-kit-bytes `Bytes`). The HTTP API does not need JSON: `Request`, `Reply`, and the client
 `Response` stay text and octets, and `encode` / `decode` take any codec. The
 hub package is the HTTP library alone. `src/json.bend`, the optional
 helper that calls [ezjson](https://github.com/Emerging-Patterns/ezjson), is
@@ -41,8 +41,15 @@ hub package; import ezjson from the hub to read a JSON body (below).
 ### Client
 
 `http.get`, `http.head`, `http.post`, `http.put`, `http.delete`, and
-`http.options` return a structured client `Response` (status, headers, body,
-and the status line's reason phrase), or `Err` with why the exchange failed;
+`http.options` return a structured client `Response`, or `Err` with why the
+exchange failed. A `Response` has the status, the header fields, the body and
+the status line's reason phrase as text (decoded from what arrived as UTF-8,
+U+FFFD for a byte that is not), and `bytes`: the body's octets exactly as they
+arrived (SPEC.md HTTP-BODY), so a binary download is byte-exact. `Response`
+holds `Bytes`, so it is a linear value: match on it once. Content-Length and
+chunk sizes count octets. A body of `n` octets costs about 64 bytes of memory
+per octet while it is read (1.35 GB peak for 20 MB); the request side stays
+packed.
 a connection that could not be made names its cause, such as
 `could not reach 127.0.0.1 port 1: ECONNREFUSED (111)`.
 Pass custom headers: `bearer` writes `Authorization: Bearer …`, and `basic`
@@ -123,17 +130,18 @@ def ingest(url: String, json: String) -> IO(Client.Response):
     Body.Plain{json}, 10000)
 ```
 
-A body is text (`text_body`, sent as its UTF-8) or octets (`octets_body`,
-each 0 to 255, sent byte for byte after the request head, with
-`Content-Length` counting them; SPEC.md HTTP-CLI-10), so binary uploads reach
-the server unchanged. `form_body(boundary, parts)` builds a
+A body is text (`text_body`, sent as its UTF-8) or octets (`octets_body` of
+a bend-kit-bytes `Bytes`, or `octets_list_body` of a list of values 0 to 255),
+sent byte for byte after the request head, with `Content-Length` counting
+them (SPEC.md HTTP-CLI-10), so binary uploads reach the server unchanged. `form_body(boundary, parts)` builds a
 `multipart/form-data` body (RFC 7578) from `form_field(name, value)` and
 `form_file(name, filename, content_type, bytes)` parts: it answers the
 `Content-Type` value to send and an octet body, or refuses a boundary that is
 not 1 to 70 of `A-Z a-z 0-9 - _ .`, one whose `--boundary` occurs in a part's
 content, and a file content type holding CR or LF (SPEC.md HTTP-FORM). Names
 and filenames have `"`, CR and LF written as `%22`, `%0D` and `%0A`. A file's
-bytes come straight from `File.read_bytes`.
+content is `Bytes` (bend-kit-files' `read_bytes`, for example) and is sent
+unchanged; the builder searches it for the delimiter with `Bytes.find`.
 
 ```
 import emerging-ezhttp@0.8.0.0/src/form.bend as Form
@@ -146,7 +154,7 @@ def upload(url: String, key: String, f: Form.Form) -> IO(Client.Response):
       Http.http.post_opts(url, [Msg.H{"Content-Type", ctype}, Http.bearer(key)],
         body, 120000)
 
-def transcribe(url: String, key: String, wav: List<&2, U32>)
+def transcribe(url: String, key: String, wav: Bytes.Bytes)
   -> IO(Client.Response):
   upload(url, key, Http.form_body("ezhttp-whisper-7d1f",
     [Http.form_field("model", "whisper"),
