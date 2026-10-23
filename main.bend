@@ -4,6 +4,7 @@
 # at the wire/runtime layer.
 import Base
 import ./src/url.bend as Url
+import ./src/pct.bend as Pct
 import ./src/http.bend as Http
 import ./src/body.bend as Body
 import ./src/client.bend as Client
@@ -15,6 +16,17 @@ import ./src/cors.bend as Cors
 # URL parse re-export
 def parse_url(url: String) -> Url.Loc:
   Url.parse(url)
+
+# percent-encode a path (RFC 3986 §2.1), as Python's urllib.parse.quote(text):
+# unreserved characters and "/" stay, every other character becomes %XX per
+# UTF-8 byte, upper-case hex (SPEC.md HTTP-URL)
+def quote_path(text: String) -> String:
+  Pct.quote(True{}, text)
+
+# percent-encode a path segment, query key or value (RFC 3986 §2.1), as
+# urllib.parse.quote(text, safe=""): like quote_path, but "/" becomes %2F
+def quote_component(text: String) -> String:
+  Pct.quote(False{}, text)
 
 # response parse re-export
 def parse_response(raw: String) -> Http.Reply:
@@ -34,8 +46,8 @@ def empty_body() -> Body.Body:
   Body.body.empty()
 
 # UTF-8 text request body
-def text_body(s: String) -> Body.Body:
-  Body.body.text(s)
+def text_body(text: String) -> Body.Body:
+  Body.body.text(text)
 
 # octet-list request body
 def octets_body(bs: List<&2, U32>) -> Body.Body:
@@ -49,9 +61,9 @@ def encode(~A: Data, ~to_text: A -> String, value: A) -> Body.Body:
 def decode(
   ~A: Data,
   ~from_text: String -> Maybe<&2, A>,
-  s: String
+  text: String
 ) -> Maybe<&2, A>:
-  Body.body.decode(A, from_text, s)
+  Body.body.decode(A, from_text, text)
 
 # Bearer token header helper
 def bearer(token: String) -> Http.Header:
@@ -62,8 +74,8 @@ def basic(user: String, password: String) -> Http.Header:
   Client.client.basic(user, password)
 
 # Set-Cookie header from a parsed cookie (RFC 6265)
-def set_cookie(c: Cookie.Cookie) -> Http.Header:
-  Cookie.cookie.set(c)
+def set_cookie(cookie: Cookie.Cookie) -> Http.Header:
+  Cookie.cookie.set(cookie)
 
 # parse one Set-Cookie field value
 def parse_cookie(line: String) -> Maybe<&2, Cookie.Cookie>:

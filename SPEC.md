@@ -2,7 +2,7 @@
 
 This is the list of behaviors ezhttp guarantees, each under a stable requirement ID. Every requirement has one of two levels. A **Proved** requirement holds for every input, and is backed by a quantified law (a `for` or `exs` binder) in LAWS.bend that passes the proof gate. A **Trusted** requirement is an assumption ezhttp cannot check from inside its own gate, and it is listed in the trust boundary below. A Proved requirement whose law has not landed yet has status **pending**: we intend to prove it, and until then it is not guaranteed. The proof gate is this check: the first line `bend PROOF.bend` prints is exactly `ALL PROOFS CHECK`. Tests and fixtures are never evidence for a requirement.
 
-This file starts with the server. ezhttp's other laws (URL parsing, message framing, credentials, cookies, caching, CORS) are not inventoried here yet, so this file promises nothing about them.
+This file starts with the server and percent-encoding. ezhttp's other laws (URL parsing, message framing, credentials, cookies, caching, CORS) are not inventoried here yet, so this file promises nothing about them.
 
 ## Format
 
@@ -24,6 +24,23 @@ The server's decisions live in `src/step.bend`, which does no IO; `src/server.be
 | HTTP-SRV-4 | For every failed accept, recv or send with reason `why`, the connection is lost with the log line exactly `ezhttp: <phase>: <why>`, phase `accept`, `read` or `write`; an effect that succeeds hands on its value unchanged. | Proved | proved | LAWS.bend lost_failed; LAWS.bend lost_kept; LAWS.bend lost_send; LAWS.bend lost_sent |
 | HTTP-TRUST-1 | Base's TCP effects report a failed accept, recv or send as `Fail` and never end the process themselves. | Trusted | | |
 | HTTP-TRUST-2 | `src/server.bend` acts on `src/step.bend`'s answers in order: one connection at a time; the handler is called only for a `Call`; a lost connection's line is written to stderr, the socket closed, and the loop takes the next connection; `http.serve` and `http.serve_io` stop after `limit` connections, a failed accept counting as one, and `http.serve_forever` does not stop. | Trusted | | |
+
+### Percent-encoding (HTTP-URL)
+
+`quote_path(s)` and `quote_component(s)` (`src/pct.bend`) percent-encode a string as RFC 3986 §2.1 describes, the way Python's `urllib.parse.quote(s)` and `urllib.parse.quote(s, safe="")` do. A character is a Unicode scalar value (U+0000 to U+10FFFF, no surrogates). Its UTF-8 encoding is the one RFC 3629 §3 tabulates.
+
+| ID | Requirement | Level | Status | Law |
+| :---- | :---- | :---- | :---- | :---- |
+| HTTP-URL-1 | For every string, both forms write its characters in order, each one independently of the others; an unreserved character (RFC 3986 §2.3: `A`-`Z`, `a`-`z`, `0`-`9`, `-`, `.`, `_`, `~`) is written as itself. | Proved | proved | LAWS.bend quote_nil; LAWS.bend quote_cons; LAWS.bend one_unreserved |
+| HTTP-URL-2 | Every character a form does not keep is written as `%XX` for each byte of its UTF-8 encoding, in order (RFC 3986 §2.1, RFC 3629 §3), `XX` being the byte's high then low nibble as hex digits `0`-`9` and upper-case `A`-`F`. | Proved | proved | LAWS.bend one_escaped; LAWS.bend pct_nil; LAWS.bend pct_cons; LAWS.bend hex_digit; LAWS.bend hex_letter; LAWS.bend utf8_one; LAWS.bend utf8_two; LAWS.bend utf8_three; LAWS.bend utf8_four |
+| HTTP-URL-3 | The path form writes `/` as itself and the component form writes it as `%2F`; on every other character the two forms agree. | Proved | proved | LAWS.bend path_keeps_slash; LAWS.bend component_escapes_slash; LAWS.bend component_is_path_elsewhere |
+| HTTP-URL-4 | For every string, the output holds only unreserved characters, `/` (path form only) and `%HH` triples whose `H` are `0`-`9` or `A`-`F`. | Proved | pending | LAWS.bend frame_kept; LAWS.bend frame_bytes; LAWS.bend frame_quote |
+
+### Left to prove
+
+| ID | Proved so far | Missing |
+| :---- | :---- | :---- |
+| HTTP-URL-4 | `frame_quote`: the whole output of either form is in the frame (kept characters, and `%` followed by exactly two upper-case hex digits, read left to right with nothing owed at the end), given `nibbles`: every character the form does not keep has UTF-8 bytes whose high and low nibbles `hex` writes as `0`-`9` or `A`-`F`. `frame_kept` and `frame_bytes` are its steps. | `nibbles` for every string of Unicode scalar values: each byte `utf8` yields for a code point up to U+10FFFF is below 256, so both nibbles are below 16, and `hex` of a value below 16 is a hex digit. This is bit arithmetic on `U32` (shifts, masks, comparisons on symbolic words) that Base has no lemmas for yet. |
 
 ## Trust boundary
 

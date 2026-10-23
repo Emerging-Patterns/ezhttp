@@ -15,6 +15,7 @@ import ./src/cache.bend as Cache
 import ./src/cors.bend as Cors
 import ./src/json.bend as Json
 import ./src/step.bend as Step
+import ./src/pct.bend as Pct
 import 0x81c67699424929b5c44cd8577e18117f/main.bend as Ezjson
 
 # LAW (RFC 3986 §3.3 path-absolute / path-abempty with authority): the path a
@@ -1301,3 +1302,226 @@ law lost_send:
 law lost_sent:
   for done: Unit
   {Step.step.sent(Done{done}) == Step.Kept{done} : Step.Got<Unit>}
+
+# --- percent-encoding (SPEC.md HTTP-URL) ---
+
+# LAW: the empty string is written as the empty string, in both forms
+# HTTP-URL-1
+law quote_nil:
+  for +slash: Bool
+  {Pct.quote(slash, "") == "" : String}
+
+# LAW: a string is written one character at a time, the first character's
+# writing followed by the rest's
+# HTTP-URL-1
+law quote_cons:
+  for +slash: Bool
+  for +c: U32
+  for t: String
+  {Pct.quote(slash, SCon{Chr{c}, t})
+    == Pct.one(slash, c, Pct.quote(slash, t)) : String}
+
+# LAW (RFC 3986 §2.3): an unreserved character is written as itself
+# HTTP-URL-1
+law one_unreserved:
+  for slash: Bool
+  for +c: U32
+  for e: {True{} == Pct.unreserved(c) : Bool}
+  for rest: String
+  {Pct.one(slash, c, rest) == SCon{Chr{c}, rest} : String}
+
+# LAW (RFC 3986 §2.1): a character the form does not keep is written as the
+# %XX triples of its UTF-8 bytes
+# HTTP-URL-2
+law one_escaped:
+  for slash: Bool
+  for +c: U32
+  for e: {False{} == Pct.safe(slash, c) : Bool}
+  for rest: String
+  {Pct.one(slash, c, rest) == Pct.pct(Pct.utf8(c), rest) : String}
+
+# LAW: no bytes write nothing
+# HTTP-URL-2
+law pct_nil:
+  for rest: String
+  {Pct.pct([], rest) == rest : String}
+
+# LAW (RFC 3986 §2.1): a byte is written as "%", its high nibble, its low
+# nibble, before the bytes after it
+# HTTP-URL-2
+law pct_cons:
+  for +b: U32
+  for bs: List<&2, U32>
+  for rest: String
+  {Pct.pct(b <> bs, rest)
+    == SCon{'%', SCon{Pct.hex(U32.shrn(b, 4n)),
+      SCon{Pct.hex(U32.and(b, 15)), Pct.pct(bs, rest)}}} : String}
+
+# LAW: a nibble below 10 is the digit '0' + n
+# HTTP-URL-2
+law hex_digit:
+  for +n: U32
+  for e: {True{} == U32.is_lt(n, 10) : Bool}
+  {Pct.hex(n) == Chr{U32.add(48, n)} : Char}
+
+# LAW (RFC 3986 §2.1, upper case): a nibble of 10 or more is the letter
+# 'A' + (n - 10), that is code 55 + n
+# HTTP-URL-2
+law hex_letter:
+  for +n: U32
+  for e: {False{} == U32.is_lt(n, 10) : Bool}
+  {Pct.hex(n) == Chr{U32.add(55, n)} : Char}
+
+# LAW (RFC 3629 §3): U+0000 to U+007F is one byte, 0xxxxxxx
+# HTTP-URL-2
+law utf8_one:
+  for +c: U32
+  for e: {True{} == U32.is_lt(c, 128) : Bool}
+  {Pct.utf8(c) == [c] : List<&2, U32>}
+
+# LAW (RFC 3629 §3): U+0080 to U+07FF is two bytes, 110xxxxx 10xxxxxx
+# HTTP-URL-2
+law utf8_two:
+  for +c: U32
+  for e1: {False{} == U32.is_lt(c, 128) : Bool}
+  for e2: {True{} == U32.is_lt(c, 2048) : Bool}
+  {Pct.utf8(c) == [U32.or(192, U32.shrn(c, 6n)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+
+# LAW (RFC 3629 §3): U+0800 to U+FFFF is three bytes,
+# 1110xxxx 10xxxxxx 10xxxxxx
+# HTTP-URL-2
+law utf8_three:
+  for +c: U32
+  for e1: {False{} == U32.is_lt(c, 128) : Bool}
+  for e2: {False{} == U32.is_lt(c, 2048) : Bool}
+  for e3: {True{} == U32.is_lt(c, 65536) : Bool}
+  {Pct.utf8(c) == [U32.or(224, U32.shrn(c, 12n)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+
+# LAW (RFC 3629 §3): U+10000 to U+10FFFF is four bytes,
+# 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+# HTTP-URL-2
+law utf8_four:
+  for +c: U32
+  for e1: {False{} == U32.is_lt(c, 128) : Bool}
+  for e2: {False{} == U32.is_lt(c, 2048) : Bool}
+  for e3: {False{} == U32.is_lt(c, 65536) : Bool}
+  {Pct.utf8(c) == [U32.or(240, U32.shrn(c, 18n)),
+    U32.or(128, U32.and(U32.shrn(c, 12n), 63)),
+    U32.or(128, U32.and(U32.shrn(c, 6n), 63)),
+    U32.or(128, U32.and(c, 63))] : List<&2, U32>}
+
+# LAW: the path form writes "/" as itself
+# HTTP-URL-3
+law path_keeps_slash:
+  for rest: String
+  {Pct.one(True{}, 47, rest) == SCon{'/', rest} : String}
+
+# LAW: the component form writes "/" as %2F
+# HTTP-URL-3
+law component_escapes_slash:
+  for rest: String
+  {Pct.one(False{}, 47, rest) == SCon{'%', SCon{'2', SCon{'F', rest}}}
+    : String}
+
+# LAW: on every character but "/" the component form writes what the path
+# form writes
+# HTTP-URL-3
+law component_is_path_elsewhere:
+  for +c: U32
+  for e: {False{} == U32.is_eq(c, 47) : Bool}
+  for rest: String
+  {Pct.one(False{}, c, rest) == Pct.one(True{}, c, rest) : String}
+
+# an upper-case hex digit: 0-9 or A-F
+def hexdig(ch: Char) -> Bool:
+  match ch:
+    case Chr{+code}:
+      Bool.or(Bool.and(U32.is_le(48, code), U32.is_le(code, 57)),
+        Bool.and(U32.is_le(65, code), U32.is_le(code, 70)))
+
+# whether character cp may come next, `need` hex digits still owed to a "%":
+# with none owed, a kept character or a "%"; otherwise a hex digit
+def framed.ok(slash: Bool, +cp: U32, need: Nat) -> Bool:
+  match need:
+    case 0n:
+      Bool.or(Pct.safe(slash, cp), U32.is_eq(cp, 37))
+    case 1n+p:
+      hexdig(Chr{cp})
+
+# hex digits owed after character cp: two after a "%", one fewer after a digit
+def framed.next(slash: Bool, +cp: U32, need: Nat) -> Nat:
+  match need:
+    case 0n:
+      Bool.pick(Nat, Pct.safe(slash, cp), 0n,
+        Bool.pick(Nat, U32.is_eq(cp, 37), 2n, 0n))
+    case 1n+p:
+      p
+
+# no hex digit is still owed at the end
+def framed.end(need: Nat) -> Bool:
+  match need:
+    case 0n:
+      True{}
+    case 1n+p:
+      False{}
+
+# the HTTP-URL-4 frame read left to right: kept characters, and "%" followed
+# by exactly two hex digits
+def framed(+slash: Bool, str: String, +need: Nat) -> Bool:
+  match str:
+    case SNil{}:
+      framed.end(need)
+    case SCon{Chr{+cp}, tail}:
+      Bool.and(framed.ok(slash, cp, need),
+        framed(slash, tail, framed.next(slash, cp, need)))
+
+# both nibbles of every byte are written as hex digits
+def hexes(bs: List<&2, U32>) -> Bool:
+  match bs:
+    case []:
+      True{}
+    case +byte <> tail:
+      Bool.and(hexdig(Pct.hex(U32.shrn(byte, 4n))),
+        Bool.and(hexdig(Pct.hex(U32.and(byte, 15))), hexes(tail)))
+
+# LAW (partial): a kept character stays in the frame
+# HTTP-URL-4
+law frame_kept:
+  for +slash: Bool
+  for +c: U32
+  for +e: {True{} == Pct.safe(slash, c) : Bool}
+  for rest: String
+  {framed(slash, Pct.one(slash, c, rest), 0n) == framed(slash, rest, 0n)
+    : Bool}
+
+# LAW (partial): %XX triples stay in the frame when their nibbles are hex
+# digits
+# HTTP-URL-4
+law frame_bytes:
+  for +slash: Bool
+  for bs: List<&2, U32>
+  for +e: {hexes(bs) == True{} : Bool}
+  for +rest: String
+  {framed(slash, Pct.pct(bs, rest), 0n) == framed(slash, rest, 0n) : Bool}
+
+# every character the form does not keep has UTF-8 bytes whose nibbles are
+# written as hex digits
+def nibbles(+slash: Bool, str: String) -> Bool:
+  match str:
+    case SNil{}:
+      True{}
+    case SCon{Chr{+cp}, tail}:
+      Bool.and(Bool.or(Pct.safe(slash, cp), hexes(Pct.utf8(cp))),
+        nibbles(slash, tail))
+
+# LAW (partial): the whole output is in the frame, given that every escaped
+# character's nibbles are written as hex digits
+# HTTP-URL-4
+law frame_quote:
+  for +slash: Bool
+  for +str: String
+  for +e: {nibbles(slash, str) == True{} : Bool}
+  {framed(slash, Pct.quote(slash, str), 0n) == True{} : Bool}

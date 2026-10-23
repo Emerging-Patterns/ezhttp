@@ -18,8 +18,8 @@ def dflt(scheme: String) -> U32:
   Bool.pick(U32, String.eq(scheme, "https"), 443, 80)
 
 # a port that parsed, or the scheme's own when the digits were not digits
-def port.num(m: Maybe<&2, U32>, scheme: String) -> U32:
-  match m:
+def port.num(got: Maybe<&2, U32>, scheme: String) -> U32:
+  match got:
     case None{}:
       dflt(scheme)
     case Some{n}:
@@ -60,8 +60,8 @@ def path.of(ps: List<&2, String>) -> String:
       "/" ++ String.join(t, "/")
 
 # the last piece, or "" when the split was empty
-def auth.last.of(m: Maybe<&2, String>) -> String:
-  match m:
+def auth.last.of(last: Maybe<&2, String>) -> String:
+  match last:
     case None{}:
       ""
     case Some{hostport}:
