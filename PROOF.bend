@@ -1390,33 +1390,6 @@ def Laws.target_absolute(url, loc, e):
     : Maybe<&2, String>}
   {==}
 
-def Laws.target_path(url, loc, e1, e2, scheme, host, port, _path, e3):
-  %e1 : {Redirect.redirect.target.of(url, loc, _)
-    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
-    : Maybe<&2, String>}
-  %e2 : {Redirect.redirect.target.path(url, loc, _)
-    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
-    : Maybe<&2, String>}
-  %e3 : {Redirect.redirect.join(_, loc)
-    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
-    : Maybe<&2, String>}
-  {==}
-
-def Laws.target_path_bad(url, loc, e1, e2, _why, e3):
-  %e1 : {Redirect.redirect.target.of(url, loc, _) == None{}
-    : Maybe<&2, String>}
-  %e2 : {Redirect.redirect.target.path(url, loc, _) == None{}
-    : Maybe<&2, String>}
-  %e3 : {Redirect.redirect.join(_, loc) == None{} : Maybe<&2, String>}
-  {==}
-
-def Laws.target_other(url, loc, e1, e2):
-  %e1 : {Redirect.redirect.target.of(url, loc, _) == None{}
-    : Maybe<&2, String>}
-  %e2 : {Redirect.redirect.target.path(url, loc, _) == None{}
-    : Maybe<&2, String>}
-  {==}
-
 # --- HTML escaping (SPEC.md HTTP-HTML) ---
 
 def Laws.html_escape_onto(_s):
@@ -1581,3 +1554,388 @@ def frame.onto(s, rest):
 
 def Laws.html_frame(s):
   frame.onto(s, "")
+
+# --- reason-phrases (SPEC.md HTTP-SRV-5) ---
+
+def Laws.reason_phrases(_code):
+  {==}
+
+def Laws.reason_in_nil(_code):
+  {==}
+
+def Laws.reason_in_hit(code, _c, text, t, e):
+  %e : {Http.reason.pick(text, _, _u => Http.reason.in(t, code)) == text
+    : String}
+  {==}
+
+def Laws.reason_in_miss(code, _c, text, t, e):
+  %e : {Http.reason.pick(text, _, _u => Http.reason.in(t, code))
+    == Http.reason.in(t, code) : String}
+  {==}
+
+# --- the client's requests (SPEC.md HTTP-CLI-4 to 6) ---
+
+def Laws.host_http_default(_host):
+  {==}
+
+def Laws.host_https_default(_host):
+  {==}
+
+def Laws.host_http_other(host, port, e):
+  %e : {Http.authority.of(host, port, _) == host ++ ":" ++ U32.show(port)
+    : String}
+  {==}
+
+def Laws.host_https_other(host, port, e):
+  %e : {Http.authority.of(host, port, _) == host ++ ":" ++ U32.show(port)
+    : String}
+  {==}
+
+def Laws.request_at(_method, _secure, _host, _port, _path, _hs, _body):
+  {==}
+
+def Laws.exchange_bad(_method, _why, _hs, _body):
+  {==}
+
+def Laws.exchange_loc(_method, _scheme, _host, _port, _path, _hs, _body):
+  {==}
+
+def Laws.whole_open(method, _raw, e):
+  %e : {Http.whole.cut(String.eq(method, "HEAD"), _) == False{} : Bool}
+  {==}
+
+def Laws.whole_head(method, _raw, before, after, e):
+  %e : {Http.whole.cut(String.eq(method, "HEAD"), _)
+    == Http.whole.of(Http.frame(Bool.or(String.eq(method, "HEAD"),
+      Http.status.bare(Http.status.of(String.lines(before)))),
+      Http.head.go(String.lines(before), "transfer-encoding"),
+      Http.head.values(String.lines(before), "content-length")), after)
+    : Bool}
+  {==}
+
+def Laws.status_of(_ls):
+  {==}
+
+def Laws.status_bare_some(_n):
+  {==}
+
+def Laws.status_bare_none(_m, e):
+  %e : {Http.status.bare(_) == False{} : Bool}
+  {==}
+
+def Laws.frame_bare(_te, _lens):
+  {==}
+
+def Laws.frame_chunked(_te, lens, e):
+  %e : {Http.frame.te(lens, _) == Http.Chunked{} : Http.Frame}
+  {==}
+
+def Laws.frame_sized(_te, lens, e1, e2, n, e3):
+  %e1 : {Http.frame.te(lens, _) == Http.Sized{n} : Http.Frame}
+  %e2 : {Http.frame.agree(lens, _) == Http.Sized{n} : Http.Frame}
+  %e3 : {Http.frame.sized(_) == Http.Sized{n} : Http.Frame}
+  {==}
+
+def Laws.frame_disagree(_te, lens, e1, e2):
+  %e1 : {Http.frame.te(lens, _) == Http.Closed{} : Http.Frame}
+  %e2 : {Http.frame.agree(lens, _) == Http.Closed{} : Http.Frame}
+  {==}
+
+def Laws.frame_unsized(_te, lens, e1, e2, e3):
+  %e1 : {Http.frame.te(lens, _) == Http.Closed{} : Http.Frame}
+  %e2 : {Http.frame.agree(lens, _) == Http.Closed{} : Http.Frame}
+  %e3 : {Http.frame.sized(_) == Http.Closed{} : Http.Frame}
+  {==}
+
+def Laws.whole_bare(_body):
+  {==}
+
+def Laws.whole_sized(_n, _body):
+  {==}
+
+def Laws.whole_chunked(_body):
+  {==}
+
+def Laws.whole_closed(_body):
+  {==}
+
+def Laws.ended_fuel(_c):
+  {==}
+
+def Laws.ended_open(_f):
+  {==}
+
+def Laws.ended_bad(f, before, after, e):
+  %e : {Http.chunks.ended.hex(before, after, _,
+    cut => Http.chunks.ended(f, cut)) == True{} : Bool}
+  {==}
+
+def Laws.ended_last(f, before, after, e1, e2):
+  %e1 : {Http.chunks.ended.hex(before, after, _,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.trailer(after) : Bool}
+  %e2 : {Http.chunks.ended.size(after, Http.hexlen(before), _,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.trailer(after) : Bool}
+  {==}
+
+def Laws.ended_next(f, before, after, e1, e2, e3):
+  %e1 : {Http.chunks.ended.hex(before, after, _,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+      Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
+  %e2 : {Http.chunks.ended.size(after, Http.hexlen(before), _,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+      Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
+  %e3 : {Http.chunks.ended.data(after, Http.hexlen(before), _,
+    cut => Http.chunks.ended(f, cut)) == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+      Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
+  {==}
+
+def Laws.ended_short(f, before, after, e1, e2, e3):
+  %e1 : {Http.chunks.ended.hex(before, after, _,
+    cut => Http.chunks.ended(f, cut)) == False{} : Bool}
+  %e2 : {Http.chunks.ended.size(after, Http.hexlen(before), _,
+    cut => Http.chunks.ended(f, cut)) == False{} : Bool}
+  %e3 : {Http.chunks.ended.data(after, Http.hexlen(before), _,
+    cut => Http.chunks.ended(f, cut)) == False{} : Bool}
+  {==}
+
+def Laws.trailer_ended(_after):
+  {==}
+
+def Laws.chunk_ready(_after, _n):
+  {==}
+
+def Laws.opened_fail(got, e):
+  %e : {Spec.wire.opened.of(got, _) == Spec.Refused{got} : Spec.Opened}
+  {==}
+
+def eq.drop_zero(s: String) -> {String.drop(s, 0n) == s : String}:
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      {==}
+
+def Laws.opened_conn(n, text, e):
+  dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
+  %dz : {Spec.wire.opened.conn(U32.read(_)) == Spec.Open{n} : Spec.Opened}
+  %e : {Spec.wire.opened.conn(_) == Spec.Open{n} : Spec.Opened}
+  {==}
+
+def Laws.read_fail(method, acc, got, e):
+  %e : {Spec.wire.read.of(method, acc, got, _) == Spec.Heard{got}
+    : Spec.Read}
+  {==}
+
+def Laws.read_closed(_method, _acc):
+  {==}
+
+def Laws.read_whole(method, acc, text, e1, e2):
+  dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
+  %dz : {Spec.wire.read.got(method, acc, _, String.is_empty(_)) == Spec.Heard{"0\n" ++ (acc ++ text)}
+    : Spec.Read}
+  %e1 : {Spec.wire.read.got(method, acc, text, _)
+    == Spec.Heard{"0\n" ++ (acc ++ text)} : Spec.Read}
+  %e2 : {Spec.wire.read.whole(acc ++ text, _)
+    == Spec.Heard{"0\n" ++ (acc ++ text)} : Spec.Read}
+  {==}
+
+def Laws.read_more(method, acc, text, e1, e2):
+  dz = Equal.sym(String, String.drop(text, 0n), text, eq.drop_zero(text))
+  %dz : {Spec.wire.read.got(method, acc, _, String.is_empty(_)) == Spec.Again{acc ++ text}
+    : Spec.Read}
+  %e1 : {Spec.wire.read.got(method, acc, text, _) == Spec.Again{acc ++ text}
+    : Spec.Read}
+  %e2 : {Spec.wire.read.whole(acc ++ text, _) == Spec.Again{acc ++ text}
+    : Spec.Read}
+  {==}
+
+# --- redirect targets (SPEC.md HTTP-REDIR-3 to 5) ---
+
+def Laws.target_bad(url, loc, e1, _why, e2):
+  %e1 : {Redirect.redirect.target.of(url, loc, _) == None{}
+    : Maybe<&2, String>}
+  %e2 : {Redirect.redirect.at(_, loc) == None{} : Maybe<&2, String>}
+  {==}
+
+def Laws.target_against(url, loc, e1, scheme, host, port, path, e2):
+  %e1 : {Redirect.redirect.target.of(url, loc, _)
+    == Redirect.redirect.against(scheme, host, port, path, loc,
+      Redirect.redirect.sort(loc)) : Maybe<&2, String>}
+  %e2 : {Redirect.redirect.at(_, loc)
+    == Redirect.redirect.against(scheme, host, port, path, loc,
+      Redirect.redirect.sort(loc)) : Maybe<&2, String>}
+  {==}
+
+def Laws.against_net(_scheme, _host, _port, _path, _loc):
+  {==}
+
+def Laws.against_abs(_scheme, _host, _port, _path, _loc):
+  {==}
+
+def Laws.against_stay(_scheme, _host, _port, _path, _loc):
+  {==}
+
+def Laws.against_query(_scheme, _host, _port, _path, _loc):
+  {==}
+
+def Laws.against_rel(_scheme, _host, _port, _path, _loc):
+  {==}
+
+def Laws.sort_net(loc, e):
+  %e : {Redirect.redirect.sort.of(_, String.starts_with(loc, "/"),
+    Redirect.redirect.stays(loc), String.starts_with(loc, "?")) == Redirect.Net{} : Redirect.Sort}
+  {==}
+
+def Laws.sort_abs(loc, e1, e2):
+  %e1 : {Redirect.redirect.sort.of(_, String.starts_with(loc, "/"),
+    Redirect.redirect.stays(loc), String.starts_with(loc, "?")) == Redirect.Abs{} : Redirect.Sort}
+  %e2 : {Redirect.redirect.sort.abs(_, Redirect.redirect.stays(loc),
+    String.starts_with(loc, "?")) == Redirect.Abs{} : Redirect.Sort}
+  {==}
+
+def Laws.sort_stay(loc, e1, e2, e3):
+  %e1 : {Redirect.redirect.sort.of(_, String.starts_with(loc, "/"),
+    Redirect.redirect.stays(loc), String.starts_with(loc, "?")) == Redirect.Stay{} : Redirect.Sort}
+  %e2 : {Redirect.redirect.sort.abs(_, Redirect.redirect.stays(loc),
+    String.starts_with(loc, "?")) == Redirect.Stay{} : Redirect.Sort}
+  %e3 : {Redirect.redirect.sort.stay(_, String.starts_with(loc, "?")) == Redirect.Stay{} : Redirect.Sort}
+  {==}
+
+def Laws.sort_query(loc, e1, e2, e3, e4):
+  %e1 : {Redirect.redirect.sort.of(_, String.starts_with(loc, "/"),
+    Redirect.redirect.stays(loc), String.starts_with(loc, "?")) == Redirect.Query{} : Redirect.Sort}
+  %e2 : {Redirect.redirect.sort.abs(_, Redirect.redirect.stays(loc),
+    String.starts_with(loc, "?")) == Redirect.Query{} : Redirect.Sort}
+  %e3 : {Redirect.redirect.sort.stay(_, String.starts_with(loc, "?")) == Redirect.Query{} : Redirect.Sort}
+  %e4 : {Redirect.redirect.sort.rel(_) == Redirect.Query{} : Redirect.Sort}
+  {==}
+
+def Laws.sort_rel(loc, e1, e2, e3, e4):
+  %e1 : {Redirect.redirect.sort.of(_, String.starts_with(loc, "/"),
+    Redirect.redirect.stays(loc), String.starts_with(loc, "?")) == Redirect.Rel{} : Redirect.Sort}
+  %e2 : {Redirect.redirect.sort.abs(_, Redirect.redirect.stays(loc),
+    String.starts_with(loc, "?")) == Redirect.Rel{} : Redirect.Sort}
+  %e3 : {Redirect.redirect.sort.stay(_, String.starts_with(loc, "?")) == Redirect.Rel{} : Redirect.Sort}
+  %e4 : {Redirect.redirect.sort.rel(_) == Redirect.Rel{} : Redirect.Sort}
+  {==}
+
+def Laws.stays_on(_loc):
+  {==}
+
+def Laws.schemed_nil(s, e):
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{h, t}:
+      eq.bit.absurd(&2, {Redirect.redirect.schemed(SCon{h, t}) == False{} : Bool},
+        Equal.sym(Bool, True{}, False{}, e))
+
+def Laws.schemed_colon(_t):
+  {==}
+
+def Laws.schemed_stop(c, t, e):
+  %e : {Redirect.redirect.schemed.at(_, Char.is_eq(c, ':'),
+    _u => Redirect.redirect.schemed(t)) == False{} : Bool}
+  {==}
+
+def Laws.schemed_other(c, t, e1, e2):
+  %e2 : {Redirect.redirect.schemed.at(_, Char.is_eq(c, ':'),
+    _u => Redirect.redirect.schemed(t)) == Redirect.redirect.schemed(t) : Bool}
+  %e1 : {Redirect.redirect.schemed.colon(_, _u => Redirect.redirect.schemed(t))
+    == Redirect.redirect.schemed(t) : Bool}
+  {==}
+
+def Laws.schemed_end(_c):
+  {==}
+
+def Laws.split_query(loc, p, q, e):
+  %e : {Redirect.redirect.split.of(_, Url.frag.drop(loc))
+    == Redirect.Ref{p, "?" ++ q} : Redirect.Ref}
+  {==}
+
+def Laws.split_plain(loc, e):
+  %e : {Redirect.redirect.split.of(_, Url.frag.drop(loc))
+    == Redirect.Ref{Url.frag.drop(loc), ""} : Redirect.Ref}
+  {==}
+
+def Laws.abs_of(_path, _query):
+  {==}
+
+def Laws.rel_of(_base, _path, _query):
+  {==}
+
+def Laws.base_path(_path):
+  {==}
+
+def Laws.hier_first(_h, _t):
+  {==}
+
+def Laws.init_nil(ss, e):
+  match ss:
+    case []:
+      {==}
+    case h <> t:
+      eq.bit.absurd(&2, {Redirect.redirect.init(h <> t) == [] : List<&2, String>},
+        Equal.sym(Bool, True{}, False{}, e))
+
+def Laws.init_cons(_s, _t):
+  {==}
+
+def Laws.init_last(_s):
+  {==}
+
+def Laws.init_keep(_s, _u, _r):
+  {==}
+
+def Laws.clean_path(_ss):
+  {==}
+
+def Laws.dots_nil(_out):
+  {==}
+
+def Laws.dots_dot(s, t, out, e):
+  %e : {Redirect.redirect.dots.one(_, String.eq(s, ".."),
+    List.is_empty(&2, String, t), s, out, o => Redirect.redirect.dots(t, o))
+    == Redirect.redirect.dots(t,
+      Redirect.redirect.dots.end(List.is_empty(&2, String, t), out))
+    : List<&2, String>}
+  {==}
+
+def Laws.dots_up(s, t, out, e1, e2):
+  %e1 : {Redirect.redirect.dots.one(_, String.eq(s, ".."),
+    List.is_empty(&2, String, t), s, out, o => Redirect.redirect.dots(t, o))
+    == Redirect.redirect.dots(t,
+      Redirect.redirect.dots.end(List.is_empty(&2, String, t),
+        Redirect.redirect.pop(out))) : List<&2, String>}
+  %e2 : {Redirect.redirect.dots.up(_, List.is_empty(&2, String, t), s, out,
+    o => Redirect.redirect.dots(t, o))
+    == Redirect.redirect.dots(t,
+      Redirect.redirect.dots.end(List.is_empty(&2, String, t),
+        Redirect.redirect.pop(out))) : List<&2, String>}
+  {==}
+
+def Laws.dots_seg(s, t, out, e1, e2):
+  %e1 : {Redirect.redirect.dots.one(_, String.eq(s, ".."),
+    List.is_empty(&2, String, t), s, out, o => Redirect.redirect.dots(t, o))
+    == Redirect.redirect.dots(t, s <> out) : List<&2, String>}
+  %e2 : {Redirect.redirect.dots.up(_, List.is_empty(&2, String, t), s, out,
+    o => Redirect.redirect.dots(t, o))
+    == Redirect.redirect.dots(t, s <> out) : List<&2, String>}
+  {==}
+
+def Laws.dots_last(_out):
+  {==}
+
+def Laws.dots_inner(_out):
+  {==}
+
+def Laws.pop_nil(out, e):
+  match out:
+    case []:
+      {==}
+    case h <> t:
+      eq.bit.absurd(&2, {Redirect.redirect.pop(h <> t) == [] : List<&2, String>},
+        Equal.sym(Bool, True{}, False{}, e))
+
+def Laws.pop_cons(_s, _t):
+  {==}

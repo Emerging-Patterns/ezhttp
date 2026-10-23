@@ -385,6 +385,7 @@ law request_frames_host_and_close:
 
 # LAW (RFC 9112 §4, §9.6): a response status-line is HTTP/1.1 plus the
 # reason-phrase, and the connection closes
+# HTTP-SRV-5
 law respond_writes_reason_and_close:
   for +status: U32
   for hs: List<&2, Http.Header>
@@ -1305,6 +1306,57 @@ law lost_sent:
   for done: Unit
   {Step.step.sent(Done{done}) == Step.Kept{done} : Step.Got<Unit>}
 
+# the reason-phrases SPEC.md HTTP-SRV-5 lists, as it words them
+def phrases() -> List<&2, Http.Phrase>:
+  [Http.P{200, "OK"}, Http.P{201, "Created"}, Http.P{202, "Accepted"},
+    Http.P{204, "No Content"}, Http.P{301, "Moved Permanently"},
+    Http.P{302, "Found"}, Http.P{303, "See Other"},
+    Http.P{304, "Not Modified"}, Http.P{307, "Temporary Redirect"},
+    Http.P{308, "Permanent Redirect"}, Http.P{400, "Bad Request"},
+    Http.P{401, "Unauthorized"}, Http.P{403, "Forbidden"},
+    Http.P{404, "Not Found"}, Http.P{405, "Method Not Allowed"},
+    Http.P{409, "Conflict"}, Http.P{410, "Gone"},
+    Http.P{413, "Content Too Large"}, Http.P{415, "Unsupported Media Type"},
+    Http.P{422, "Unprocessable Content"}, Http.P{429, "Too Many Requests"},
+    Http.P{500, "Internal Server Error"}, Http.P{501, "Not Implemented"},
+    Http.P{502, "Bad Gateway"}, Http.P{503, "Service Unavailable"},
+    Http.P{504, "Gateway Timeout"}]
+
+# LAW: every status's reason-phrase is the one HTTP-SRV-5 lists for it, and
+# empty for a status it does not list
+# HTTP-SRV-5
+law reason_phrases:
+  for +code: U32
+  {Http.reason(code) == Http.reason.in(phrases(), code) : String}
+
+# LAW: a list with no entries gives every status the empty phrase
+# HTTP-SRV-5
+law reason_in_nil:
+  for +code: U32
+  {Http.reason.in([], code) == "" : String}
+
+# LAW: a list gives a status its first entry's phrase when that entry is for
+# that status
+# HTTP-SRV-5
+law reason_in_hit:
+  for +code: U32
+  for c: U32
+  for text: String
+  for t: List<&2, Http.Phrase>
+  for e: {True{} == U32.is_eq(code, c) : Bool}
+  {Http.reason.in(Http.P{c, text} <> t, code) == text : String}
+
+# LAW: and the rest's phrase when it is for another status
+# HTTP-SRV-5
+law reason_in_miss:
+  for +code: U32
+  for c: U32
+  for text: String
+  for t: List<&2, Http.Phrase>
+  for e: {False{} == U32.is_eq(code, c) : Bool}
+  {Http.reason.in(Http.P{c, text} <> t, code) == Http.reason.in(t, code)
+    : String}
+
 # --- percent-encoding (SPEC.md HTTP-URL) ---
 
 # LAW: the empty string is written as the empty string, in both forms
@@ -1603,6 +1655,352 @@ law why_late_timed_out:
   for why: String
   {Spec.wire.timed_out(Spec.wire.why(Some{28}, why)) == True{} : Bool}
 
+# --- the client's requests (SPEC.md HTTP-CLI-4) ---
+
+# LAW (RFC 9110 §7.2): on port 80 an http request's Host is the host alone
+# HTTP-CLI-4
+law host_http_default:
+  for host: String
+  {Http.authority(False{}, host, 80) == host : String}
+
+# LAW (RFC 9110 §7.2): on port 443 an https request's Host is the host alone
+# HTTP-CLI-4
+law host_https_default:
+  for host: String
+  {Http.authority(True{}, host, 443) == host : String}
+
+# LAW (RFC 9110 §7.2): on any other port an http request's Host is
+# `host:port`
+# HTTP-CLI-4
+law host_http_other:
+  for host: String
+  for +port: U32
+  for e: {False{} == U32.is_eq(port, 80) : Bool}
+  {Http.authority(False{}, host, port) == host ++ ":" ++ U32.show(port)
+    : String}
+
+# LAW (RFC 9110 §7.2): on any other port an https request's Host is
+# `host:port`
+# HTTP-CLI-4
+law host_https_other:
+  for host: String
+  for +port: U32
+  for e: {False{} == U32.is_eq(port, 443) : Bool}
+  {Http.authority(True{}, host, port) == host ++ ":" ++ U32.show(port)
+    : String}
+
+# LAW (RFC 9110 §7.2, RFC 9112 §3): the request a client writes for a host
+# and port names that Host value, and is otherwise the request Http.request
+# writes, byte for byte
+# HTTP-CLI-4
+law request_at:
+  for +method: String
+  for secure: Bool
+  for host: String
+  for port: U32
+  for +path: String
+  for hs: List<&2, Http.Header>
+  for +body: String
+  {Http.request.at(method, secure, host, port, path, hs, body)
+    == method ++ " " ++ path ++ " HTTP/1.1\r\n"
+      ++ "Host: " ++ Http.authority(secure, host, port) ++ "\r\n"
+      ++ "User-Agent: ezhttp\r\n"
+      ++ "Accept: */*\r\n"
+      ++ "Connection: close\r\n"
+      ++ Http.headers.lines(hs)
+      ++ Http.clen.line(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n))
+      ++ "\r\n"
+      ++ body
+    : String}
+
+# LAW: a URL that does not parse sends nothing and keeps its reason
+# HTTP-CLI-4
+law exchange_bad:
+  for method: String
+  for why: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Spec.wire.exchange(method, Url.Bad{why}, hs, body) == Spec.NoUrl{why}
+    : Spec.Exchange}
+
+# LAW: a URL that parses is sent to its host and port, over TLS exactly when
+# its scheme is https, as the request request.at writes for them
+# HTTP-CLI-4
+law exchange_loc:
+  for method: String
+  for +scheme: String
+  for +host: String
+  for +port: U32
+  for path: String
+  for hs: List<&2, Http.Header>
+  for body: String
+  {Spec.wire.exchange(method, Url.Loc{scheme, host, port, path}, hs, body)
+    == Spec.Exchange{String.eq(scheme, "https"), host, port,
+      Http.request.at(method, String.eq(scheme, "https"), host, port, path, hs,
+        body)} : Spec.Exchange}
+
+# --- when a response is whole (SPEC.md HTTP-CLI-5) ---
+
+# LAW (RFC 9112 §2.1): a response whose header section has not ended is not
+# whole
+# HTTP-CLI-5
+law whole_open:
+  for +method: String
+  for raw: String
+  for e: {Http.NoCut{} == Http.divide(raw, "\r\n\r\n") : Http.Cut}
+  {Http.whole(method, raw) == False{} : Bool}
+
+# LAW (RFC 9112 §6.3): once the header section has ended, a response is whole
+# exactly when its body is, under the framing its head and the request's
+# method give
+# HTTP-CLI-5
+law whole_head:
+  for +method: String
+  for raw: String
+  for +before: String
+  for after: String
+  for e: {Http.Cut{before, after} == Http.divide(raw, "\r\n\r\n") : Http.Cut}
+  {Http.whole(method, raw)
+    == Http.whole.of(Http.frame(Bool.or(String.eq(method, "HEAD"),
+      Http.status.bare(Http.status.of(String.lines(before)))),
+      Http.head.go(String.lines(before), "transfer-encoding"),
+      Http.head.values(String.lines(before), "content-length")), after)
+    : Bool}
+
+# LAW (RFC 9112 §4): a status line's code is its second word, as a number
+# HTTP-CLI-5
+law status_of:
+  for ls: List<&2, String>
+  {Http.status.of(ls) == U32.read(Http.second(String.split(Http.first(ls), ' ')))
+    : Maybe<&2, U32>}
+
+# LAW (RFC 9110 §15.3.5, §15.4.5): a 204 or a 304 has no body
+# HTTP-CLI-5
+law status_bare_some:
+  for +n: U32
+  {Http.status.bare(Some{n}) == Bool.or(U32.is_eq(n, 204), U32.is_eq(n, 304))
+    : Bool}
+
+# LAW: a status line that does not parse leaves the framing to the headers
+# HTTP-CLI-5
+law status_bare_none:
+  for m: Maybe<&2, U32>
+  for e: {None{} == m : Maybe<&2, U32>}
+  {Http.status.bare(m) == False{} : Bool}
+
+# LAW (RFC 9110 §9.3.2, RFC 9112 §6.3 item 1): a reply to HEAD, a 204 and a
+# 304 have no body, whatever their fields say
+# HTTP-CLI-5
+law frame_bare:
+  for te: String
+  for lens: List<&2, String>
+  {Http.frame(True{}, te, lens) == Http.Bare{} : Http.Frame}
+
+# LAW (RFC 9112 §6.3 items 3, 4): Transfer-Encoding chunked frames the body,
+# Content-Length or not
+# HTTP-CLI-5
+law frame_chunked:
+  for te: String
+  for +lens: List<&2, String>
+  for e: {True{} == String.contains(String.to_lower(te), "chunked") : Bool}
+  {Http.frame(False{}, te, lens) == Http.Chunked{} : Http.Frame}
+
+# LAW (RFC 9112 §6.3 item 6): otherwise Content-Length values that agree on
+# a number frame the body at that many octets
+# HTTP-CLI-5
+law frame_sized:
+  for te: String
+  for +lens: List<&2, String>
+  for e1: {False{} == String.contains(String.to_lower(te), "chunked") : Bool}
+  for e2: {True{} == Http.clen.agree(lens) : Bool}
+  for n: Nat
+  for e3: {Some{n} == Http.digits.read(Http.first(lens)) : Maybe<&2, Nat>}
+  {Http.frame(False{}, te, lens) == Http.Sized{n} : Http.Frame}
+
+# LAW (RFC 9112 §6.3 items 5, 8): Content-Length values that disagree leave
+# the body to the close
+# HTTP-CLI-5
+law frame_disagree:
+  for te: String
+  for +lens: List<&2, String>
+  for e1: {False{} == String.contains(String.to_lower(te), "chunked") : Bool}
+  for e2: {False{} == Http.clen.agree(lens) : Bool}
+  {Http.frame(False{}, te, lens) == Http.Closed{} : Http.Frame}
+
+# LAW (RFC 9112 §6.3 item 8): no Content-Length, or one that is not a
+# number, leaves the body to the close
+# HTTP-CLI-5
+law frame_unsized:
+  for te: String
+  for +lens: List<&2, String>
+  for e1: {False{} == String.contains(String.to_lower(te), "chunked") : Bool}
+  for e2: {True{} == Http.clen.agree(lens) : Bool}
+  for e3: {None{} == Http.digits.read(Http.first(lens)) : Maybe<&2, Nat>}
+  {Http.frame(False{}, te, lens) == Http.Closed{} : Http.Frame}
+
+# LAW: a response with no body is whole as soon as its head is
+# HTTP-CLI-5
+law whole_bare:
+  for +body: String
+  {Http.whole.of(Http.Bare{}, body) == True{} : Bool}
+
+# LAW (RFC 9110 §8.6): a sized body is whole once it holds that many octets
+# HTTP-CLI-5
+law whole_sized:
+  for n: Nat
+  for +body: String
+  {Http.whole.of(Http.Sized{n}, body)
+    == Bool.not(Nat.is_lt(Http.utf8.len(body), n)) : Bool}
+
+# LAW (RFC 9112 §7.1): a chunked body is whole once it reaches the end of its
+# last chunk, read from its first chunk header
+# HTTP-CLI-5
+law whole_chunked:
+  for +body: String
+  {Http.whole.of(Http.Chunked{}, body)
+    == Http.chunks.ended(String.length(body), Http.divide(body, "\r\n"))
+    : Bool}
+
+# LAW (RFC 9112 §6.3 item 8): a body framed by the close is never whole
+# before the close
+# HTTP-CLI-5
+law whole_closed:
+  for +body: String
+  {Http.whole.of(Http.Closed{}, body) == False{} : Bool}
+
+# LAW: a chunk walk with no fuel left has not ended
+# HTTP-CLI-5
+law ended_fuel:
+  for c: Http.Cut
+  {Http.chunks.ended(0n, c) == False{} : Bool}
+
+# LAW (RFC 9112 §7.1): a chunk header that has not all arrived has not ended
+# HTTP-CLI-5
+law ended_open:
+  for f: Nat
+  {Http.chunks.ended(1n+f, Http.NoCut{}) == False{} : Bool}
+
+# LAW (RFC 9112 §7.1): a chunk size that is not hexadecimal ends the read,
+# and the parse rejects it
+# HTTP-CLI-5
+law ended_bad:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e: {False{} == Http.hex.well(Http.chunks.token(before)) : Bool}
+  {Http.chunks.ended(1n+f, Http.Cut{before, after}) == True{} : Bool}
+
+# LAW (RFC 9112 §7.1.2): the zero-size chunk ends the body once its trailer
+# section has ended
+# HTTP-CLI-5
+law ended_last:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e1: {True{} == Http.hex.well(Http.chunks.token(before)) : Bool}
+  for e2: {True{} == Nat.is_eq(Http.hexlen(before), 0n) : Bool}
+  {Http.chunks.ended(1n+f, Http.Cut{before, after})
+    == Http.chunks.trailer(after) : Bool}
+
+# LAW (RFC 9112 §7.1): a chunk that has all arrived, with its CRLF, moves on
+# to the next chunk header
+# HTTP-CLI-5
+law ended_next:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e1: {True{} == Http.hex.well(Http.chunks.token(before)) : Bool}
+  for e2: {False{} == Nat.is_eq(Http.hexlen(before), 0n) : Bool}
+  for e3: {True{} == Http.chunks.ready(after, Http.hexlen(before)) : Bool}
+  {Http.chunks.ended(1n+f, Http.Cut{before, after})
+    == Http.chunks.ended(f, Http.divide(Http.utf8.drop(after,
+      Nat.add(Http.hexlen(before), 2n)), "\r\n")) : Bool}
+
+# LAW (RFC 9112 §7.1): a chunk that has not all arrived has not ended
+# HTTP-CLI-5
+law ended_short:
+  for f: Nat
+  for +before: String
+  for +after: String
+  for e1: {True{} == Http.hex.well(Http.chunks.token(before)) : Bool}
+  for e2: {False{} == Nat.is_eq(Http.hexlen(before), 0n) : Bool}
+  for e3: {False{} == Http.chunks.ready(after, Http.hexlen(before)) : Bool}
+  {Http.chunks.ended(1n+f, Http.Cut{before, after}) == False{} : Bool}
+
+# LAW (RFC 9112 §7.1.2): a trailer section has ended at once (CRLF), or after
+# its fields (a blank line)
+# HTTP-CLI-5
+law trailer_ended:
+  for +after: String
+  {Http.chunks.trailer(after) == Bool.or(String.starts_with(after, "\r\n"),
+    String.contains(after, "\r\n\r\n")) : Bool}
+
+# LAW (RFC 9112 §7.1): a chunk of size n has arrived when n octets and a
+# CRLF follow its header
+# HTTP-CLI-5
+law chunk_ready:
+  for +after: String
+  for +n: Nat
+  {Http.chunks.ready(after, n)
+    == Bool.and(Bool.not(Nat.is_lt(Http.utf8.len(after), Nat.add(n, 2n))),
+      String.starts_with(Http.utf8.drop(after, n), "\r\n")) : Bool}
+
+# --- reading until the response is whole (SPEC.md HTTP-CLI-6) ---
+
+# LAW: an open that fails is the exchange's answer as the effect gave it
+# HTTP-CLI-6
+law opened_fail:
+  for +got: String
+  for e: {False{} == Spec.wire.ok(got) : Bool}
+  {Spec.wire.opened(got) == Spec.Refused{got} : Spec.Opened}
+
+# LAW: an open that succeeds names the connection to read from
+# HTTP-CLI-6
+law opened_conn:
+  for n: U32
+  for +text: String
+  for e: {Some{n} == U32.read(text) : Maybe<&2, U32>}
+  {Spec.wire.opened("0\n" ++ text) == Spec.Open{n} : Spec.Opened}
+
+# LAW: a read that fails is the exchange's answer as the effect gave it
+# HTTP-CLI-6
+law read_fail:
+  for +method: String
+  for acc: String
+  for +got: String
+  for e: {False{} == Spec.wire.ok(got) : Bool}
+  {Spec.wire.read.next(method, acc, got) == Spec.Heard{got} : Spec.Read}
+
+# LAW: a read that finds the connection closed answers everything received
+# HTTP-CLI-6
+law read_closed:
+  for +method: String
+  for acc: String
+  {Spec.wire.read.next(method, acc, "0\n") == Spec.Heard{"0\n" ++ acc}
+    : Spec.Read}
+
+# LAW: a read whose text completes the response answers all of it
+# HTTP-CLI-6
+law read_whole:
+  for +method: String
+  for +acc: String
+  for +text: String
+  for e1: {False{} == String.is_empty(text) : Bool}
+  for e2: {True{} == Http.whole(method, acc ++ text) : Bool}
+  {Spec.wire.read.next(method, acc, "0\n" ++ text)
+    == Spec.Heard{"0\n" ++ (acc ++ text)} : Spec.Read}
+
+# LAW: a read whose text does not complete the response reads again with it
+# HTTP-CLI-6
+law read_more:
+  for +method: String
+  for +acc: String
+  for +text: String
+  for e1: {False{} == String.is_empty(text) : Bool}
+  for e2: {False{} == Http.whole(method, acc ++ text) : Bool}
+  {Spec.wire.read.next(method, acc, "0\n" ++ text) == Spec.Again{acc ++ text}
+    : Spec.Read}
+
 # --- redirects (SPEC.md HTTP-REDIR) ---
 
 # LAW: a redirect status, with hops left, whose Location has a target goes to
@@ -1676,48 +2074,352 @@ law target_absolute:
     String.starts_with(loc, "https://")) : Bool}
   {Redirect.redirect.target(url, loc) == Some{loc} : Maybe<&2, String>}
 
-# LAW: an absolute-path Location is resolved against the current URL's
-# scheme, host and port
+# LAW: against a URL that does not parse, a Location that is not an absolute
+# URL has no target
 # HTTP-REDIR-3
-law target_path:
+law target_bad:
   for url: String
   for +loc: String
   for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
     String.starts_with(loc, "https://")) : Bool}
-  for e2: {True{} == Bool.and(String.starts_with(loc, "/"),
-    Bool.not(String.starts_with(loc, "//"))) : Bool}
+  for why: String
+  for e2: {Url.Bad{why} == Url.parse(url) : Url.Loc}
+  {Redirect.redirect.target(url, loc) == None{} : Maybe<&2, String>}
+
+# LAW (RFC 3986 §5.2.2): against a URL that parses, a Location that is not an
+# absolute URL is resolved by its sort against the URL's parts
+# HTTP-REDIR-3
+# HTTP-REDIR-4
+law target_against:
+  for url: String
+  for +loc: String
+  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
+    String.starts_with(loc, "https://")) : Bool}
   for scheme: String
   for host: String
   for port: U32
   for path: String
-  for e3: {Url.Loc{scheme, host, port, path} == Url.parse(url) : Url.Loc}
+  for e2: {Url.Loc{scheme, host, port, path} == Url.parse(url) : Url.Loc}
   {Redirect.redirect.target(url, loc)
-    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port) ++ loc}
+    == Redirect.redirect.against(scheme, host, port, path, loc,
+      Redirect.redirect.sort(loc)) : Maybe<&2, String>}
+
+# LAW (RFC 3986 §5.2.2): a network-path reference keeps only the scheme
+# HTTP-REDIR-3
+law against_net:
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
+  for +loc: String
+  {Redirect.redirect.against(scheme, host, port, path, loc, Redirect.Net{})
+    == Some{scheme ++ ":" ++ loc} : Maybe<&2, String>}
+
+# LAW (RFC 3986 §5.2.2): an absolute path keeps the origin, its own path with
+# dot segments removed, then its query
+# HTTP-REDIR-3
+law against_abs:
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
+  for +loc: String
+  {Redirect.redirect.against(scheme, host, port, path, loc, Redirect.Abs{})
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port)
+      ++ Redirect.redirect.abs.of(Redirect.redirect.split(loc))}
     : Maybe<&2, String>}
 
-# LAW: an absolute path against a URL that does not parse has no target
+# LAW: a Location the client stays on has no target
 # HTTP-REDIR-3
-law target_path_bad:
-  for url: String
+law against_stay:
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
   for +loc: String
-  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
-    String.starts_with(loc, "https://")) : Bool}
-  for e2: {True{} == Bool.and(String.starts_with(loc, "/"),
-    Bool.not(String.starts_with(loc, "//"))) : Bool}
-  for why: String
-  for e3: {Url.Bad{why} == Url.parse(url) : Url.Loc}
-  {Redirect.redirect.target(url, loc) == None{} : Maybe<&2, String>}
+  {Redirect.redirect.against(scheme, host, port, path, loc, Redirect.Stay{})
+    == None{} : Maybe<&2, String>}
 
-# LAW: any other Location (empty, relative, `//host`) has no target
-# HTTP-REDIR-3
-law target_other:
-  for url: String
+# LAW (RFC 3986 §5.2.2): a query keeps the origin and the current path
+# HTTP-REDIR-4
+law against_query:
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
   for +loc: String
-  for e1: {False{} == Bool.or(String.starts_with(loc, "http://"),
-    String.starts_with(loc, "https://")) : Bool}
-  for e2: {False{} == Bool.and(String.starts_with(loc, "/"),
-    Bool.not(String.starts_with(loc, "//"))) : Bool}
-  {Redirect.redirect.target(url, loc) == None{} : Maybe<&2, String>}
+  {Redirect.redirect.against(scheme, host, port, path, loc, Redirect.Query{})
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port)
+      ++ Redirect.redirect.base(path) ++ loc} : Maybe<&2, String>}
+
+# LAW (RFC 3986 §5.2.2): a relative path keeps the origin and is merged with
+# the current path
+# HTTP-REDIR-4
+law against_rel:
+  for scheme: String
+  for host: String
+  for port: U32
+  for path: String
+  for +loc: String
+  {Redirect.redirect.against(scheme, host, port, path, loc, Redirect.Rel{})
+    == Some{scheme ++ "://" ++ host ++ ":" ++ U32.show(port)
+      ++ Redirect.redirect.rel.of(Redirect.redirect.base(path),
+        Redirect.redirect.split(loc))} : Maybe<&2, String>}
+
+# LAW (RFC 3986 §4.2): a Location that starts `//` is a network path
+# HTTP-REDIR-3
+law sort_net:
+  for +loc: String
+  for e: {True{} == String.starts_with(loc, "//") : Bool}
+  {Redirect.redirect.sort(loc) == Redirect.Net{} : Redirect.Sort}
+
+# LAW (RFC 3986 §4.2): one that starts with a single `/` is an absolute path
+# HTTP-REDIR-3
+law sort_abs:
+  for +loc: String
+  for e1: {False{} == String.starts_with(loc, "//") : Bool}
+  for e2: {True{} == String.starts_with(loc, "/") : Bool}
+  {Redirect.redirect.sort(loc) == Redirect.Abs{} : Redirect.Sort}
+
+# LAW: any other Location the client does not follow stays
+# HTTP-REDIR-3
+law sort_stay:
+  for +loc: String
+  for e1: {False{} == String.starts_with(loc, "//") : Bool}
+  for e2: {False{} == String.starts_with(loc, "/") : Bool}
+  for e3: {True{} == Redirect.redirect.stays(loc) : Bool}
+  {Redirect.redirect.sort(loc) == Redirect.Stay{} : Redirect.Sort}
+
+# LAW (RFC 3986 §4.2): any other Location that starts `?` is a query
+# HTTP-REDIR-4
+law sort_query:
+  for +loc: String
+  for e1: {False{} == String.starts_with(loc, "//") : Bool}
+  for e2: {False{} == String.starts_with(loc, "/") : Bool}
+  for e3: {False{} == Redirect.redirect.stays(loc) : Bool}
+  for e4: {True{} == String.starts_with(loc, "?") : Bool}
+  {Redirect.redirect.sort(loc) == Redirect.Query{} : Redirect.Sort}
+
+# LAW (RFC 3986 §4.2): and every other one is a relative path
+# HTTP-REDIR-4
+law sort_rel:
+  for +loc: String
+  for e1: {False{} == String.starts_with(loc, "//") : Bool}
+  for e2: {False{} == String.starts_with(loc, "/") : Bool}
+  for e3: {False{} == Redirect.redirect.stays(loc) : Bool}
+  for e4: {False{} == String.starts_with(loc, "?") : Bool}
+  {Redirect.redirect.sort(loc) == Redirect.Rel{} : Redirect.Sort}
+
+# LAW: the client stays on an empty Location, a fragment, and one that names
+# another scheme
+# HTTP-REDIR-3
+law stays_on:
+  for +loc: String
+  {Redirect.redirect.stays(loc) == Bool.or(String.is_empty(loc),
+    Bool.or(String.starts_with(loc, "#"), Redirect.redirect.schemed(loc)))
+    : Bool}
+
+# LAW (RFC 3986 §3.1): an empty reference names no scheme
+# HTTP-REDIR-3
+law schemed_nil:
+  for s: String
+  for e: {True{} == String.is_empty(s) : Bool}
+  {Redirect.redirect.schemed(s) == False{} : Bool}
+
+# LAW (RFC 3986 §3.1): a `:` before the first `/`, `?` or `#` names a scheme
+# HTTP-REDIR-3
+law schemed_colon:
+  for t: String
+  {Redirect.redirect.schemed(SCon{':', t}) == True{} : Bool}
+
+# LAW (RFC 3986 §4.2): a `/`, `?` or `#` first means no scheme
+# HTTP-REDIR-3
+law schemed_stop:
+  for +c: Char
+  for t: String
+  for e: {True{} == Redirect.redirect.schemed.end(c) : Bool}
+  {Redirect.redirect.schemed(SCon{c, t}) == False{} : Bool}
+
+# LAW: any other first character leaves the question to the rest
+# HTTP-REDIR-3
+law schemed_other:
+  for +c: Char
+  for t: String
+  for e1: {False{} == Char.is_eq(c, ':') : Bool}
+  for e2: {False{} == Redirect.redirect.schemed.end(c) : Bool}
+  {Redirect.redirect.schemed(SCon{c, t}) == Redirect.redirect.schemed(t)
+    : Bool}
+
+# LAW: the characters that end a reference's first segment are `/`, `?`, `#`
+# HTTP-REDIR-3
+law schemed_end:
+  for +c: Char
+  {Redirect.redirect.schemed.end(c) == Bool.or(Char.is_eq(c, '/'),
+    Bool.or(Char.is_eq(c, '?'), Char.is_eq(c, '#'))) : Bool}
+
+# LAW (RFC 3986 §3.4, §3.5): a Location with a `?` is its path before it and
+# its query from it, its fragment dropped
+# HTTP-REDIR-3
+# HTTP-REDIR-4
+law split_query:
+  for +loc: String
+  for p: String
+  for q: String
+  for e: {Http.Cut{p, q} == Http.divide(Url.frag.drop(loc), "?") : Http.Cut}
+  {Redirect.redirect.split(loc) == Redirect.Ref{p, "?" ++ q} : Redirect.Ref}
+
+# LAW: a Location with no `?` is all path, its fragment dropped
+# HTTP-REDIR-3
+# HTTP-REDIR-4
+law split_plain:
+  for +loc: String
+  for e: {Http.NoCut{} == Http.divide(Url.frag.drop(loc), "?") : Http.Cut}
+  {Redirect.redirect.split(loc) == Redirect.Ref{Url.frag.drop(loc), ""}
+    : Redirect.Ref}
+
+# LAW (RFC 3986 §5.2.2): an absolute path is its segments after the leading
+# `/`, dot segments removed, then its query
+# HTTP-REDIR-3
+law abs_of:
+  for path: String
+  for query: String
+  {Redirect.redirect.abs.of(Redirect.Ref{path, query})
+    == Redirect.redirect.clean(List.tail(&2, String, String.split(path, '/')))
+      ++ query : String}
+
+# LAW (RFC 3986 §5.2.3): a relative path follows every segment of the current
+# path but its last, then dot segments are removed, then its query
+# HTTP-REDIR-4
+law rel_of:
+  for base: String
+  for path: String
+  for query: String
+  {Redirect.redirect.rel.of(base, Redirect.Ref{path, query})
+    == Redirect.redirect.clean(List.tail(&2, String,
+      List.append(&2, String, Redirect.redirect.init(String.split(base, '/')),
+        String.split(path, '/')))) ++ query : String}
+
+# LAW: the current path, for merging, is the part before its `?`
+# HTTP-REDIR-4
+law base_path:
+  for path: String
+  {Redirect.redirect.base(path) == Url.query.hier(String.split(path, '?'))
+    : String}
+
+# LAW: the first piece of a split, empty when there is none
+# HTTP-REDIR-4
+law hier_first:
+  for h: String
+  for t: List<&2, String>
+  {Url.query.hier(h <> t) == h : String}
+
+# LAW: no segments have no segments but the last
+# HTTP-REDIR-4
+law init_nil:
+  for ss: List<&2, String>
+  for e: {True{} == List.is_empty(&2, String, ss) : Bool}
+  {Redirect.redirect.init(ss) == [] : List<&2, String>}
+
+# LAW: segments but the last start from the first
+# HTTP-REDIR-4
+law init_cons:
+  for s: String
+  for t: List<&2, String>
+  {Redirect.redirect.init(s <> t) == Redirect.redirect.init.of(t, s)
+    : List<&2, String>}
+
+# LAW: the last segment is dropped
+# HTTP-REDIR-4
+law init_last:
+  for s: String
+  {Redirect.redirect.init.of([], s) == [] : List<&2, String>}
+
+# LAW: every segment before the last is kept, in order
+# HTTP-REDIR-4
+law init_keep:
+  for s: String
+  for u: String
+  for r: List<&2, String>
+  {Redirect.redirect.init.of(u <> r, s) == s <> Redirect.redirect.init.of(r, u)
+    : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4): a path is `/`, then its segments with dot segments
+# removed, joined by `/`
+# HTTP-REDIR-5
+law clean_path:
+  for ss: List<&2, String>
+  {Redirect.redirect.clean(ss)
+    == "/" ++ String.join(Redirect.redirect.dots(ss, []), "/") : String}
+
+# LAW: once every segment is read, the kept ones are the path, in order
+# HTTP-REDIR-5
+law dots_nil:
+  for out: List<&2, String>
+  {Redirect.redirect.dots([], out) == List.reverse(&2, String, out)
+    : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 B, D): a `.` segment is dropped
+# HTTP-REDIR-5
+law dots_dot:
+  for +s: String
+  for +t: List<&2, String>
+  for out: List<&2, String>
+  for e: {True{} == String.eq(s, ".") : Bool}
+  {Redirect.redirect.dots(s <> t, out)
+    == Redirect.redirect.dots(t,
+      Redirect.redirect.dots.end(List.is_empty(&2, String, t), out))
+    : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 C, D): a `..` segment drops the last segment kept
+# HTTP-REDIR-5
+law dots_up:
+  for +s: String
+  for +t: List<&2, String>
+  for out: List<&2, String>
+  for e1: {False{} == String.eq(s, ".") : Bool}
+  for e2: {True{} == String.eq(s, "..") : Bool}
+  {Redirect.redirect.dots(s <> t, out)
+    == Redirect.redirect.dots(t,
+      Redirect.redirect.dots.end(List.is_empty(&2, String, t),
+        Redirect.redirect.pop(out))) : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 E): every other segment is kept
+# HTTP-REDIR-5
+law dots_seg:
+  for +s: String
+  for +t: List<&2, String>
+  for out: List<&2, String>
+  for e1: {False{} == String.eq(s, ".") : Bool}
+  for e2: {False{} == String.eq(s, "..") : Bool}
+  {Redirect.redirect.dots(s <> t, out) == Redirect.redirect.dots(t, s <> out)
+    : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 B, C): a path that ends in `.` or `..` keeps its
+# trailing `/`
+# HTTP-REDIR-5
+law dots_last:
+  for out: List<&2, String>
+  {Redirect.redirect.dots.end(True{}, out) == "" <> out : List<&2, String>}
+
+# LAW: a `.` or `..` before other segments adds nothing
+# HTTP-REDIR-5
+law dots_inner:
+  for out: List<&2, String>
+  {Redirect.redirect.dots.end(False{}, out) == out : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 C): `..` with nothing kept drops nothing
+# HTTP-REDIR-5
+law pop_nil:
+  for out: List<&2, String>
+  for e: {True{} == List.is_empty(&2, String, out) : Bool}
+  {Redirect.redirect.pop(out) == [] : List<&2, String>}
+
+# LAW (RFC 3986 §5.2.4 C): `..` drops the last segment kept
+# HTTP-REDIR-5
+law pop_cons:
+  for s: String
+  for t: List<&2, String>
+  {Redirect.redirect.pop(s <> t) == t : List<&2, String>}
 
 # --- HTML escaping (SPEC.md HTTP-HTML) ---
 

@@ -1,7 +1,11 @@
-// ezwire.talk: one HTTP exchange. A host is resolved, a socket is connected,
-// the request is written, and everything the server sends back before it
-// closes is read. With `tls` for a scheme the socket is wrapped in a TLS
-// session first.
+// ezwire.open, ezwire.read, ezwire.close: one HTTP exchange. A host is
+// resolved, a socket is connected and the request is written (open); then the
+// response is read a piece at a time (read), until the Bend side, which
+// decides when a response is whole (wirespec.bend wire.read.next), closes it
+// (close). With `tls` for a scheme the socket is wrapped in a TLS session
+// first. Nothing here knows HTTP framing: a server that keeps the connection
+// open after a whole response is not waited on, because the Bend side stops
+// asking.
 //
 // The spec arrives as four parts: the scheme, the host, the port, each on its
 // own line, and the rest of the string is the request verbatim. The scheme
@@ -10,9 +14,10 @@
 // The timeout bounds the connect, every send and every receive on its own,
 // as httpx's does; name resolution is not bounded. A call that runs out of
 // time answers status 28 (curl's CURLE_OPERATION_TIMEDOUT), and no other
-// failure does. The answer is
-// a status on its own first line and then the text: "0" and the raw response,
-// or a non-zero code and the reason.
+// failure does. Every answer is a status on its own first line and then the
+// text: for open, "0" and a connection number; for read, "0" and the octets
+// that arrived (none once the server has closed cleanly); or a non-zero code
+// and the reason.
 //
 // bend links its binaries with exactly `-std=c11 -O3 -lpthread -lm`, so -lssl
 // is not available to anything compiled here. OpenSSL is therefore opened at
@@ -23,6 +28,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <netdb.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -84,6 +90,7 @@ typedef struct {
   int (*write)(void*, const void*, int);
   int (*error)(const void*, int);
   int (*shutdown)(void*);
+  int (*pending)(const void*);
   void* ctx;
 } EzwireTls;
 
@@ -162,6 +169,7 @@ static int ezwire_tls_syms(void* lib) {
   ezwire_tls.write = ezwire_tls_sym(lib, "SSL_write");
   ezwire_tls.error = ezwire_tls_sym(lib, "SSL_get_error");
   ezwire_tls.shutdown = ezwire_tls_sym(lib, "SSL_shutdown");
+  ezwire_tls.pending = ezwire_tls_sym(lib, "SSL_pending");
   return ezwire_tls_why[0] == '\0';
 }
 
@@ -267,43 +275,47 @@ static int ezwire_say(int fd, void* ssl, const char* text, size_t len,
   return 0;
 }
 
-// everything the server sends before it closes. `Connection: close` is what
-// makes that the end of the response; the framing headers then say how much of
-// it is body. A TLS read that stops for any reason other than the peer being
-// done sets `bad`, so a connection cut mid-body is an error and not a short
-// file that happens to parse.
-static char* ezwire_hear(int fd, void* ssl, size_t* len, int* bad,
+// one receive into buf, over TLS when there is a session: the count, 0 once
+// the peer is done, or -1 with `late` set when it ran out of time. A TLS read
+// that stops for any reason other than the peer being done is -1, so a
+// connection cut mid-body is an error and not a short file that happens to
+// parse.
+static int ezwire_recv(int fd, void* ssl, char* buf, int cap, int flags,
   int* late) {
-  size_t cap = 65536;
-  size_t at = 0;
-  char* buf = malloc(cap);
-  *late = 0;
-  for (;;) {
-    if (at + 16384 > cap) {
-      cap *= 2;
-      buf = realloc(buf, cap);
-    }
-    errno = 0;
-    int n = ssl != NULL ? ezwire_tls.read(ssl, buf + at, 16384)
-      : (int)recv(fd, buf + at, 16384, 0);
-    if (n <= 0) {
-      int code = errno;
-      if (ssl == NULL) {
-        *bad = n < 0;
-        *late = n < 0 && ezwire_late_errno(code);
-      } else {
-        int why = ezwire_tls.error(ssl, n);
-        *bad = !(why == EZWIRE_SHUT_CLEAN
-          || (why == EZWIRE_SHUT_EOF && n == 0));
-        *late = *bad && (why == EZWIRE_WANT_READ || why == EZWIRE_WANT_WRITE
-          || ezwire_late_errno(code));
-      }
-      break;
-    }
-    at += (size_t)n;
+  errno = 0;
+  int n = ssl != NULL ? ezwire_tls.read(ssl, buf, cap)
+    : (int)recv(fd, buf, (size_t)cap, flags);
+  if (n > 0) {
+    return n;
   }
-  *len = at;
-  return buf;
+  int code = errno;
+  if (ssl == NULL) {
+    *late = n < 0 && ezwire_late_errno(code);
+    return n < 0 ? -1 : 0;
+  }
+  int why = ezwire_tls.error(ssl, n);
+  if (why == EZWIRE_SHUT_CLEAN || (why == EZWIRE_SHUT_EOF && n == 0)) {
+    return 0;
+  }
+  *late = why == EZWIRE_WANT_READ || why == EZWIRE_WANT_WRITE
+    || ezwire_late_errno(code);
+  return -1;
+}
+
+// how many bytes at the end of buf start a UTF-8 sequence that has not all
+// arrived, so a read never splits a character: the runtime decodes each
+// read's text on its own
+static int ezwire_cut(const unsigned char* buf, size_t len) {
+  for (int back = 1; back <= 3 && (size_t)back <= len; back++) {
+    unsigned char c = buf[len - (size_t)back];
+    if ((c & 0xC0) == 0x80) {
+      continue;
+    }
+    int want = (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3
+      : (c & 0xF8) == 0xF0 ? 4 : 1;
+    return want > back ? back : 0;
+  }
+  return 0;
 }
 
 // the answer: a status line, then the text. The status is 0 only when a whole
@@ -333,13 +345,44 @@ static int ezwire_split(char* spec, size_t n, char** part) {
   return got == 4;
 }
 
-Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
+// an open exchange: its socket, its session, whom it is with, its timeout,
+// the start of a UTF-8 sequence held back from the last read, and whether
+// the server has closed
+typedef struct {
+  int used;
+  int fd;
+  void* ssl;
+  char host[256];
+  long ms;
+  unsigned char held[4];
+  int nheld;
+  int done;
+} EzwireConn;
+
+#define EZWIRE_CONNS 64
+static EzwireConn ezwire_conns[EZWIRE_CONNS];
+
+// the most one read answers
+#define EZWIRE_READ_MAX (1 << 20)
+
+// connect, shake hands, send the request, and answer a connection number
+Term ezwire_open_run(Env e, Term* f, IoWork* w) {
   uint64_t n = 0;
   char* spec = io_cstr(e, f[0], &n);
   char* part[4];
   if (!ezwire_split(spec, (size_t)n, part)) {
     free(spec);
     return ezwire_say_back(e, 22, "a malformed request spec", 24);
+  }
+  int slot = -1;
+  for (int i = 0; i < EZWIRE_CONNS && slot < 0; i++) {
+    if (!ezwire_conns[i].used) {
+      slot = i;
+    }
+  }
+  if (slot < 0) {
+    free(spec);
+    return ezwire_say_back(e, 24, "too many open exchanges", 23);
   }
   int secure = strncmp(part[0], "tls", 3) == 0
     && (part[0][3] == '\0' || part[0][3] == ' ');
@@ -377,7 +420,6 @@ Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
     free(spec);
     return miss;
   }
-  Term out;
   /* remaining bytes after the third newline — not strlen, so a body may hold NUL */
   size_t req_len = (size_t)n - (size_t)(part[3] - spec);
   if (ezwire_say(fd, ssl, part[3], req_len, &late) != 0) {
@@ -386,32 +428,127 @@ Term ezwire_talk_run(Env e, Term* f, IoWork* w) {
         part[1], ms)
       : snprintf(why, sizeof(why), "the request to %s could not be sent",
         part[1]);
-    out = ezwire_say_back(e, late ? EZWIRE_LATE : 55, why, (size_t)wn);
-  } else {
-    size_t len = 0;
-    int bad = 0;
-    char* got = ezwire_hear(fd, ssl, &len, &bad, &late);
-    if (bad) {
+    Term miss = ezwire_say_back(e, late ? EZWIRE_LATE : 55, why, (size_t)wn);
+    if (ssl != NULL) {
+      ezwire_tls.shutdown(ssl);
+      ezwire_tls.ssl_free(ssl);
+    }
+    close(fd);
+    free(spec);
+    return miss;
+  }
+  EzwireConn* c = &ezwire_conns[slot];
+  memset(c, 0, sizeof(*c));
+  c->used = 1;
+  c->fd = fd;
+  c->ssl = ssl;
+  snprintf(c->host, sizeof(c->host), "%s", part[1]);
+  c->ms = ms;
+  free(spec);
+  char num[16];
+  int nn = snprintf(num, sizeof(num), "%d", slot);
+  return ezwire_say_back(e, 0, num, (size_t)nn);
+}
+
+// the next octets: one receive that waits (bounded by the timeout), then
+// whatever has already arrived behind it, without waiting, up to
+// EZWIRE_READ_MAX. A UTF-8 sequence cut at the end is held for the next
+// read; once the server has closed, what was held goes out and then nothing.
+Term ezwire_read_run(Env e, Term* f, IoWork* w) {
+  u32 slot = (u32)f[0];
+  if (slot >= EZWIRE_CONNS || !ezwire_conns[slot].used) {
+    return ezwire_say_back(e, 22, "no such exchange", 16);
+  }
+  EzwireConn* c = &ezwire_conns[slot];
+  size_t cap = EZWIRE_READ_MAX + 8;
+  char* buf = malloc(cap);
+  memcpy(buf, c->held, (size_t)c->nheld);
+  size_t at = (size_t)c->nheld;
+  c->nheld = 0;
+  int late = 0;
+  // until there is a whole character to answer, or the server is done
+  while (!c->done) {
+    int got = ezwire_recv(c->fd, c->ssl, buf + at, 16384, 0, &late);
+    if (got < 0) {
+      free(buf);
+      char why[512];
       int wn = late
         ? snprintf(why, sizeof(why), "%s sent nothing for %ld ms",
-          part[1], ms)
+          c->host, c->ms)
         : snprintf(why, sizeof(why), "the answer from %s was cut short",
-          part[1]);
-      out = ezwire_say_back(e, late ? EZWIRE_LATE : 56, why, (size_t)wn);
-    } else {
-      out = ezwire_say_back(e, 0, got, len);
+          c->host);
+      return ezwire_say_back(e, late ? EZWIRE_LATE : 56, why, (size_t)wn);
     }
-    free(got);
+    if (got == 0) {
+      c->done = 1;
+      break;
+    }
+    at += (size_t)got;
+    // what is already here, without waiting
+    while (at + 16384 <= EZWIRE_READ_MAX) {
+      int more;
+      if (c->ssl != NULL) {
+        if (ezwire_tls.pending(c->ssl) <= 0) {
+          break;
+        }
+        more = ezwire_recv(c->fd, c->ssl, buf + at, 16384, 0, &late);
+      } else {
+        struct pollfd p = { c->fd, POLLIN, 0 };
+        if (poll(&p, 1, 0) <= 0) {
+          break;
+        }
+        more = ezwire_recv(c->fd, NULL, buf + at, 16384, MSG_DONTWAIT, &late);
+      }
+      if (more == 0) {
+        c->done = 1;
+      }
+      if (more <= 0) {
+        break;
+      }
+      at += (size_t)more;
+    }
+    int keep = c->done ? 0 : ezwire_cut((unsigned char*)buf, at);
+    if ((size_t)keep < at) {
+      memcpy(c->held, buf + at - (size_t)keep, (size_t)keep);
+      c->nheld = keep;
+      at -= (size_t)keep;
+      break;
+    }
   }
-  if (ssl != NULL) {
-    ezwire_tls.shutdown(ssl);
-    ezwire_tls.ssl_free(ssl);
-  }
-  close(fd);
-  free(spec);
+  Term out = ezwire_say_back(e, 0, buf, at);
+  free(buf);
   return out;
 }
 
-static void __attribute__((constructor)) ezwire_talk_use(void) {
-  io_eff(CID(ezwire.talk), ezwire_talk_run);
+// close an exchange's session and socket
+Term ezwire_close_run(Env e, Term* f, IoWork* w) {
+  u32 slot = (u32)f[0];
+  if (slot < EZWIRE_CONNS && ezwire_conns[slot].used) {
+    EzwireConn* c = &ezwire_conns[slot];
+    if (c->ssl != NULL) {
+      ezwire_tls.shutdown(c->ssl);
+      ezwire_tls.ssl_free(c->ssl);
+    }
+    close(c->fd);
+    memset(c, 0, sizeof(*c));
+  }
+  return term_pak(CID(Unit), 0);
 }
+
+#ifdef CID(ezwire.open)
+static void __attribute__((constructor)) ezwire_open_use(void) {
+  io_eff(CID(ezwire.open), ezwire_open_run);
+}
+#endif
+
+#ifdef CID(ezwire.read)
+static void __attribute__((constructor)) ezwire_read_use(void) {
+  io_eff(CID(ezwire.read), ezwire_read_run);
+}
+#endif
+
+#ifdef CID(ezwire.close)
+static void __attribute__((constructor)) ezwire_close_use(void) {
+  io_eff(CID(ezwire.close), ezwire_close_run);
+}
+#endif

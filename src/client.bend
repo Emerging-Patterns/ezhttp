@@ -15,32 +15,6 @@ type Response is Data:
   Err{why: String}
   Response{status: U32, headers: List<&2, Http.Header>, body: String}
 
-# transport status line: first line is a code, rest is the payload
-def wire.code(raw: String) -> Maybe<&2, U32>:
-  U32.read(Http.first(String.split(raw, '\n')))
-
-# text after the first newline
-def wire.text.of(c: Http.Cut) -> String:
-  match c:
-    case Http.NoCut{}:
-      ""
-    case Http.Cut{_before, after}:
-      after
-
-def wire.text(raw: String) -> String:
-  wire.text.of(Http.divide(raw, "\n"))
-
-# whether the wire status is success (0)
-def wire.ok.of(m: Maybe<&2, U32>) -> Bool:
-  match m:
-    case None{}:
-      False{}
-    case Some{n}:
-      U32.is_eq(n, 0)
-
-def wire.ok(raw: String) -> Bool:
-  wire.ok.of(wire.code(raw))
-
 # a torn or successful HTTP parse as a client Response
 def from.reply(r: Http.Reply) -> Response:
   match r:
@@ -54,43 +28,44 @@ def from.reply(r: Http.Reply) -> Response:
 def from.raw(+raw: String, ok: Bool) -> Response:
   match ok:
     case False{}:
-      Err{Spec.wire.why(wire.code(raw), wire.text(raw))}
+      Err{Spec.wire.why(Spec.wire.code(raw), Spec.wire.text(raw))}
     case True{}:
-      from.reply(Http.parse(wire.text(raw)))
+      from.reply(Http.parse(Spec.wire.text(raw)))
 
-# HTTP(S) exchange with a pre-built request
-def http.talk(secure: Bool, host: String, port: U32, req: String)
-  -> IO(Response):
-  do IO<Response>:
-    +raw : String <- Wire.wire.talk(secure, host, port, req)
-    IO.pure(Response, from.raw(raw, wire.ok(raw)))
+# an exchange's answer as a client Response
+def http.heard(+raw: String) -> Response:
+  from.raw(raw, Spec.wire.ok(raw))
 
-# a URL that came apart into an HTTP exchange
-def http.loc(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
-  body: String) -> IO(Response):
-  match l:
-    case Url.Bad{why}:
+# an exchange as wirespec.bend wrote it: sent, or the URL's reason
+def http.send(method: String, ex: Spec.Exchange) -> IO(Response):
+  match ex:
+    case Spec.NoUrl{why}:
       IO.pure(Response, Err{why})
-    case Url.Loc{+scheme, +host, port, path}:
-      http.talk(String.eq(scheme, "https"), host, port,
-        Http.request(method, host, path, headers, body))
+    case Spec.Exchange{secure, host, port, req}:
+      do IO<Response>:
+        +raw : String <- Wire.wire.talk(secure, host, port, method, req)
+        IO.pure(Response, http.heard(raw))
 
-# HTTP(S) exchange with a pre-built request and a timeout in milliseconds
-def http.talk.timed(secure: Bool, ms: U32, host: String, port: U32,
-  req: String) -> IO(Response):
-  do IO<Response>:
-    +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, req)
-    IO.pure(Response, from.raw(raw, wire.ok(raw)))
+# a URL that came apart (or not) into an HTTP exchange
+def http.loc(+method: String, l: Url.Loc, headers: List<&2, Http.Header>,
+  body: String) -> IO(Response):
+  http.send(method, Spec.wire.exchange(method, l, headers, body))
 
-# a URL that came apart into a GET bounded by a timeout
+# an exchange as wirespec.bend wrote it, bounded by a timeout
+def http.send.timed(ms: U32, ex: Spec.Exchange) -> IO(Response):
+  match ex:
+    case Spec.NoUrl{why}:
+      IO.pure(Response, Err{why})
+    case Spec.Exchange{secure, host, port, req}:
+      do IO<Response>:
+        +raw : String <- Wire.wire.talk.timed(secure, ms, host, port, "GET",
+          req)
+        IO.pure(Response, http.heard(raw))
+
+# a URL that came apart (or not) into a GET bounded by a timeout
 def http.loc.timed(ms: U32, l: Url.Loc, headers: List<&2, Http.Header>)
   -> IO(Response):
-  match l:
-    case Url.Bad{why}:
-      IO.pure(Response, Err{why})
-    case Url.Loc{+scheme, +host, port, path}:
-      http.talk.timed(String.eq(scheme, "https"), ms, host, port,
-        Http.request("GET", host, path, headers, ""))
+  http.send.timed(ms, Spec.wire.exchange("GET", l, headers, ""))
 
 # GET bounded by a timeout in milliseconds
 def client.get.timed(url: String, headers: List<&2, Http.Header>, ms: U32)

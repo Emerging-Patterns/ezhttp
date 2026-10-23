@@ -1,6 +1,8 @@
 # ezhttp/src/wirespec: the text the wire effect reads, and what its answer
 # means, pure. Kept apart from wire.bend (the effect) so the proof gate can
-# import it.
+# import it. What the client sends for a URL (wire.exchange) and when it has
+# heard a whole answer (wire.read.next) are decided here; wire.bend and
+# client.bend act on them.
 #
 # Spec: scheme, host, port each on their own line; everything after the third
 # newline is the request verbatim. The scheme line may carry a timeout after a
@@ -8,6 +10,8 @@
 # line with no timeout means 60000 ms. SPEC.md HTTP-CLI lists what is
 # guaranteed.
 import Base
+import ./http.bend as Http
+import ./url.bend as Url
 
 # the word the effect reads for a scheme that wants TLS
 def wire.scheme(secure: Bool) -> String:
@@ -125,3 +129,131 @@ def wire.why(code: Maybe<&2, U32>, why: String) -> String:
 # whether a reported reason is a timeout
 def wire.timed_out(why: String) -> Bool:
   String.starts_with(why, "timed out: ")
+
+# --- what is sent ---
+
+# what a request to a URL becomes: nothing when the URL did not parse, else
+# the scheme (secure or not), host, port and request text the effect is given
+type Exchange is Data:
+  NoUrl{why: String}
+  Exchange{secure: Bool, host: String, port: U32, req: String}
+
+# the exchange once it is known whether the scheme wants TLS
+def wire.exchange.at(method: String, +secure: Bool, +host: String, +port: U32,
+  path: String, headers: List<&2, Http.Header>, body: String) -> Exchange:
+  Exchange{secure, host, port,
+    Http.request.at(method, secure, host, port, path, headers, body)}
+
+# a request with this method, headers and body to a URL that came apart
+def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
+  body: String) -> Exchange:
+  match l:
+    case Url.Bad{why}:
+      NoUrl{why}
+    case Url.Loc{scheme, host, port, path}:
+      +secure = String.eq(scheme, "https")
+      wire.exchange.at(method, secure, host, port, path, headers, body)
+
+# --- what is heard ---
+
+# an answer's status: the number on its first line, if it is one
+def wire.code.of(c: Http.Cut, raw: String) -> Maybe<&2, U32>:
+  match c:
+    case Http.NoCut{}:
+      U32.read(raw)
+    case Http.Cut{before, after}:
+      U32.read(before)
+
+# an answer's status line as a number
+def wire.code(+raw: String) -> Maybe<&2, U32>:
+  wire.code.of(Http.divide(raw, "\n"), raw)
+
+# the text after an answer's first newline
+def wire.text.of(c: Http.Cut) -> String:
+  match c:
+    case Http.NoCut{}:
+      ""
+    case Http.Cut{before, after}:
+      after
+
+# the text after an answer's first newline
+def wire.text(raw: String) -> String:
+  wire.text.of(Http.divide(raw, "\n"))
+
+# whether a status is success (0)
+def wire.ok.of(m: Maybe<&2, U32>) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{n}:
+      U32.is_eq(n, 0)
+
+# whether an answer has status 0
+def wire.ok(raw: String) -> Bool:
+  wire.ok.of(wire.code(raw))
+
+# what an open answered: a connection to read from, or the answer itself
+type Opened is Data:
+  Refused{answer: String}
+  Open{conn: U32}
+
+# a connection number that read, or a malformed answer when it did not
+def wire.opened.conn(m: Maybe<&2, U32>) -> Opened:
+  match m:
+    case None{}:
+      Refused{"22\na malformed connection number"}
+    case Some{n}:
+      Open{n}
+
+# an open's answer once it is known whether it succeeded
+def wire.opened.of(+got: String, ok: Bool) -> Opened:
+  match ok:
+    case False{}:
+      Refused{got}
+    case True{}:
+      wire.opened.conn(U32.read(wire.text(got)))
+
+# what an open's answer means
+def wire.opened(+got: String) -> Opened:
+  wire.opened.of(got, wire.ok(got))
+
+# after a read: read again with what has arrived, or answer
+type Read is Data:
+  Again{acc: String}
+  Heard{answer: String}
+
+# everything received, once it is known whether it is a whole response
+def wire.read.whole(all: String, done: Bool) -> Read:
+  match done:
+    case True{}:
+      Heard{"0\n" ++ all}
+    case False{}:
+      Again{all}
+
+# a read that brought text, or found the connection closed
+def wire.read.got(+method: String, acc: String, text: String, closed: Bool)
+  -> Read:
+  match closed:
+    case True{}:
+      Heard{"0\n" ++ acc}
+    case False{}:
+      +all = acc ++ text
+      wire.read.whole(all, Http.whole(method, all))
+
+# a read's answer once it is known whether it succeeded
+def wire.read.of(+method: String, acc: String, +got: String, ok: Bool) -> Read:
+  match ok:
+    case False{}:
+      Heard{got}
+    case True{}:
+      +text = wire.text(got)
+      wire.read.got(method, acc, text, String.is_empty(text))
+
+# what to do after a read answered `got`, with `acc` received before it, for
+# a request with this method (SPEC.md HTTP-CLI-6)
+def wire.read.next(+method: String, acc: String, +got: String) -> Read:
+  wire.read.of(method, acc, got, wire.ok(got))
+
+# the answer when the reads run out before the response ends
+def wire.spent() -> String:
+  "56\nthe answer did not end within 65536 reads"
