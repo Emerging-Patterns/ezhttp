@@ -269,6 +269,11 @@ def http.delete_opts(
 def http.timed_out(r: Client.Response) -> Bool:
   Client.client.timed_out(r)
 
+# a response body's octets (a Response's `bytes`) decoded as UTF-8, done only
+# when called (SPEC.md HTTP-BODY-4)
+def body_text(bytes: Bytes.Bytes) -> String:  # noqa: L001 re-export of Client.client.text
+  Client.client.text(bytes)
+
 # HEAD with no extra headers
 def http.head(url: String) -> IO(Client.Response):
   Client.client.head(url, [])

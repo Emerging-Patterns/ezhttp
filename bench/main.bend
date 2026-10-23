@@ -9,6 +9,7 @@ import ../src/client.bend as Client
 import ../src/json.bend as Json
 import 0xa81e161008ecc2f297c0a3065cb9b188/src/value.bend as V
 import ./fix.bend as Fix
+import ./parse.bend as Parse
 
 # unwrap a parsed U32, or zero when parse fails
 def u32.arg.go(m: Maybe<&2, U32>) -> U32:
@@ -136,8 +137,8 @@ def show.resp(r: Client.Response) -> String:
   match r:
     case Client.Err{why}:
       "ERR\n" ++ why
-    case Client.Response{status, headers, body, reason, bytes}:
-      U32.show(status) ++ "\n" ++ body
+    case Client.Response{status, headers, reason, bytes}:
+      U32.show(status) ++ "\n" ++ Http.body_text(bytes)
 
 # one timing line: MS SUM BY N
 def show.ms(t0: Nat, t1: Nat, +sum: U32, +bytes: U32, +n: U32) -> String:
@@ -191,16 +192,16 @@ def step.sum(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body, reason, bytes}:
-      (sum + status + U32.from_nat(String.length(body)) : U32)
+    case Client.Response{status, headers, reason, bytes}:
+      (sum + status + U32.from_nat(String.length(Http.body_text(bytes))) : U32)
 
 # fold a JSON response: status plus printed length
 def step.json(+sum: U32, r: Client.Response) -> U32:
   match r:
     case Client.Err{why}:
       (sum + U32.from_nat(String.length(why)) + 1 : U32)
-    case Client.Response{status, headers, body, reason, bytes}:
-      (sum + status + json.touch(body) : U32)
+    case Client.Response{status, headers, reason, bytes}:
+      (sum + status + json.touch(Http.body_text(bytes)) : U32)
 
 # add the bytes we sent so the encode is used
 def step.sent(+sum: U32, r: Client.Response, sent: String) -> U32:
@@ -607,11 +608,17 @@ def run.json(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
     _u => cmd.json.ok(a1, a2),
     _u => run.get(cmd, a1, a2, a3))
 
+# parse-diff: the packed reader against the text parse (SPEC.md HTTP-TRUST-9)
+def run.parse(+cmd: String, a1: String, a2: String, a3: String) -> IO(Unit):
+  on.io(String.eq(cmd, "parse-diff"),
+    _u => IO.print(Parse.diff.report()),
+    _u => run.json(cmd, a1, a2, a3))
+
 # ping
 def run.ping(+cmd: String, a1: String, a2: String, a3: String) -> IO(Unit):
   on.io(String.eq(cmd, "ping"),
     _u => IO.print("pong"),
-    _u => run.json(cmd, a1, a2, a3))
+    _u => run.parse(cmd, a1, a2, a3))
 
 # run once the four words are a parameter
 def main.go.un(quad: String & String & String & String) -> IO(Unit):

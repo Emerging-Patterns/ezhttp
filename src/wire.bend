@@ -4,18 +4,20 @@
 # TLS is bend-kit-wire's (OpenSSL 3 loaded at run time, BEND_LIBSSL to point
 # at it).
 #
-# An exchange's answer is a status on its first line, then text: "0" and the
-# raw response, or a non-zero status and the reason (wirespec.bend
-# wire.fail). Every decision is wirespec.bend's: the deadline (wire.ms.of),
-# the octets sent (wire.payload), what a failed call is reported as
-# (wire.fail) and when the response is whole (wire.read.next), so a server
-# that keeps the connection open after a complete response is not waited on
-# (SPEC.md HTTP-CLI-1, 6, 10, 13; HTTP-TRUST-3, 5).
+# An exchange's answer is every octet of the response, packed (Received), or
+# a failure: a non-zero status on its first line, then the reason
+# (wirespec.bend wire.fail). Every decision is wirespec.bend's: the deadline
+# (wire.ms.of), the octets sent (wire.payload), what a failed call is reported
+# as (wire.fail) and when the response is whole (wire.read.count, else
+# wire.read.next on a copy of the receive as text), so a server that keeps the
+# connection open after a complete response is not waited on (SPEC.md
+# HTTP-CLI-1, 6, 10, 13; HTTP-TRUST-3, 5).
 import Base
 import bend-kit-wire@0.4.6.1/wire.bend as W
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import bend-kit-dns@0.6.0.2/dns.bend as Dns
 import ./wirespec.bend as Spec
+import ./http.bend as Http
 
 # the most octets one receive asks for
 def wire.max() -> U32:
@@ -72,71 +74,100 @@ def wire.shake(secure: Bool, s: Socket, host: String, ms: U32)
 
 # --- reading the answer ---
 
-# a judged read: read again, or close and answer
-def wire.loop.on(+secure: Bool, s: Socket, r: Spec.Read,
-  more: Socket -> Spec.Got -> IO(String)) -> IO(String):
-  match r:
-    case Spec.Again{acc}:
-      more(s)(acc)
-    case Spec.Heard{answer}:
-      IO.bind(Unit, String, wire.close(secure, s),
-        _u => IO.pure(String, answer))
+# an exchange's answer: the failure it was reported with (a status other than
+# 0 on its first line, then the reason, wirespec.bend wire.fail), or every
+# octet of the response, packed
+type Answer is Type:  # noqa: L001 holds packed Bytes, which no law reaches (HTTP-TRUST-5)
+  Failed{answer: String}
+  Received{octets: Bytes.Bytes}
 
-# a receive's octets, or the server's close (no octets)
-def wire.loop.got(+secure: Bool, s: Socket, acc: Spec.Got, len: U32,
-  buf: Array<U32>, more: Socket -> Spec.Got -> IO(String)) -> IO(String):
-  wire.loop.on(secure, s,
-    Spec.wire.read.next(acc, "0\n" ++ Bytes.to_string(Bytes.Bytes{len, buf})),
-    more)
+# a failed call's answer, the socket closed first
+def wire.failed(+secure: Bool, s: Socket, answer: String) -> IO(Answer):
+  IO.bind(Unit, Answer, wire.close(secure, s),
+    _u => IO.pure(Answer, Failed{answer}))
+
+# a judged read: read again, or close and answer what was received
+def wire.loop.on(+secure: Bool, s: Socket, r: Spec.Read, acc: Bytes.Bytes,
+  more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer)) -> IO(Answer):
+  match r:
+    case Spec.Again{h}:
+      more(s)(h)(acc)
+    case Spec.Heard{}:
+      IO.bind(Unit, Answer, wire.close(secure, s),
+        _u => IO.pure(Answer, Received{acc}))
+
+# a receive judged by a copy of it as text, dropped after the judging; the
+# octets themselves are appended packed
+def wire.loop.copied(+secure: Bool, s: Socket, h: Http.Hear,
+  r: Bytes.Bytes & Bytes.Bytes, acc: Bytes.Bytes,
+  more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer)) -> IO(Answer):
+  (kept, copy) = r
+  wire.loop.on(secure, s, Spec.wire.read.next(h, Bytes.to_string(copy)),
+    Bytes.append(acc, kept), more)
+
+# a read judged by its text, when its count alone does not decide it
+def wire.loop.text(+secure: Bool, s: Socket, h: Http.Hear, piece: Bytes.Bytes,
+  acc: Bytes.Bytes, more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer))
+  -> IO(Answer):
+  wire.loop.copied(secure, s, h, Bytes.slice(piece, 0, 4294967295), acc, more)
+
+# a read judged by its count when that decides it (SPEC.md HTTP-CLI-6)
+def wire.loop.judge(+secure: Bool, s: Socket, h: Http.Hear, piece: Bytes.Bytes,
+  acc: Bytes.Bytes, counted: Maybe<&2, Spec.Read>,
+  more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer)) -> IO(Answer):
+  match counted:
+    case Some{r}:
+      wire.loop.on(secure, s, r, Bytes.append(acc, piece), more)
+    case None{}:
+      wire.loop.text(secure, s, h, piece, acc, more)
 
 # a receive's outcome: a failure is the answer
 def wire.loop.un(+secure: Bool, +host: String, +port: U32, +ms: U32,
-  acc: Spec.Got,
+  +h: Http.Hear, acc: Bytes.Bytes,
   r: Socket & Result<&1, &1, U32 & String, U32 & Array<U32>>,
-  more: Socket -> Spec.Got -> IO(String)) -> IO(String):
+  more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer)) -> IO(Answer):
   (s, res) = r
   match res:
     case Fail{(n, why)}:
-      IO.bind(Unit, String, wire.close(secure, s),
-        _u => IO.pure(String,
-          Spec.wire.fail(Spec.Receive{}, host, port, ms, n, why)))
-    case Done{(len, buf)}:
-      wire.loop.got(secure, s, acc, len, buf, more)
+      wire.failed(secure, s,
+        Spec.wire.fail(Spec.Receive{}, host, port, ms, n, why))
+    case Done{(+len, buf)}:
+      wire.loop.judge(secure, s, h, Bytes.Bytes{len, buf}, acc,
+        Spec.wire.read.count(h, U32.to_nat(len)), more)
 
-# receive until wirespec.bend says the answer is whole
+# receive until wirespec.bend says the answer is whole, the octets appended
+# to what came before
 def wire.loop(fuel: Nat, +secure: Bool, s: Socket, +host: String, +port: U32,
-  +ms: U32, acc: Spec.Got) -> IO(String):
+  +ms: U32, h: Http.Hear, acc: Bytes.Bytes) -> IO(Answer):
   match fuel:
     case 0n:
-      IO.bind(Unit, String, wire.close(secure, s),
-        _u => IO.pure(String, Spec.wire.spent()))
+      wire.failed(secure, s, Spec.wire.spent())
     case 1n+p:
-      IO.bind(Socket & Result<&1, &1, U32 & String, U32 & Array<U32>>, String,
+      IO.bind(Socket & Result<&1, &1, U32 & String, U32 & Array<U32>>, Answer,
         wire.recv(secure, s, ms),
-        r => wire.loop.un(secure, host, port, ms, acc, r,
-          s2 => a2 => wire.loop(p, secure, s2, host, port, ms, a2)))
+        r => wire.loop.un(secure, host, port, ms, h, acc, r,
+          s2 => h2 => a2 => wire.loop(p, secure, s2, host, port, ms, h2, a2)))
 
 # --- one exchange ---
 
 # after the send: read the answer, or the send's failure
 def wire.after.send(+secure: Bool, +host: String, +port: U32, +ms: U32,
   +method: String, r: Socket & Result<&1, &1, U32 & String, Unit>)
-  -> IO(String):
+  -> IO(Answer):
   (s, res) = r
   match res:
     case Fail{(n, why)}:
-      IO.bind(Unit, String, wire.close(secure, s),
-        _u => IO.pure(String,
-          Spec.wire.fail(Spec.Send{}, host, port, ms, n, why)))
+      wire.failed(secure, s,
+        Spec.wire.fail(Spec.Send{}, host, port, ms, n, why))
     case Done{_u}:
-      wire.loop(wire.reads(), secure, s, host, port, ms,
-        Spec.wire.got(method, []))
+      wire.loop(wire.reads(), secure, s, host, port, ms, Spec.wire.got(method),
+        Bytes.new(0))
 
 # send the octets an exchange carries, then read its answer
 def wire.put(+secure: Bool, s: Socket, +host: String, +port: U32, +ms: U32,
-  +method: String, payload: Bytes.Bytes) -> IO(String):
+  +method: String, payload: Bytes.Bytes) -> IO(Answer):
   Bytes.Bytes{+len, buf} = payload
-  IO.bind(Socket & Result<&1, &1, U32 & String, Unit>, String,
+  IO.bind(Socket & Result<&1, &1, U32 & String, Unit>, Answer,
     wire.send(secure, s, len, buf, ms),
     r => wire.after.send(secure, host, port, ms, method, r))
 
@@ -144,25 +175,26 @@ def wire.put(+secure: Bool, s: Socket, +host: String, +port: U32, +ms: U32,
 # plainly, as no TLS session was made)
 def wire.after.shake(+secure: Bool, +host: String, +port: U32, +ms: U32,
   +method: String, payload: Bytes.Bytes,
-  r: Socket & Result<&1, &1, U32 & String, Unit>) -> IO(String):
+  r: Socket & Result<&1, &1, U32 & String, Unit>) -> IO(Answer):
   (s, res) = r
   match res:
     case Fail{(n, why)}:
-      IO.bind(Unit, String, Socket.close(s),
-        _u => IO.pure(String,
-          Spec.wire.fail(Spec.Handshake{}, host, port, ms, n, why)))
+      IO.bind(Unit, Answer, Socket.close(s),
+        _u => IO.pure(Answer,
+          Failed{Spec.wire.fail(Spec.Handshake{}, host, port, ms, n, why)}))
     case Done{_u}:
       wire.put(secure, s, host, port, ms, method, payload)
 
 # after the connect: the handshake, or the connect's failure
 def wire.after.connect(+secure: Bool, +host: String, +port: U32, +ms: U32,
   +method: String, payload: Bytes.Bytes,
-  r: Result<&1, &1, U32 & String, Socket>) -> IO(String):
+  r: Result<&1, &1, U32 & String, Socket>) -> IO(Answer):
   match r:
     case Fail{(n, why)}:
-      IO.pure(String, Spec.wire.fail(Spec.Connect{}, host, port, ms, n, why))
+      IO.pure(Answer,
+        Failed{Spec.wire.fail(Spec.Connect{}, host, port, ms, n, why)})
     case Done{s}:
-      IO.bind(Socket & Result<&1, &1, U32 & String, Unit>, String,
+      IO.bind(Socket & Result<&1, &1, U32 & String, Unit>, Answer,
         wire.shake(secure, s, host, ms),
         r2 => wire.after.shake(secure, host, port, ms, method, payload, r2))
 
@@ -193,14 +225,16 @@ def wire.dial(rest: List<&2, String>, +first: String, +port: U32, +ms: U32)
 # ENOENT, as bend-kit-dns reports a name with none)
 def wire.after.resolve(+secure: Bool, +host: String, +port: U32, +ms: U32,
   +method: String, payload: Bytes.Bytes,
-  r: Result<&1, &1, U32 & String, List<&2, String>>) -> IO(String):
+  r: Result<&1, &1, U32 & String, List<&2, String>>) -> IO(Answer):
   match r:
     case Fail{(n, why)}:
-      IO.pure(String, Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why))
+      IO.pure(Answer,
+        Failed{Spec.wire.fail(Spec.Resolve{}, host, port, ms, n, why)})
     case Done{[]}:
-      IO.pure(String, Spec.wire.fail(Spec.Resolve{}, host, port, ms, 2, ""))
+      IO.pure(Answer,
+        Failed{Spec.wire.fail(Spec.Resolve{}, host, port, ms, 2, "")})
     case Done{ip <> t}:
-      IO.bind(Result<&1, &1, U32 & String, Socket>, String,
+      IO.bind(Result<&1, &1, U32 & String, Socket>, Answer,
         wire.dial(t, ip, port, ms),
         c => wire.after.connect(secure, host, port, ms, method, payload, c))
 
@@ -228,8 +262,8 @@ def wire.resolve(+host: String, literal: List<&2, String>)
 
 # the exchange once its octets are packed
 def wire.run.with(+secure: Bool, +ms: U32, +host: String, +port: U32,
-  +method: String, payload: Bytes.Bytes) -> IO(String):
-  IO.bind(Result<&1, &1, U32 & String, List<&2, String>>, String,
+  +method: String, payload: Bytes.Bytes) -> IO(Answer):
+  IO.bind(Result<&1, &1, U32 & String, List<&2, String>>, Answer,
     wire.resolve(host, Dns.resolve.literal.all(host)),
     r => wire.after.resolve(secure, host, port, ms, method, payload, r))
 
@@ -237,17 +271,17 @@ def wire.run.with(+secure: Bool, +ms: U32, +host: String, +port: U32,
 # its tail of octets after it, every call bounded by the deadline; its whole
 # answer
 def wire.run(+secure: Bool, +ms: U32, +host: String, +port: U32,
-  +method: String, req: String, tail: Bytes.Bytes) -> IO(String):
+  +method: String, req: String, tail: Bytes.Bytes) -> IO(Answer):
   wire.run.with(secure, ms, host, port, method,
     Bytes.append(Bytes.from_string(Spec.wire.payload(req)), tail))
 
 # a request sent to a host, its tail of octets after it, and its whole answer
 # read back, with the default deadline
 def wire.talk(secure: Bool, host: String, port: U32, method: String,
-  req: String, tail: Bytes.Bytes) -> IO(String):
+  req: String, tail: Bytes.Bytes) -> IO(Answer):
   wire.run(secure, Spec.wire.ms.of(None{}), host, port, method, req, tail)
 
 # the same exchange, bounded by a timeout in milliseconds
 def wire.talk.timed(secure: Bool, ms: U32, host: String, port: U32,
-  method: String, req: String, tail: Bytes.Bytes) -> IO(String):
+  method: String, req: String, tail: Bytes.Bytes) -> IO(Answer):
   wire.run(secure, Spec.wire.ms.of(Some{ms}), host, port, method, req, tail)

@@ -321,8 +321,17 @@ def correct_serve_once(paths, bodies):
     add_case("serve_once", "GET /text", "PASS" if ok else "FAIL",
              f"status={status} exit={proc.poll()} bytes={len(body.encode('utf-8'))}")
 
+def correct_parse_diff():
+    r = ez(["parse-diff"], 60)
+    rows = [l for l in r["out"].splitlines() if l.strip()]
+    bad = [l for l in rows if not l.startswith("ok ")]
+    ok = r["rc"] == 0 and rows and not bad
+    add_case("packed parse", "vs text parse", "PASS" if ok else "FAIL",
+             f"cases={len(rows)} diff={len(bad)} {(bad[0] if bad else r['err'])[:160]}")
+
 def correct(paths, bodies):
     log("\n== Correctness (hard; ratios are not) ==")
+    correct_parse_diff()
     correct_json_helpers(paths, bodies)
     port = free_port()
     srv = start_server("rust", port, 0, paths)

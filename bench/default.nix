@@ -30,6 +30,7 @@ let
       mkdir -p bench
       cp ${./main.bend} bench/main.bend
       cp ${./fix.bend} bench/fix.bend
+      cp ${./parse.bend} bench/parse.bend
       cd bench
       export CC=${llvm.clang}/bin/clang
       export BEND_LIB=${bendLib}
