@@ -219,7 +219,9 @@ the list of defs that rely on foreign code as its only error. The laws target:
   safe methods GET / HEAD / OPTIONS (§9.2.1), idempotent methods adding PUT /
   DELETE (§9.2.2), method tokens case-sensitive (§9.3), HEAD response body
   omitted (§9.3.2), PUT / DELETE / OPTIONS request lines (§9.3.4, §9.3.5,
-  §9.3.7), reason-phrases for 200, 201, 204, 400, 404, 405, and 500 (§15).
+  §9.3.7), reason-phrases for 200, 201, 202, 204, 301, 302, 303, 304, 307,
+  308, 400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 429 (RFC 6585 §4),
+  500, 501, 502, 503 and 504 (§15).
   A 204 or 304 response is written with an empty body (§15.3.5, §15.4.5).
 - [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112) HTTP/1.1 Message Syntax
   and Routing: header section ended by a blank line (§2.1), origin-form

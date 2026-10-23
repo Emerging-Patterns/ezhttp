@@ -385,6 +385,7 @@ law request_frames_host_and_close:
 
 # LAW (RFC 9112 §4, §9.6): a response status-line is HTTP/1.1 plus the
 # reason-phrase, and the connection closes
+# HTTP-SRV-5
 law respond_writes_reason_and_close:
   for +status: U32
   for hs: List<&2, Http.Header>
@@ -1304,6 +1305,57 @@ law lost_send:
 law lost_sent:
   for done: Unit
   {Step.step.sent(Done{done}) == Step.Kept{done} : Step.Got<Unit>}
+
+# the reason-phrases SPEC.md HTTP-SRV-5 lists, as it words them
+def phrases() -> List<&2, Http.Phrase>:
+  [Http.P{200, "OK"}, Http.P{201, "Created"}, Http.P{202, "Accepted"},
+    Http.P{204, "No Content"}, Http.P{301, "Moved Permanently"},
+    Http.P{302, "Found"}, Http.P{303, "See Other"},
+    Http.P{304, "Not Modified"}, Http.P{307, "Temporary Redirect"},
+    Http.P{308, "Permanent Redirect"}, Http.P{400, "Bad Request"},
+    Http.P{401, "Unauthorized"}, Http.P{403, "Forbidden"},
+    Http.P{404, "Not Found"}, Http.P{405, "Method Not Allowed"},
+    Http.P{409, "Conflict"}, Http.P{410, "Gone"},
+    Http.P{413, "Content Too Large"}, Http.P{415, "Unsupported Media Type"},
+    Http.P{422, "Unprocessable Content"}, Http.P{429, "Too Many Requests"},
+    Http.P{500, "Internal Server Error"}, Http.P{501, "Not Implemented"},
+    Http.P{502, "Bad Gateway"}, Http.P{503, "Service Unavailable"},
+    Http.P{504, "Gateway Timeout"}]
+
+# LAW: every status's reason-phrase is the one HTTP-SRV-5 lists for it, and
+# empty for a status it does not list
+# HTTP-SRV-5
+law reason_phrases:
+  for +code: U32
+  {Http.reason(code) == Http.reason.in(phrases(), code) : String}
+
+# LAW: a list with no entries gives every status the empty phrase
+# HTTP-SRV-5
+law reason_in_nil:
+  for +code: U32
+  {Http.reason.in([], code) == "" : String}
+
+# LAW: a list gives a status its first entry's phrase when that entry is for
+# that status
+# HTTP-SRV-5
+law reason_in_hit:
+  for +code: U32
+  for c: U32
+  for text: String
+  for t: List<&2, Http.Phrase>
+  for e: {True{} == U32.is_eq(code, c) : Bool}
+  {Http.reason.in(Http.P{c, text} <> t, code) == text : String}
+
+# LAW: and the rest's phrase when it is for another status
+# HTTP-SRV-5
+law reason_in_miss:
+  for +code: U32
+  for c: U32
+  for text: String
+  for t: List<&2, Http.Phrase>
+  for e: {False{} == U32.is_eq(code, c) : Bool}
+  {Http.reason.in(Http.P{c, text} <> t, code) == Http.reason.in(t, code)
+    : String}
 
 # --- percent-encoding (SPEC.md HTTP-URL) ---
 

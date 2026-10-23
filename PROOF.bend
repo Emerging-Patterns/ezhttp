@@ -1581,3 +1581,21 @@ def frame.onto(s, rest):
 
 def Laws.html_frame(s):
   frame.onto(s, "")
+
+# --- reason-phrases (SPEC.md HTTP-SRV-5) ---
+
+def Laws.reason_phrases(_code):
+  {==}
+
+def Laws.reason_in_nil(_code):
+  {==}
+
+def Laws.reason_in_hit(code, _c, text, t, e):
+  %e : {Http.reason.pick(text, _, _u => Http.reason.in(t, code)) == text
+    : String}
+  {==}
+
+def Laws.reason_in_miss(code, _c, text, t, e):
+  %e : {Http.reason.pick(text, _, _u => Http.reason.in(t, code))
+    == Http.reason.in(t, code) : String}
+  {==}

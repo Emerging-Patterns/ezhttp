@@ -657,16 +657,43 @@ type Request is Data:
   Request{method: String, target: String, headers: List<&2, Header>,
     body: String}
 
-# reason-phrase for a few common status codes (RFC 9112 §4); others get ""
+# a status code and its reason-phrase
+type Phrase is Data:
+  P{code: U32, text: String}
+
+# the reason-phrases RFC 9110 §15 names (RFC 6585 §4 for 429)
+def reasons() -> List<&2, Phrase>:
+  [P{200, "OK"}, P{201, "Created"}, P{202, "Accepted"}, P{204, "No Content"},
+    P{301, "Moved Permanently"}, P{302, "Found"}, P{303, "See Other"},
+    P{304, "Not Modified"}, P{307, "Temporary Redirect"},
+    P{308, "Permanent Redirect"}, P{400, "Bad Request"},
+    P{401, "Unauthorized"}, P{403, "Forbidden"}, P{404, "Not Found"},
+    P{405, "Method Not Allowed"}, P{409, "Conflict"}, P{410, "Gone"},
+    P{413, "Content Too Large"}, P{415, "Unsupported Media Type"},
+    P{422, "Unprocessable Content"}, P{429, "Too Many Requests"},
+    P{500, "Internal Server Error"}, P{501, "Not Implemented"},
+    P{502, "Bad Gateway"}, P{503, "Service Unavailable"},
+    P{504, "Gateway Timeout"}]
+
+# this phrase when its code is the one asked for, else the rest's
+def reason.pick(text: String, hit: Bool, rest: Unit -> String) -> String:
+  match hit:
+    case True{}:
+      text
+    case False{}:
+      rest(Unit{})
+
+# the phrase a list gives a code, "" when it gives none
+def reason.in(ps: List<&2, Phrase>, +code: U32) -> String:
+  match ps:
+    case []:
+      ""
+    case P{c, text} <> t:
+      reason.pick(text, U32.is_eq(code, c), _u => reason.in(t, code))
+
+# the reason-phrase for a status code (RFC 9112 §4); "" for one not listed
 def reason(+code: U32) -> String:
-  Bool.pick(String, U32.is_eq(code, 200), "OK",
-    Bool.pick(String, U32.is_eq(code, 201), "Created",
-      Bool.pick(String, U32.is_eq(code, 204), "No Content",
-        Bool.pick(String, U32.is_eq(code, 400), "Bad Request",
-          Bool.pick(String, U32.is_eq(code, 404), "Not Found",
-            Bool.pick(String, U32.is_eq(code, 405), "Method Not Allowed",
-              Bool.pick(String, U32.is_eq(code, 500), "Internal Server Error",
-                "")))))))
+  reason.in(reasons(), code)
 
 # status-line + headers + body (RFC 9112 §4, §5). Connection: close ends the
 # exchange after one response.
