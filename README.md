@@ -64,12 +64,19 @@ def create() -> IO(Client.Response):
 `http.get_opts(url, headers, timeout_ms, follow)` is a GET with a timeout in
 milliseconds that bounds the connect, the TLS handshake and every send and
 receive on its own (as httpx's does; name resolution is not bounded). Every
-other client function keeps its 60 s. A timeout comes back as `Err` with a
+other client function keeps its 60 s. Every client function stops reading as
+soon as the response is complete by its framing (RFC 9112 §6.3: no body for
+HEAD, 204 and 304, else chunked, else `Content-Length`), so a server that
+keeps the connection open after a whole response is not waited on; only a
+response with none of those framings is read until the server closes. A timeout comes back as `Err` with a
 reason starting `timed out: `, and `http.timed_out(r)` tells it apart from
 other failures. With `follow` set it follows 301, 302, 303, 307 and 308 for up
 to 10 hops. Each hop is a GET with the same headers and timeout. A
-`Location` may be an absolute `http(s)://` URL or an absolute path, which keeps
-the current scheme, host and port; any other `Location` ends the chain. The
+`Location` is resolved against the current URL as RFC 3986 §5.2 resolves a
+reference: an absolute `http(s)://` URL is taken as it is, `//host/...` keeps
+the scheme, an absolute path keeps the scheme, host and port, and a query or
+a relative path such as `web/` is merged with the current path, dot segments
+removed. An empty `Location`, a fragment, or another scheme ends the chain. The
 caller's headers go to every hop, credentials included, so only follow
 redirects from hosts you trust with them. SPEC.md lists these guarantees
 (HTTP-CLI, HTTP-REDIR). They are new after ezhttp 0.10.0.
@@ -213,7 +220,8 @@ the list of defs that rely on foreign code as its only error. The laws target:
   stays in the runtime.
 - [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) HTTP Semantics:
   case-insensitive field names (§5.1), optional whitespace trimmed and
-  obs-fold rejected (§5.5), `Host` on every HTTP/1.1 client request (§7.2),
+  obs-fold rejected (§5.5), `Host` on every HTTP/1.1 client request, with
+  the port when it is not the scheme's default (§7.2),
   `Content-Length` as an exact octet count, omitted when the body is empty
   (§8.6), the first of a repeated field is the one lookup returns (§5.2),
   safe methods GET / HEAD / OPTIONS (§9.2.1), idempotent methods adding PUT /

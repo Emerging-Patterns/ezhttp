@@ -1,6 +1,8 @@
-// ezwire.talk: the JS lane's twin of wire.c, and the same exchange, with the
-// same timeout: read from the scheme line, bounding the connect and every
-// send and receive, and answered as status 28 when it runs out.
+// ezwire.open, ezwire.read, ezwire.close: the JS lane's twin of wire.c, and
+// the same exchange, with the same timeout: read from the scheme line,
+// bounding the connect and every send and receive, and answered as status 28
+// when it runs out. As in wire.c, the response is read a piece at a time and
+// the Bend side decides when it is whole.
 //
 // Bend's JS backend drives raw file descriptors through bun:ffi and runs its
 // own poll loop over them, so node's `net` and `tls` modules are not an option
@@ -88,6 +90,7 @@ function ezwire_tls() {
           SSL_write: { args: ["ptr", "ptr", "i32"], returns: "i32" },
           SSL_get_error: { args: ["ptr", "i32"], returns: "i32" },
           SSL_shutdown: { args: ["ptr"], returns: "i32" },
+          SSL_pending: { args: ["ptr"], returns: "i32" },
         });
         break;
       } catch (e) {
@@ -230,48 +233,43 @@ function ezwire_say(tls, fd, ssl, text, late) {
   return true;
 }
 
-// everything the server sends before it closes. A TLS read that stops for any
-// reason other than the peer being done is a cut connection, not a short body:
+// one receive into b: the count, 0 once the peer is done, or -1 with
+// late.late set when it ran out of time. A TLS read that stops for any reason
+// other than the peer being done is a cut connection, not a short body:
 // SSL_ERROR_ZERO_RETURN is 6 and SSL_ERROR_SYSCALL with nothing read is 5, and
 // those two are the only clean ends.
-function ezwire_hear(tls, fd, ssl, late) {
+function ezwire_recv(tls, fd, ssl, b, flags, late) {
   const ffi = require("bun:ffi");
-  const b = new Uint8Array(16384);
-  const parts = [];
-  let bad = false;
-  for (;;) {
-    const n = ssl === null
-      ? Number(io_sys().recv(fd, ffi.ptr(b), b.length, 0))
-      : tls.SSL_read(ssl, ffi.ptr(b), b.length);
-    if (n <= 0) {
-      const code = Number(io_sys().errno());
-      if (ssl === null) {
-        bad = n < 0;
-        late.late = bad && ezwire_late_errno(code);
-      } else {
-        const why = tls.SSL_get_error(ssl, n);
-        bad = !(why === 6 || (why === 5 && n === 0));
-        late.late = bad && (why === 2 || why === 3 || ezwire_late_errno(code));
-      }
-      break;
-    }
-    parts.push(b.slice(0, n));
+  const n = ssl === null
+    ? Number(io_sys().recv(fd, ffi.ptr(b), b.length, flags))
+    : tls.SSL_read(ssl, ffi.ptr(b), b.length);
+  if (n > 0) {
+    return n;
   }
-  let len = 0;
-  for (const p of parts) {
-    len += p.length;
+  const code = Number(io_sys().errno());
+  if (ssl === null) {
+    late.late = n < 0 && ezwire_late_errno(code);
+    return n < 0 ? -1 : 0;
   }
-  const all = new Uint8Array(len);
-  let at = 0;
-  for (const p of parts) {
-    all.set(p, at);
-    at += p.length;
+  const why = tls.SSL_get_error(ssl, n);
+  if (why === 6 || (why === 5 && n === 0)) {
+    return 0;
   }
-  return { bad: bad,
-    text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(all) };
+  late.late = why === 2 || why === 3 || ezwire_late_errno(code);
+  return -1;
 }
 
-function ezwire_talk(spec) {
+// the open exchanges, by connection number
+function ezwire_conns() {
+  if (globalThis.EZ_WIRE_CONNS === undefined) {
+    globalThis.EZ_WIRE_CONNS = new Map();
+    globalThis.EZ_WIRE_NEXT = 0;
+  }
+  return globalThis.EZ_WIRE_CONNS;
+}
+
+// connect, shake hands, send the request, and answer a connection number
+function ezwire_open(spec) {
   const cut = [];
   let at = 0;
   while (cut.length < 3) {
@@ -304,23 +302,86 @@ function ezwire_talk(spec) {
       ? "28\nthe TLS handshake with " + cut[1] + " took over " + ms + " ms"
       : "35\nthe TLS handshake with " + cut[1] + " failed";
   }
-  let out;
   if (!ezwire_say(tls, fd, ssl, spec.slice(at), late)) {
-    out = late.late
+    if (ssl !== null) {
+      tls.SSL_shutdown(ssl);
+      tls.SSL_free(ssl);
+    }
+    io_sys().close(fd);
+    return late.late
       ? "28\nsending the request to " + cut[1] + " took over " + ms + " ms"
       : "55\nthe request to " + cut[1] + " could not be sent";
-  } else {
-    const got = ezwire_hear(tls, fd, ssl, late);
-    out = !got.bad ? "0\n" + got.text
-      : late.late ? "28\n" + cut[1] + " sent nothing for " + ms + " ms"
-      : "56\nthe answer from " + cut[1] + " was cut short";
   }
-  if (ssl !== null) {
-    tls.SSL_shutdown(ssl);
-    tls.SSL_free(ssl);
-  }
-  io_sys().close(fd);
-  return out;
+  const conns = ezwire_conns();
+  const id = globalThis.EZ_WIRE_NEXT;
+  globalThis.EZ_WIRE_NEXT = (id + 1) % 4294967296;
+  conns.set(id, { fd: fd, ssl: ssl, tls: tls, host: cut[1], ms: ms,
+    dec: new TextDecoder("utf-8", { ignoreBOM: true }), done: false });
+  return "0\n" + id;
 }
 
-io_eff(CID(ezwire.talk), ezwire_talk);
+// the next octets: one receive that waits (bounded by the timeout), then
+// whatever has already arrived behind it, without waiting, up to 1 MiB. The
+// decoder streams, so a UTF-8 sequence cut at the end waits for the next
+// read; once the server has closed, what it held goes out and then nothing.
+function ezwire_read(id) {
+  const c = ezwire_conns().get(id);
+  if (c === undefined) {
+    return "22\nno such exchange";
+  }
+  const mac = process.platform === "darwin";
+  const late = { late: false };
+  const b = new Uint8Array(16384);
+  let text = "";
+  while (text === "" && !c.done) {
+    const n = ezwire_recv(c.tls, c.fd, c.ssl, b, 0, late);
+    if (n < 0) {
+      return late.late
+        ? "28\n" + c.host + " sent nothing for " + c.ms + " ms"
+        : "56\nthe answer from " + c.host + " was cut short";
+    }
+    if (n === 0) {
+      c.done = true;
+      text = c.dec.decode();
+      break;
+    }
+    text += c.dec.decode(b.subarray(0, n), { stream: true });
+    let total = n;
+    while (total + 16384 <= 1048576) {
+      if (c.ssl !== null && c.tls.SSL_pending(c.ssl) <= 0) {
+        break;
+      }
+      const more = ezwire_recv(c.tls, c.fd, c.ssl, b,
+        c.ssl === null ? (mac ? 0x80 : 0x40) : 0, { late: false });
+      if (more === 0) {
+        c.done = true;
+        text += c.dec.decode();
+      }
+      if (more <= 0) {
+        break;
+      }
+      total += more;
+      text += c.dec.decode(b.subarray(0, more), { stream: true });
+    }
+  }
+  return "0\n" + text;
+}
+
+// close an exchange's session and socket
+function ezwire_close(id) {
+  const conns = ezwire_conns();
+  const c = conns.get(id);
+  if (c !== undefined) {
+    if (c.ssl !== null) {
+      c.tls.SSL_shutdown(c.ssl);
+      c.tls.SSL_free(c.ssl);
+    }
+    io_sys().close(c.fd);
+    conns.delete(id);
+  }
+  return { $: CID(Unit) };
+}
+
+io_eff(CID(ezwire.open), ezwire_open);
+io_eff(CID(ezwire.read), ezwire_read);
+io_eff(CID(ezwire.close), ezwire_close);

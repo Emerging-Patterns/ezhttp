@@ -438,6 +438,33 @@ def request(method: String, host: String, path: String,
     ++ "\r\n"
     ++ body
 
+# the port a scheme implies: 443 for a secure one, 80 otherwise (RFC 9110
+# §4.2.1, §4.2.2)
+def port.dflt(secure: Bool) -> U32:
+  match secure:
+    case True{}:
+      443
+    case False{}:
+      80
+
+# the Host field value once it is known whether the port is the default
+def authority.of(host: String, +port: U32, dflt: Bool) -> String:
+  match dflt:
+    case True{}:
+      host
+    case False{}:
+      host ++ ":" ++ U32.show(port)
+
+# the Host field value: the host, and the port after a colon unless it is the
+# scheme's default (RFC 9110 §7.2)
+def authority(secure: Bool, host: String, +port: U32) -> String:
+  authority.of(host, port, U32.is_eq(port, port.dflt(secure)))
+
+# the request a client sends to host and port, over TLS when secure
+def request.at(method: String, secure: Bool, host: String, port: U32,
+  path: String, headers: List<&2, Header>, body: String) -> String:
+  request(method, authority(secure, host, port), path, headers, body)
+
 # GET with optional headers
 def get_req(host: String, path: String, headers: List<&2, Header>) -> String:
   request("GET", host, path, headers, "")
@@ -624,9 +651,13 @@ def parse.status(m: Maybe<&2, U32>, +ls: List<&2, String>, body: String)
       parse.frame(n, hs, head.go(ls, "transfer-encoding"),
         head.values(ls, "content-length"), body)
 
+# the status code a head's first line names, if it names one (RFC 9112 §4)
+def status.of(ls: List<&2, String>) -> Maybe<&2, U32>:
+  U32.read(second(String.split(first(ls), ' ')))
+
 # the head's lines, with the status line read off the first
 def parse.head(+ls: List<&2, String>, body: String) -> Reply:
-  parse.status(U32.read(second(String.split(first(ls), ' '))), ls, body)
+  parse.status(status.of(ls), ls, body)
 
 # a response divided into its head and everything after the blank line
 # (RFC 9112 §2.1: header section ends at empty line)
@@ -877,3 +908,130 @@ def ask.show(r: Request) -> String:
       "bad " ++ why
     case Request{method, target, headers, body}:
       method ++ " " ++ target ++ " " ++ body
+
+# --- when a response has all arrived (RFC 9112 §6.3) ---
+
+# how a response's body is framed
+type Frame is Data:
+  Bare{}
+  Sized{n: Nat}
+  Chunked{}
+  Closed{}
+
+# 204 and 304 carry no body; a status line that did not parse is framed by
+# its headers
+def status.bare(m: Maybe<&2, U32>) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{n}:
+      status.nocontent(n)
+
+# a Content-Length that reads as a number, or the close when none does
+def frame.sized(m: Maybe<&2, Nat>) -> Frame:
+  match m:
+    case None{}:
+      Closed{}
+    case Some{n}:
+      Sized{n}
+
+# Content-Length values that agree frame the body; any others leave the close
+def frame.agree(+lens: List<&2, String>, ok: Bool) -> Frame:
+  match ok:
+    case False{}:
+      Closed{}
+    case True{}:
+      frame.sized(digits.read(first(lens)))
+
+# chunked framing wins over Content-Length (RFC 9112 §6.3 item 4)
+def frame.te(+lens: List<&2, String>, chunked: Bool) -> Frame:
+  match chunked:
+    case True{}:
+      Chunked{}
+    case False{}:
+      frame.agree(lens, clen.agree(lens))
+
+# the framing of a response: none when bare (a reply to HEAD, a 204 or a 304),
+# else Transfer-Encoding chunked, else Content-Length, else the close
+def frame(bare: Bool, te: String, +lens: List<&2, String>) -> Frame:
+  match bare:
+    case True{}:
+      Bare{}
+    case False{}:
+      frame.te(lens, String.contains(String.to_lower(te), "chunked"))
+
+# a zero chunk's trailer section has ended: at once, or after its fields
+def chunks.trailer(+after: String) -> Bool:
+  Bool.or(String.starts_with(after, "\r\n"), String.contains(after, "\r\n\r\n"))
+
+# a chunk that has all arrived: on to the next chunk header, else not yet
+def chunks.ended.data(+after: String, +n: Nat, ready: Bool,
+  rest: Cut -> Bool) -> Bool:
+  match ready:
+    case False{}:
+      False{}
+    case True{}:
+      rest(divide(utf8.drop(after, Nat.add(n, 2n)), "\r\n"))
+
+# a chunk of size n: the last one when n is 0
+def chunks.ended.size(+after: String, +n: Nat, zero: Bool,
+  rest: Cut -> Bool) -> Bool:
+  match zero:
+    case True{}:
+      chunks.trailer(after)
+    case False{}:
+      chunks.ended.data(after, n, chunks.ready(after, n), rest)
+
+# a chunk header: a size that is not hex ends the read (the parse rejects it)
+def chunks.ended.hex(+before: String, +after: String, ok: Bool,
+  rest: Cut -> Bool) -> Bool:
+  match ok:
+    case False{}:
+      True{}
+    case True{}:
+      +n = hexlen(before)
+      chunks.ended.size(after, n, Nat.is_eq(n, 0n), rest)
+
+# a chunk header that has arrived, or not yet
+def chunks.ended.at(c: Cut, rest: Cut -> Bool) -> Bool:
+  match c:
+    case NoCut{}:
+      False{}
+    case Cut{+before, +after}:
+      chunks.ended.hex(before, after, hex.well(chunks.token(before)), rest)
+
+# whether a chunked body has reached the end of its last chunk
+def chunks.ended(fuel: Nat, c: Cut) -> Bool:
+  match fuel:
+    case 0n:
+      False{}
+    case 1n+f:
+      chunks.ended.at(c, cut => chunks.ended(f, cut))
+
+# whether a body has all arrived under its framing
+def whole.of(f: Frame, +body: String) -> Bool:
+  match f:
+    case Bare{}:
+      True{}
+    case Sized{n}:
+      Bool.not(Nat.is_lt(utf8.len(body), n))
+    case Chunked{}:
+      chunks.ended(String.length(body), divide(body, "\r\n"))
+    case Closed{}:
+      False{}
+
+# a response whose head has ended, or not yet
+def whole.cut(asked: Bool, c: Cut) -> Bool:
+  match c:
+    case NoCut{}:
+      False{}
+    case Cut{before, after}:
+      +ls = String.lines(before)
+      whole.of(frame(Bool.or(asked, status.bare(status.of(ls))),
+        head.go(ls, "transfer-encoding"), head.values(ls, "content-length")),
+        after)
+
+# whether the text received so far is a whole response to a request with
+# this method (RFC 9112 §6.3); a response framed by the close never is
+def whole(+method: String, raw: String) -> Bool:
+  whole.cut(String.eq(method, "HEAD"), divide(raw, "\r\n\r\n"))
