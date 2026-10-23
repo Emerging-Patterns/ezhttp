@@ -96,11 +96,11 @@ def eq.starts_append(a: String, b: String)
       eq.starts_nil(b)
     case SCon{+h, +t}:
       Equal.trans(Bool,
-        String.starts_with.if(String.append(t, b), t, Char.is_eq(h, h)),
-        String.starts_with.if(String.append(t, b), t, True{}),
+        String.starts_with.go.if(t, String.append(t, b), Char.is_eq(h, h)),
+        String.starts_with.go.if(t, String.append(t, b), True{}),
         True{},
         Equal.cong(Bool, Bool,
-          x => String.starts_with.if(String.append(t, b), t, x),
+          x => String.starts_with.go.if(t, String.append(t, b), x),
           Char.is_eq(h, h), True{}, eq.char_eq_self(h)),
         eq.starts_append(t, b))
 

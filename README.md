@@ -4,8 +4,9 @@ HTTP client and server for [Bend 2](https://github.com/bendlang/bend).
 
 ## Install
 
-It needs bend 2.0.32 or later (the server binds `TCP.listen(host, port)`).
-ezhttp is built and checked on bend 2.0.36.
+It needs bend 2.0.38 or later (a failed `TCP.send` hands back the unsent
+bytes as a list).
+ezhttp is built and checked on bend 2.0.38.
 
 With [Bend](https://github.com/bendlang/bend) alone there is no install
 step: import ezhttp by its hub name and `bend` fetches it from
