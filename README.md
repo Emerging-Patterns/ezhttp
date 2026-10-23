@@ -170,18 +170,47 @@ not know the method and frames every body by its fields.
 
 ### Server
 
-`http.serve(handle, host, port, limit)` listens with Base TCP on `host`
-(`"127.0.0.1"` for loopback only, `"0.0.0.0"` for every interface), accepts connections, parses one request
-per connection, calls a pure handler, and writes one response
-(`Connection: close`), one connection at a time. `http.serve_once(handle, host, port)` stops
-after a single client. No TLS in v0 for the server. A request that does not parse is answered
-`400` with its reason and never reaches the handler. A response to HEAD, and a 204 or 304, is
-written with an empty body.
+`http.serve(handle, host, port, limit)` listens on `host` (`"127.0.0.1"` for
+loopback only, `"0.0.0.0"` for every interface), accepts connections, and
+serves each one on its own fork: it parses one request, calls a pure handler,
+and writes one response (`Connection: close`). Connections overlap, so a slow
+handler does not hold up the next client (20 concurrent requests to a 0.5 s
+handler take 0.5 s). It stops accepting after `limit` connections and returns
+once they are all closed. `http.serve_once(handle, host, port)` stops after a
+single client. No TLS for the server. A request that does not parse is
+answered `400` with its reason and never reaches the handler. A response to
+HEAD, and a 204 or 304, is written with an empty body. The request reaches
+the handler as text (decoded from the octets that arrived as UTF-8).
 
 A connection that fails (a failed accept, recv or send, such as a client resetting
-mid-request) is closed and logged to stderr as one line, `ezhttp: <phase>: <why>`, and the
-server takes the next connection; it counts toward `limit`. SPEC.md lists these guarantees
-(HTTP-SRV) and what is trusted rather than proved.
+mid-request) is closed and logged to stderr as one line, `ezhttp: <phase>: <why>`; it
+counts toward `limit`. SPEC.md lists these guarantees (HTTP-SRV) and what is trusted
+rather than proved.
+
+`http.serve_with(~C, handle, ctx, host, port, limit, max)`,
+`http.serve_io_with` and `http.serve_forever_with` take a context value
+`ctx: C` that every call of the handler gets, and a concurrency limit `max`
+(0: none). Their handler takes `(ctx, req)`, where `req` is a `Server.Req`:
+the request as text and `bytes`, its body's octets exactly as they arrived.
+It answers a `Server.Answer`: `text_reply(status, headers, body)` (UTF-8),
+`octets_reply(status, headers, bytes)` (packed octets written unchanged), or
+`stream_reply(status, headers, chan)`, written chunked as a producer sends
+`Bytes` on the channel, until it closes the channel, so a large reply is
+written in flat memory. The plain serves are these with a text handler.
+
+```
+import emerging-ezhttp@0.19.0.0/main.bend as Http
+import emerging-ezhttp@0.19.0.0/src/server.bend as Server
+import emerging-ezhttp@0.19.0.0/src/http.bend as Msg
+
+# echo the body back byte for byte, with the context in a header
+def echo(tag: String, req: Server.Req) -> Server.Answer:
+  Server.Req{method, target, headers, body, bytes} = req
+  Http.octets_reply(200, [Msg.H{"X-Tag", tag}], bytes)
+
+def main() -> IO(Unit):
+  Http.http.serve_with(~String, ~echo, "v1", "127.0.0.1", 8080, 1000, 64)
+```
 
 A handler that needs IO (a file, a subprocess, an upstream call) goes to
 `http.serve_io(handle, host, port, limit)`, with `handle: Msg.Request -> IO(Msg.Reply)`.

@@ -903,20 +903,83 @@ def reason.in(ps: List<&2, Phrase>, +code: U32) -> String:
 def reason(+code: U32) -> String:
   reason.in(reasons(), code)
 
-# status-line + headers + body (RFC 9112 §4, §5). Connection: close ends the
-# exchange after one response.
-def respond(+status: U32, headers: List<&2, Header>, +body: String) -> String:
-  +n = utf8.len(body)
+# the head of a reply whose body is n octets, onto what follows it
+# (SPEC.md HTTP-SRV-6)
+def respond.head.onto(+status: U32, headers: List<&2, Header>, +n: Nat,
+  rest: String) -> String:
   "HTTP/1.1 " ++ U32.show(status) ++ " " ++ reason(status) ++ "\r\n"
     ++ "Connection: close\r\n"
     ++ headers.lines(headers)
     ++ clen.line(n, Nat.is_eq(n, 0n))
     ++ "\r\n"
-    ++ body
+    ++ rest
+
+# the head of a reply whose body is n octets
+def respond.head(+status: U32, headers: List<&2, Header>, +n: Nat) -> String:
+  respond.head.onto(status, headers, n, "")
+
+# status-line + headers + body (RFC 9112 §4, §5). Connection: close ends the
+# exchange after one response.
+def respond(+status: U32, headers: List<&2, Header>, +body: String) -> String:
+  respond.head.onto(status, headers, utf8.len(body), body)
 
 # 204 and 304 are terminated by the header section (RFC 9110 §15.3.5, §15.4.5)
 def status.nocontent(+code: U32) -> Bool:
   Bool.or(U32.is_eq(code, 204), U32.is_eq(code, 304))
+
+# the Transfer-Encoding line of a streamed reply, when it has a body
+def te.line(te: Bool) -> String:
+  match te:
+    case True{}:
+      "Transfer-Encoding: chunked\r\n"
+    case False{}:
+      ""
+
+# the head of a streamed reply: chunked unless the status has no body
+# (RFC 9112 §6.1, §7.1; SPEC.md HTTP-SRV-7)
+def respond.stream(+status: U32, headers: List<&2, Header>) -> String:
+  "HTTP/1.1 " ++ U32.show(status) ++ " " ++ reason(status) ++ "\r\n"
+    ++ "Connection: close\r\n"
+    ++ headers.lines(headers)
+    ++ te.line(Bool.not(status.nocontent(status)))
+    ++ "\r\n"
+
+# one lowercase hex digit of a value below 16
+def hex.nib(+v: U32) -> Char:
+  Char.from_u32(Bool.pick(U32, U32.is_lt(v, 10), U32.add(v, 48),
+    U32.add(v, 87)))
+
+# the 4 bits of n at this shift as a hex digit
+def hex.at(+n: U32, k: Nat) -> Char:
+  hex.nib(U32.and(U32.shrn(n, k), 15))
+
+# a chunk's size as 8 lowercase hex digits, then CRLF (RFC 9112 §7.1)
+def chunk.line(+n: U32) -> String:
+  SCon{hex.at(n, 28n), SCon{hex.at(n, 24n), SCon{hex.at(n, 20n),
+    SCon{hex.at(n, 16n), SCon{hex.at(n, 12n), SCon{hex.at(n, 8n),
+      SCon{hex.at(n, 4n), SCon{hex.at(n, 0n), "\r\n"}}}}}}}}
+
+# how a chunk of octets is framed: not at all when it is empty, which would
+# end the body, else its size line before it and CRLF after
+type Chunk is Data:
+  NoChunk{}
+  Chunk{line: String}
+
+# the frame of a chunk once it is known whether it is empty
+def chunk.frame.of(+n: U32, empty: Bool) -> Chunk:
+  match empty:
+    case True{}:
+      NoChunk{}
+    case False{}:
+      Chunk{chunk.line(n)}
+
+# the frame of a chunk of n octets (SPEC.md HTTP-SRV-7)
+def chunk.frame(+n: U32) -> Chunk:
+  chunk.frame.of(n, U32.is_eq(n, 0))
+
+# the last chunk and the end of a chunked body
+def chunk.end() -> String:
+  "0\r\n\r\n"
 
 # drop a 204/304 body; any other status keeps it
 def respond.of.body(+status: U32, headers: List<&2, Header>, body: String,

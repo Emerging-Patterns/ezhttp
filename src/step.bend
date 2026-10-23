@@ -60,3 +60,67 @@ def step.sent(res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>)
       Lost{step.line("write", why)}
     case Done{value}:
       Kept{value}
+
+# --- the replies and the handler's request (SPEC.md HTTP-SRV-8, 9) ---
+
+# whether a reply is written with its head only: a reply to HEAD, or a 204
+# or 304 (RFC 9110 §9.3.2, §15.3.5, §15.4.5)
+def step.bare(+method: String, +status: U32) -> Bool:
+  Bool.or(String.eq(method, "HEAD"), Http.status.nocontent(status))
+
+# the body octets of a request, as they arrived; none for a bad one
+def step.octets(req: Http.Request) -> String:
+  match req:
+    case Http.Bad{why}:
+      ""
+    case Http.Request{method, target, headers, body}:
+      body
+
+# what an accept with a deadline brought: a connection, nothing before the
+# deadline, or a lost accept with its line (SPEC.md HTTP-SRV-4)
+type Accept<-A: Type> is Type:
+  Took{value: A}
+  Idle{}
+  Missed{line: String}
+
+# a failed accept once it is known whether its deadline passed
+def step.missed(-A: Type, +why: String, late: Bool) -> Accept<A>:
+  match late:
+    case True{}:
+      Idle{}
+    case False{}:
+      Missed{step.line("accept", why)}
+
+# an accept's outcome: ETIMEDOUT (110) is a deadline that passed
+def step.accepted(-A: Type, res: Result<&1, &1, U32 & String, A>)
+  -> Accept<A>:
+  match res:
+    case Fail{(+code, why)}:
+      step.missed(A, why, U32.is_eq(code, 110))
+    case Done{value}:
+      Took{value}
+
+# --- when a request has all arrived (SPEC.md HTTP-TRUST-2) ---
+
+# a Content-Length that reads, or none
+def step.clen(m: Maybe<&2, Nat>) -> Nat:
+  match m:
+    case None{}:
+      0n
+    case Some{n}:
+      n
+
+# octets a request needs in all once its head has ended: the head, its blank
+# line and the octets its Content-Length names (0 when it names none)
+def step.need.of(c: Http.Cut) -> Maybe<&2, Nat>:
+  match c:
+    case Http.NoCut{}:
+      None{}
+    case Http.Cut{+before, after}:
+      Some{Nat.add(Nat.add(String.length(before), 4n),
+        step.clen(Http.digits.read(Http.first(
+          Http.head.values(String.lines(before), "content-length")))))}
+
+# octets a request needs in all, none while its head has not ended
+def step.need(+text: String) -> Maybe<&2, Nat>:
+  step.need.of(Http.divide(text, "\r\n\r\n"))

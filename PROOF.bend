@@ -6245,3 +6245,76 @@ def Laws.hit_file(_b, _name, _filename, _ctype, _clash):
 def Laws.payload_is(_req):
   {==}
 
+def Laws.accept_idle(_a, _code, e, why):
+  %e : {Step.step.missed(_a, why, _) == Step.Idle{} : Step.Accept<_a>}
+  {==}
+
+def Laws.accept_missed(_a, _code, e, why):
+  %e : {Step.step.missed(_a, why, _) == Step.Missed{"ezhttp: accept: " ++ why}
+    : Step.Accept<_a>}
+  {==}
+
+def Laws.accept_took(_a, _value):
+  {==}
+
+def Laws.respond_head(_status, _hs, _n):
+  {==}
+
+def Laws.respond_text_is(_status, _hs, _body):
+  {==}
+
+def Laws.respond_head_onto(_status, _hs, _n, _rest):
+  {==}
+
+def Laws.stream_head(status, e, hs):
+  %e : {"HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+    ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+    ++ Http.te.line(Bool.not(_)) ++ "\r\n"
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+      ++ "Transfer-Encoding: chunked\r\n" ++ "\r\n" : String}
+  {==}
+
+def Laws.stream_head_bare(status, e, hs):
+  %e : {"HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+    ++ "Connection: close\r\n" ++ Http.headers.lines(hs)
+    ++ Http.te.line(Bool.not(_)) ++ "\r\n"
+    == "HTTP/1.1 " ++ U32.show(status) ++ " " ++ Http.reason(status) ++ "\r\n"
+      ++ "Connection: close\r\n" ++ Http.headers.lines(hs) ++ ""
+      ++ "\r\n" : String}
+  {==}
+
+def Laws.chunk_line(_n):
+  {==}
+
+def Laws.hex_at(_n, _k):
+  {==}
+
+def Laws.hex_nib(_v):
+  {==}
+
+def Laws.chunk_empty(n, e):
+  %e : {Http.chunk.frame.of(n, _) == Http.NoChunk{} : Http.Chunk}
+  {==}
+
+def Laws.chunk_some(n, e):
+  %e : {Http.chunk.frame.of(n, _) == Http.Chunk{Http.chunk.line(n)} : Http.Chunk}
+  {==}
+
+def Laws.chunk_end(_s, e):
+  %e : {Http.chunk.end() ++ _ == "0\r\n\r\n" : String}
+  {==}
+
+def Laws.bare_head(_status):
+  {==}
+
+def Laws.bare_other(_method, e, status):
+  %e : {Bool.or(_, Http.status.nocontent(status)) == Http.status.nocontent(status)
+    : Bool}
+  {==}
+
+def Laws.nocontent_is(_code):
+  {==}
+
+def Laws.step_octets(_method, _target, _hs, _body):
+  {==}
