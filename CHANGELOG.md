@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.16.0...v0.17.0) (2026-10-23)
+
+
+### Features
+
+* **text:** unquote, query strings, html_unescape and the Cookie header sent back ([#44](https://github.com/Emerging-Patterns/ezhttp/issues/44)) ([d1b1669](https://github.com/Emerging-Patterns/ezhttp/commit/d1b1669dfae15f2e808eae677cbe58ca630eaa71))
+
 ## [0.16.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.15.0...v0.16.0) (2026-10-23)
 
 
