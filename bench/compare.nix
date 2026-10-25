@@ -194,11 +194,13 @@ def err_tail(path):
 
 def port_listening(port):
     want = f"{port:04X}"
+    tables = 0
     for name in ("/proc/net/tcp", "/proc/net/tcp6"):
         try:
             lines = open(name, encoding="utf-8", errors="replace").read().splitlines()
         except OSError:
             continue
+        tables += 1
         for line in lines[1:]:
             parts = line.split()
             if len(parts) < 4 or parts[3] != "0A":
@@ -206,11 +208,22 @@ def port_listening(port):
             _ip, _, port_hex = parts[1].rpartition(":")
             if port_hex.upper() == want:
                 return True
+    if tables:
+        return False
+    # no /proc (macOS): the port is taken once a bind to it is refused
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", port))
+    except OSError:
+        return True
+    finally:
+        probe.close()
     return False
 
 def wait_port(port, proc, err_path, timeout=30):
     # A connect would be an accepted request. serve_once has only one, and
-    # serve's limit is the measured N, so readiness is the LISTEN row.
+    # serve's limit is the measured N, so readiness is the LISTEN row, or
+    # the bound port where there is no /proc.
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc.poll() is not None:
