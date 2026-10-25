@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.21.0...v0.22.0) (2026-10-25)
+
+
+### Features
+
+* **nix:** build and check on x86_64-linux, aarch64-linux and aarch64-darwin ([#61](https://github.com/Emerging-Patterns/ezhttp/issues/61)) ([beba19e](https://github.com/Emerging-Patterns/ezhttp/commit/beba19e3e4caeca817aeae4fd8723149245dcd0b))
+
 ## [0.21.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.20.0...v0.21.0) (2026-10-23)
 
 
