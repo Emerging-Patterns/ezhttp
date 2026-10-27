@@ -1,6 +1,6 @@
 name: publish
 
-# Publish an existing release tag to the Bend hub as emerging-ezhttp@X.Y.Z.0 by hand,
+# Publish an existing release tag to the Bend hub as ezhttp@X.Y.Z.0 by hand,
 # e.g. to retry a release whose automatic publish failed. Releases are
 # published automatically by release-please.yml. dry-run runs every check
 # (proof gate, LICENSE, the hub's name check) and stops before the upload.
@@ -26,7 +26,7 @@ jobs:
     uses: Emerging-Patterns/actions/.github/workflows/publish.yml@73b2fbc64cefd6e22bd786437adb5f35190ee837
     with:
       tag: ${{ inputs.tag }}
-      hub-name: emerging-ezhttp
+      hub-name: ezhttp
       dry-run: ${{ inputs.dry-run }}
     secrets:
       bend-key: ${{ secrets.BEND_HUB_KEY }}

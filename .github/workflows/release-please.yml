@@ -2,7 +2,7 @@ name: release-please
 
 # release-please opens the release PR from conventional commits; merging it
 # tags vX.Y.Z and creates the GitHub release. The publish job then sends that
-# tag to the Bend hub as emerging-ezhttp@X.Y.Z.0: the shared publish workflow runs the
+# tag to the Bend hub as ezhttp@X.Y.Z.0: the shared publish workflow runs the
 # proof gate and refuses a package with no LICENSE beside its entry before it
 # uploads, since an upload is public and permanent. BEND_HUB_KEY is the Bender
 # login of the account that owns the hub name.
@@ -38,6 +38,6 @@ jobs:
     uses: Emerging-Patterns/actions/.github/workflows/publish.yml@73b2fbc64cefd6e22bd786437adb5f35190ee837
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
-      hub-name: emerging-ezhttp
+      hub-name: ezhttp
     secrets:
       bend-key: ${{ secrets.BEND_HUB_KEY }}

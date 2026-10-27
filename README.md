@@ -11,14 +11,14 @@ ezhttp is built and checked on bend 2.0.38.
 With [Bend](https://github.com/bendlang/bend) alone there is no install
 step: import ezhttp by its hub name and `bend` fetches it from
 [the hub](https://hub.bend-lang.com) into `~/.bend/lib` on the first run.
-`emerging-ezhttp@0.13.0.0` is ezhttp v0.13.0:
+`ezhttp@0.22.0.0` is ezhttp v0.22.0:
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
+import ezhttp@0.22.0.0/main.bend as Http
 ```
 
-That name resolves to `0xd3f9c1f02240edb63fd4a109ceb8fa74`.
-To pin by content instead, import `0xd3f9c1f02240edb63fd4a109ceb8fa74/main.bend`.
+That name resolves to `0xedb2120a04a47dc18c3a756ec7c62750`.
+To pin by content instead, import `0xedb2120a04a47dc18c3a756ec7c62750/main.bend`.
 
 Or with [ez](https://github.com/Emerging-Patterns/ez), which records the
 package in `ez.toml` (`ez init` makes one):
@@ -72,9 +72,9 @@ def status_and_text(r: Client.Response) -> String:
 ```
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
-import emerging-ezhttp@0.13.0.0/src/client.bend as Client
-import emerging-ezhttp@0.13.0.0/src/body.bend as Body
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/client.bend as Client
+import ezhttp@0.22.0.0/src/body.bend as Body
 
 def main() -> IO(Client.Response):
   Http.http.get("https://example.com/")
@@ -128,10 +128,10 @@ length from the body. Every other header is sent as you gave it, in order
 (SPEC.md HTTP-CLI-8).
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
-import emerging-ezhttp@0.13.0.0/src/client.bend as Client
-import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
-import emerging-ezhttp@0.13.0.0/src/body.bend as Body
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/client.bend as Client
+import ezhttp@0.22.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/src/body.bend as Body
 
 def ingest(url: String, json: String) -> IO(Client.Response):
   Http.http.post_opts(url,
@@ -153,7 +153,11 @@ content is `Bytes` (bend-kit-files' `read_bytes`, for example) and is sent
 unchanged; the builder searches it for the delimiter with `Bytes.find`.
 
 ```
-import emerging-ezhttp@0.8.0.0/src/form.bend as Form
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/client.bend as Client
+import ezhttp@0.22.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/src/form.bend as Form
 
 def upload(url: String, key: String, f: Form.Form) -> IO(Client.Response):
   match f:
@@ -208,9 +212,9 @@ It answers a `Server.Answer`: `text_reply(status, headers, body)` (UTF-8),
 written in flat memory. The plain serves are these with a text handler.
 
 ```
-import emerging-ezhttp@0.19.0.0/main.bend as Http
-import emerging-ezhttp@0.19.0.0/src/server.bend as Server
-import emerging-ezhttp@0.19.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/server.bend as Server
+import ezhttp@0.22.0.0/src/http.bend as Msg
 
 # echo the body back byte for byte, with the context in a header
 def echo(tag: String, req: Server.Req) -> Server.Answer:
@@ -227,8 +231,8 @@ A handler that needs IO (a file, a subprocess, an upstream call) goes to
 service; it is `@unsafe` recursion, so a program calling it is not proof-clean.
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
-import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> Msg.Reply:
   match req:
@@ -242,8 +246,8 @@ def main() -> IO(Unit):
 ```
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
-import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/http.bend as Msg
 
 def handle(req: Msg.Request) -> IO(Msg.Reply):
   match req:
@@ -260,10 +264,10 @@ def main() -> IO(Unit):
 Cookies, `Cache-Control`, and CORS are pure helpers on the same messages.
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
-import emerging-ezhttp@0.13.0.0/src/http.bend as Msg
-import emerging-ezhttp@0.13.0.0/src/cookie.bend as Cookie
-import emerging-ezhttp@0.13.0.0/src/cors.bend as Cors
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/http.bend as Msg
+import ezhttp@0.22.0.0/src/cookie.bend as Cookie
+import ezhttp@0.22.0.0/src/cors.bend as Cors
 
 def authed() -> Msg.Header:
   Http.basic("user", "pass")
@@ -279,8 +283,8 @@ def cross(cfg: Cors.Cfg, req: Msg.Request, reply: Msg.Reply) -> Msg.Reply:
 ```
 
 ```
-import emerging-ezjson@1.2.0.0/main.bend as Ezjson
-import emerging-ezjson@1.2.0.0/src/value.bend as Value
+import ezjson@1.2.0.0/main.bend as Ezjson
+import ezjson@1.2.0.0/src/value.bend as Value
 
 def read.of(got: Maybe<&2, Value.Json>) -> Maybe<&2, String>:
   match got:
@@ -300,7 +304,7 @@ byte in upper-case hex, and `/` stays in a path but is `%2F` in a component.
 SPEC.md lists these guarantees (HTTP-URL). They are new after ezhttp 0.9.0.
 
 ```
-import emerging-ezhttp@0.13.0.0/main.bend as Http
+import ezhttp@0.22.0.0/main.bend as Http
 
 def search(q: String) -> String:
   "https://example.com/search?q=" ++ Http.quote_component(q)
@@ -324,7 +328,7 @@ and blank values included), and `query_get(pairs, name)` answers the last
 value for a name (HTTP-QS). They are new after ezhttp 0.14.0.
 
 ```
-import emerging-ezhttp@0.15.0.0/main.bend as Http
+import ezhttp@0.22.0.0/main.bend as Http
 
 def page(query: String) -> Maybe<&2, String>:
   Http.query_get(Http.parse_query(query), "page")
