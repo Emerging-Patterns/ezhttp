@@ -153,6 +153,10 @@ content is `Bytes` (bend-kit-files' `read_bytes`, for example) and is sent
 unchanged; the builder searches it for the delimiter with `Bytes.find`.
 
 ```
+import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
+import ezhttp@0.22.0.0/main.bend as Http
+import ezhttp@0.22.0.0/src/client.bend as Client
+import ezhttp@0.22.0.0/src/http.bend as Msg
 import ezhttp@0.22.0.0/src/form.bend as Form
 
 def upload(url: String, key: String, f: Form.Form) -> IO(Client.Response):
