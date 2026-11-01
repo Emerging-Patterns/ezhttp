@@ -25,7 +25,7 @@ def parse_url(url: String) -> Url.Loc:  # noqa: L001 re-export of Url.parse
 
 # percent-encode a path (RFC 3986 §2.1), as Python's urllib.parse.quote(text):
 # unreserved characters and "/" stay, every other character becomes %XX per
-# UTF-8 byte, upper-case hex (SPEC.md HTTP-URL)
+# UTF-8 byte, upper-case hex (laws/QuoteKeepsUnreserved.bend)
 def quote_path(text: String) -> String:  # noqa: L001 re-export of Pct.quote (the path form)
   Pct.quote(True{}, text)
 
@@ -37,7 +37,7 @@ def quote_component(text: String) -> String:  # noqa: L001 re-export of Pct.quot
 # percent-decode a string as urllib.parse.unquote: %XX escapes (either case)
 # become bytes, decoded as UTF-8 with U+FFFD for bytes that are not; an escape
 # that is not two hex digits is kept as written, and characters outside ASCII
-# are kept (SPEC.md HTTP-QS)
+# are kept (laws/UnquoteReadsEscapes.bend)
 def unquote(text: String) -> String:  # noqa: L001 re-export of Qs.unquote
   Qs.unquote(text)
 
@@ -72,20 +72,20 @@ def parse_query(text: String) -> List<&2, Qs.Kv()>:  # noqa: L001 re-export of Q
 def query_get(pairs: List<&2, Qs.Kv()>, name: String) -> Maybe<&2, String>:  # noqa: L001 re-export of Qs.get
   Qs.get(pairs, name)
 
-# response parse re-export; `raw` is octets, one character each (SPEC.md
-# HTTP-BODY)
+# response parse re-export; `raw` is octets, one character each
+# (laws/OneOctetPerChar.bend)
 def parse_response(raw: String) -> Http.Reply:  # noqa: L001 re-export of Http.parse
   Http.parse(raw)
 
 # a response as the client reads it for a request with this method: interim
 # 1xx heads skipped, and no body for HEAD or a 1xx, 204 or 304 status,
-# whatever Content-Length says (SPEC.md HTTP-CLI-9)
+# whatever Content-Length says (laws/InterimResponsesSkipped.bend)
 def parse_response_to(method: String, raw: String) -> Http.Reply:  # noqa: L001 re-export of Http.parse.to
   Http.parse.to(method, raw)
 
 # the reason phrase of a response's status line (RFC 9112 §4), read from the
-# head parse_response_to stops at; empty when there is none (SPEC.md
-# HTTP-CLI-11)
+# head parse_response_to stops at; empty when there is none
+# (laws/ReasonPhraseFromFinalHead.bend)
 def reason_phrase(raw: String) -> String:  # noqa: L001 re-export of Http.phrase.to
   Http.phrase.to(raw)
 
@@ -126,7 +126,7 @@ def form_file(name: String, filename: String, ctype: String,  # noqa: L001 re-ex
 
 # a multipart/form-data body (RFC 7578) with this boundary: the Content-Type
 # field value to send and an octet body, or why the boundary cannot be used
-# (SPEC.md HTTP-FORM)
+# (laws/FormRefusesBadRequests.bend)
 def form_body(boundary: String, parts: List<&1, Form.Upload>) -> Form.Form:  # noqa: L001 re-export of Form.form.body
   Form.form.body(boundary, parts)
 
@@ -185,15 +185,16 @@ def html_escape(text: String) -> String:  # noqa: L001 re-export of Html.escape
 
 # HTML character references back to characters, as Python's html.unescape:
 # decimal and hex numeric references (with the HTML Standard's replacements)
-# and the HTML Standard's 2231 named references, the legacy ones also without
-# `;`; anything that is not a reference is kept as written (SPEC.md HTTP-REF)
+# and the HTML Standard's 2231 named references, the legacy ones also
+# without `;`; anything that is not a reference is kept as written
+# (laws/UnescapeFindsReferences.bend)
 def html_unescape(text: String) -> String:  # noqa: L001 re-export of Unescape.unescape
   Unescape.unescape(text)
 
 # the Cookie header value to send back after these Set-Cookie field values
 # (RFC 6265 §5.2, §5.4): each one's name=value, attributes ignored; a later
 # cookie with the same name replaces the earlier one's value in its place;
-# `name=value` pairs joined by `; ` (SPEC.md HTTP-CK)
+# `name=value` pairs joined by `; ` (laws/CookieHeaderEchoesStore.bend)
 def cookie_from_set_cookies(values: List<&2, String>) -> String:  # noqa: L001 re-export of Echo.echo
   Echo.echo(values)
 
@@ -270,7 +271,7 @@ def http.timed_out(r: Client.Response) -> Bool:
   Client.client.timed_out(r)
 
 # a response body's octets (a Response's `bytes`) decoded as UTF-8, done only
-# when called (SPEC.md HTTP-BODY-4)
+# when called (laws/OctetsDecodeAsUtf8.bend)
 def body_text(bytes: Bytes.Bytes) -> String:  # noqa: L001 re-export of Client.client.text
   Client.client.text(bytes)
 
@@ -355,7 +356,8 @@ def http.serve_io(
 # listen on host:port and serve up to `limit` connections, each on its own
 # fork and at most `max` at once (0: no limit), calling a pure handler with
 # `ctx` and the request (Server.Req: text, and its body's octets); returns
-# once every connection is closed (SPEC.md HTTP-SRV, HTTP-TRUST-2)
+# once every connection is closed (laws/BadRequestAnswers400.bend, trusted
+# in src/server.bend)
 def http.serve_with(
   ~C: Data,
   ~handle: C -> Server.Req -> Server.Answer,

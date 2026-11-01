@@ -1,6 +1,41 @@
 # ezhttp/src/client: fetch a URL. URL and HTTP parsing joined to the wire effect.
 # Answers a structured Response (status + headers + body), not a hub-style
 # "0\n…" string contract.
+#
+# Trusted, not proved: this module and src/wire.bend act on
+# src/wirespec.bend's answers in order. For a `NoUrl` they answer `Err` with
+# its reason and open nothing; otherwise they resolve the exchange's host
+# (`Dns.resolve.literal.all`, else `Dns.lookup.all`), connect to its
+# addresses in turn until one connects, run the TLS handshake with the host
+# when the exchange is secure, and send `wire.payload` of the request
+# followed by the body's octets (`body.shape`), each call with the deadline
+# `wire.ms.of` gives; a failed call is answered `wire.fail` of its phase,
+# its error number and its reason (the last address's, for the connect), and
+# nothing after it is done. Then, from the state `wire.got(method)` for the
+# exchange's method, they receive up to 65536 octets at a time and append
+# each receive's octets, packed, to those before it (`Bytes.append`); they
+# judge each receive with `wire.read.count` of its count of octets, and only
+# when that answers none with `wire.read.next` of a copy of its octets as
+# text, dropped after the judging; they read again with the state the
+# judging gives back until it answers `Heard`, closing the socket on every
+# path, and give up with status 56 after 65536 receives. A failed exchange
+# is `Err` with the reason `wire.failed` reads from its answer. Otherwise
+# the answer is the octets received, and the response is what `packed.reply`
+# reads from them by the exchange's method: a torn one as `Err` with its
+# reason, any other as a `Response` with its status, its header fields and
+# reason phrase as text (`Qs.octets.headers`, `Qs.octets.text`), and its
+# body's octets, packed, as `bytes`; `body_text` (`client.text`) decodes
+# them as UTF-8 only when called. Every client function builds its exchange
+# with `wire.exchange.body` from the shape of the body it is given.
+# `http.request_opts` sends the method, headers and body it is given, and
+# `http.post_opts`, `http.put_opts` and `http.delete_opts` are it with
+# `POST`, `PUT` and `DELETE` and `follow` unset. `http.timed_out` is false
+# for a `Response` and `wire.timed_out` of an `Err`'s reason. It is IO
+# sequencing over bend-kit-wire's effects, which no law can state, and this
+# module reaches those effects, so no law file can import even its pure
+# helpers (`http.answer`, `client.timed_out`). Every decision it acts on is
+# src/wirespec.bend's, proved under laws/ (the client's guarantees, such as
+# laws/RequestLineAndHost.bend).
 import Base
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./url.bend as Url
@@ -14,15 +49,16 @@ import ./qs.bend as Qs
 import ./packed.bend as Packed
 
 # structured client result: transport/parse error, or an HTTP response: its
-# status, its header fields and reason phrase as text (decoded from the octets
-# received as UTF-8, SPEC.md HTTP-BODY-4, HTTP-CLI-11), and its body's octets
-# as they arrived, packed (`client.text` decodes them when asked)
-type Response is Type:  # noqa: L001 the wire effect keeps src/client.bend out of law files (HTTP-TRUST-5)
+# status, its header fields and reason phrase as text (decoded from the
+# octets received as UTF-8, laws/OctetsDecodeAsUtf8.bend,
+# laws/ReasonPhraseFromFinalHead.bend), and its body's octets as they
+# arrived, packed (`client.text` decodes them when asked)
+type Response is Type:  # noqa: L001 the wire effect keeps src/client.bend out of law files (trusted above)
   Err{why: String}
   Response{status: U32, headers: List<&2, Http.Header>, reason: String,
     bytes: Bytes.Bytes}
 
-# a body's octets decoded as UTF-8 (SPEC.md HTTP-BODY-4)
+# a body's octets decoded as UTF-8 (laws/OctetsDecodeAsUtf8.bend)
 def client.text(b: Bytes.Bytes) -> String:
   Qs.octets.text(Bytes.to_string(b))
 
@@ -122,7 +158,17 @@ def client.after(p: Redirect.Hop & Response, go: String -> IO(Response))
 
 # GET, following redirects while `left` hops remain; `body` goes with this
 # hop only. The answer is the last response, which is a redirect only when
-# the hops ran out or its Location is not one redirect.bend follows
+# the hops ran out or its Location is not one redirect.bend follows.
+#
+# Trusted, not proved: it sends a GET to the URL it is given (with the
+# caller's body on the first hop only), asks `redirect.plan` about the
+# response with the hops it has left (10 to start), sends the next GET to a
+# `Go` target with the same headers and timeout and one hop fewer, and
+# answers the response on a `Stop`, on a failed exchange, or when no hops
+# are left. It is IO sequencing over the wire effect, which no law can
+# state; every decision it acts on is src/redirect.bend's, proved under
+# laws/ (the redirect guarantees, such as
+# laws/RedirectsFollowLocation.bend).
 def client.follow(+left: Nat, +url: String, +headers: List<&2, Http.Header>,
   body: Body.Body, +ms: U32) -> IO(Response):
   match left:

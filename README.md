@@ -45,8 +45,9 @@ hub package; import ezjson from the hub to read a JSON body (below).
 exchange failed. A `Response` has the status, the header fields and the status
 line's reason phrase as text (decoded from what arrived as UTF-8, U+FFFD for a
 byte that is not), and `bytes`: the body's octets exactly as they arrived,
-packed (SPEC.md HTTP-BODY), so a binary download is byte-exact. The body is
-never turned into text unless you ask: `body_text(bytes)` decodes it as UTF-8.
+packed ([laws/OneOctetPerChar.bend](laws/OneOctetPerChar.bend)), so a binary
+download is byte-exact. The body is never turned into text unless you ask:
+`body_text(bytes)` decodes it as UTF-8.
 `Response` holds `Bytes`, so it is a linear value: match on it once.
 Content-Length and chunk sizes count octets. A response is read and framed on
 its packed octets, so a 20 MB download peaks near 100 MB rather than 1.35 GB.
@@ -104,8 +105,10 @@ the scheme, an absolute path keeps the scheme, host and port, and a query or
 a relative path such as `web/` is merged with the current path, dot segments
 removed. An empty `Location`, a fragment, or another scheme ends the chain. The
 caller's headers go to every hop, credentials included, so only follow
-redirects from hosts you trust with them. SPEC.md lists these guarantees
-(HTTP-CLI, HTTP-REDIR). They are new after ezhttp 0.10.0.
+redirects from hosts you trust with them. The client and redirect guarantees
+under [laws/](laws/) state this (such as
+[laws/RedirectsFollowLocation.bend](laws/RedirectsFollowLocation.bend)). They
+are new after ezhttp 0.10.0.
 
 ```
 def probe(url: String) -> IO(Client.Response):
@@ -125,7 +128,7 @@ pass whose name (compared case-insensitively) is `Host`, `User-Agent` or
 `Connection` and `Content-Length` are not overridable: yours are dropped,
 since the client frames the exchange by `Connection: close` and computes the
 length from the body. Every other header is sent as you gave it, in order
-(SPEC.md HTTP-CLI-8).
+([laws/RequestHeaderFieldsOrdered.bend](laws/RequestHeaderFieldsOrdered.bend)).
 
 ```
 import ezhttp@0.22.0.0/main.bend as Http
@@ -142,12 +145,14 @@ def ingest(url: String, json: String) -> IO(Client.Response):
 A body is text (`text_body`, sent as its UTF-8) or octets (`octets_body` of
 a bend-kit-bytes `Bytes`, or `octets_list_body` of a list of values 0 to 255),
 sent byte for byte after the request head, with `Content-Length` counting
-them (SPEC.md HTTP-CLI-10), so binary uploads reach the server unchanged. `form_body(boundary, parts)` builds a
+them ([laws/OctetBodiesSentUnchanged.bend](laws/OctetBodiesSentUnchanged.bend)),
+so binary uploads reach the server unchanged. `form_body(boundary, parts)` builds a
 `multipart/form-data` body (RFC 7578) from `form_field(name, value)` and
 `form_file(name, filename, content_type, bytes)` parts: it answers the
 `Content-Type` value to send and an octet body, or refuses a boundary that is
 not 1 to 70 of `A-Z a-z 0-9 - _ .`, one whose `--boundary` occurs in a part's
-content, and a file content type holding CR or LF (SPEC.md HTTP-FORM). Names
+content, and a file content type holding CR or LF
+([laws/FormRefusesBadRequests.bend](laws/FormRefusesBadRequests.bend)). Names
 and filenames have `"`, CR and LF written as `%22`, `%0D` and `%0A`. A file's
 content is `Bytes` (bend-kit-files' `read_bytes`, for example) and is sent
 unchanged; the builder searches it for the delimiter with `Bytes.find`.
@@ -174,8 +179,9 @@ def transcribe(url: String, key: String, wav: Bytes.Bytes)
      Http.form_file("file", "audio.wav", "audio/wav", wav)]))
 ```
 
-The client reads a response with its request's method in mind (SPEC.md
-HTTP-CLI-9): interim 1xx responses such as `100 Continue` are skipped, and a
+The client reads a response with its request's method in mind
+([laws/InterimResponsesSkipped.bend](laws/InterimResponsesSkipped.bend)): interim
+1xx responses such as `100 Continue` are skipped, and a
 response to HEAD, or with a 1xx, 204 or 304 status, has an empty body
 whatever its `Content-Length` or `Transfer-Encoding` say.
 `parse_response_to(method, raw)` is that reading; `parse_response(raw)` does
@@ -197,8 +203,9 @@ the handler as text (decoded from the octets that arrived as UTF-8).
 
 A connection that fails (a failed accept, recv or send, such as a client resetting
 mid-request) is closed and logged to stderr as one line, `ezhttp: <phase>: <why>`; it
-counts toward `limit`. SPEC.md lists these guarantees (HTTP-SRV) and what is trusted
-rather than proved.
+counts toward `limit`. The server guarantees under [laws/](laws/) state this (such
+as [laws/BadRequestAnswers400.bend](laws/BadRequestAnswers400.bend)), and
+`src/server.bend` says what is trusted rather than proved.
 
 `http.serve_with(~C, handle, ctx, host, port, limit, max)`,
 `http.serve_io_with` and `http.serve_forever_with` take a context value
@@ -301,7 +308,9 @@ def read(text: String) -> Maybe<&2, String>:
 §2.1) the way Python's `urllib.parse.quote(s)` and `quote(s, safe="")` do:
 unreserved characters stay, every other character becomes `%XX` per UTF-8
 byte in upper-case hex, and `/` stays in a path but is `%2F` in a component.
-SPEC.md lists these guarantees (HTTP-URL). They are new after ezhttp 0.9.0.
+The percent-encoding guarantees under [laws/](laws/) state this (such as
+[laws/QuoteKeepsUnreserved.bend](laws/QuoteKeepsUnreserved.bend)). They are
+new after ezhttp 0.9.0.
 
 ```
 import ezhttp@0.22.0.0/main.bend as Http
@@ -312,8 +321,9 @@ def search(q: String) -> String:
 
 `html_escape` escapes text for HTML as markupsafe and Jinja's autoescape do:
 `&`, `<`, `>`, `"` and `'` become `&amp;`, `&lt;`, `&gt;`, `&#34;` and
-`&#39;`, and every other character stays (HTTP-HTML). It is new after ezhttp
-0.10.0.
+`&#39;`, and every other character stays
+([laws/HtmlEscapesFiveChars.bend](laws/HtmlEscapesFiveChars.bend)). It is new
+after ezhttp 0.10.0.
 
 `unquote` and `unquote_plus` percent-decode text the way Python's
 `urllib.parse.unquote` and `unquote_plus` do: `%XX` (either case) becomes a
@@ -325,7 +335,9 @@ ill-formed part (Python's `errors="replace"`). `quote_plus` is
 strings as `urlencode` and `parse_qsl(text, keep_blank_values=True)` do: a
 pair is `(name, value)`, `parse_query` keeps every pair in order (duplicates
 and blank values included), and `query_get(pairs, name)` answers the last
-value for a name (HTTP-QS). They are new after ezhttp 0.14.0.
+value for a name (the query-string guarantees under [laws/](laws/), such as
+[laws/ParseQuerySplitsPairs.bend](laws/ParseQuerySplitsPairs.bend)). They are
+new after ezhttp 0.14.0.
 
 ```
 import ezhttp@0.22.0.0/main.bend as Http
@@ -341,12 +353,14 @@ def link(q: String) -> String:
 `html.unescape` does: decimal and hex numeric references with the HTML
 Standard's replacements, and all 2231 of its named references (the legacy
 ones also without `;`, read by longest match). It undoes `html_escape`
-(HTTP-REF). `cookie_from_set_cookies(values)` and
+([laws/UnescapeUndoesEscape.bend](laws/UnescapeUndoesEscape.bend)).
+`cookie_from_set_cookies(values)` and
 `cookie_from_headers(headers)` give the `Cookie` header value to send back
 after `Set-Cookie` fields: each one's `name=value` (RFC 6265 §5.2), no
 attributes, a later cookie with the same name replacing the earlier one's
-value in place, joined by `; ` (§5.4) (HTTP-CK). Both are new after
-ezhttp 0.14.0.
+value in place, joined by `; ` (§5.4)
+([laws/CookieHeaderEchoesStore.bend](laws/CookieHeaderEchoesStore.bend)). Both
+are new after ezhttp 0.14.0.
 
 `parse_cookie` reads a `Set-Cookie` field value. `set_cookie` writes one.
 `cache_control` reads `no-store`, `no-cache`, `max-age`, `public`, and
@@ -356,8 +370,11 @@ never pair with `Access-Control-Allow-Origin: *`.
 
 ## Compliance
 
-Closed equalities in `LAWS.bend`, proved in `PROOF.bend`
-(`bend PROOF.bend` prints `ALL PROOFS CHECK`). `main.bend` and
+Each guarantee is one file under [laws/](laws/), its prose on top and its
+laws under it, proved by the file of the same name under [proofs/](proofs/);
+`LAWS.bend` and `PROOF.bend` only import them (`bend PROOF.bend` prints
+`ALL PROOFS CHECK`). What ezhttp trusts rather than proves is said on the
+code that assumes it. `main.bend` and
 `src/client.bend` reach the wire effect, so no law file imports them: the
 laws are stated on the pure definitions under `src/`, and each re-export in
 `main.bend` that bolt's `coverage` rule (an error) would flag carries a

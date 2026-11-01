@@ -1,7 +1,7 @@
-# Differential check for SPEC.md HTTP-TRUST-9: packed.reply reads each
-# response in the corpus off its packed octets exactly as Http.parse.to reads
-# it as text, for GET and for HEAD. `ezhttp-bench parse-diff` prints one line
-# a case, `ok` or `DIFF`; the flake check fails on any DIFF.
+# Differential check for what src/packed.bend trusts: packed.reply reads
+# each response in the corpus off its packed octets exactly as Http.parse.to
+# reads it as text, for GET and for HEAD. `ezhttp-bench parse-diff` prints
+# one line a case, `ok` or `DIFF`; the flake check fails on any DIFF.
 import Base
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ../src/http.bend as Http

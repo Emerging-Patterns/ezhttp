@@ -1,7 +1,7 @@
 # ezhttp/src/html: HTML escaping, the way markupsafe.escape and Jinja's
 # autoescape do it. `&`, `<`, `>`, `"` and `'` are written as `&amp;`, `&lt;`,
 # `&gt;`, `&#34;` and `&#39;`; every other character is written as itself.
-# SPEC.md HTTP-HTML lists what is guaranteed.
+# What is guaranteed is under laws/, such as laws/HtmlEscapeCharByChar.bend.
 import Base
 
 # one character that is not `&`, `<`, `>` or `"`, as `'` or as itself

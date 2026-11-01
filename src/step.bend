@@ -17,8 +17,8 @@ type Got<-A: Type> is Type:
   Lost{line: String}
 
 # a request received as octets, as text: its method, target, header names
-# and values and body each decoded as UTF-8 (SPEC.md HTTP-SRV-2); a bad one
-# keeps its reason
+# and values and body each decoded as UTF-8
+# (laws/HandlerGetsRequestText.bend); a bad one keeps its reason
 def step.text(req: Http.Request) -> Http.Request:
   match req:
     case Http.Bad{why}:
@@ -61,7 +61,9 @@ def step.sent(res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>)
     case Done{value}:
       Kept{value}
 
-# --- the replies and the handler's request (SPEC.md HTTP-SRV-8, 9) ---
+# --- the replies and the handler's request ---
+# laws/BareRepliesWriteHeadOnly.bend,
+# laws/WithServesGetOctetsAndContext.bend
 
 # whether a reply is written with its head only: a reply to HEAD, or a 204
 # or 304 (RFC 9110 §9.3.2, §15.3.5, §15.4.5)
@@ -77,7 +79,8 @@ def step.octets(req: Http.Request) -> String:
       body
 
 # what an accept with a deadline brought: a connection, nothing before the
-# deadline, or a lost accept with its line (SPEC.md HTTP-SRV-4)
+# deadline, or a lost accept with its line
+# (laws/FailedEffectsLoseConnection.bend)
 type Accept<-A: Type> is Type:
   Took{value: A}
   Idle{}
@@ -100,7 +103,7 @@ def step.accepted(-A: Type, res: Result<&1, &1, U32 & String, A>)
     case Done{value}:
       Took{value}
 
-# --- when a request has all arrived (SPEC.md HTTP-TRUST-2) ---
+# --- when a request has all arrived (trusted in src/server.bend) ---
 
 # a Content-Length that reads, or none
 def step.clen(m: Maybe<&2, Nat>) -> Nat:

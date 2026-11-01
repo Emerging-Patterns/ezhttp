@@ -3,9 +3,10 @@
 # decision is form.plan's, over the parts with each file's content replaced
 # by whether the delimiter occurs in it; the plan lays the body out as runs
 # of octets and file contents, and form.build puts them together, so a
-# file's bytes reach the wire unchanged (SPEC.md HTTP-CLI-10). The caller
-# picks the boundary and the builder refuses one a reader could misread.
-# SPEC.md HTTP-FORM lists what is guaranteed.
+# file's bytes reach the wire unchanged
+# (laws/OctetBodiesSentUnchanged.bend). The caller picks the boundary and
+# the builder refuses one a reader could misread. What is guaranteed is
+# under laws/, such as laws/FormRefusesBadRequests.bend.
 import Base
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./body.bend as Body
@@ -35,7 +36,7 @@ type Plan is Data:
   Plan{ctype: String, segs: List<&2, Seg>}
 
 # a built form (the Content-Type field value and the body), or why not
-type Form is Type:  # noqa: L001 it holds Bytes, which no law can compare; form.plan's laws cover it (HTTP-TRUST-8)
+type Form is Type:  # noqa: L001 it holds Bytes, which no law can compare; form.plan's laws cover it (trusted above)
   NoForm{why: String}
   Form{ctype: String, body: Body.Body}
 
@@ -263,11 +264,21 @@ def form.check(+b: String, +ps: List<&2, Part>, ok: Bool) -> Plan:
       form.check.clash(b, ps, form.clash(b, ps))
 
 # a multipart/form-data body's plan with this boundary and these parts, or
-# why not (SPEC.md HTTP-FORM)
+# why not (laws/FormRefusesBadRequests.bend)
 def form.plan(+b: String, ps: List<&2, Part>) -> Plan:
   form.check(b, ps, form.boundary.ok(b))
 
-# --- the body (SPEC.md HTTP-TRUST-8) ---
+# --- the body ---
+#
+# Trusted, not proved: `form.body` looks for the delimiter in each file
+# part's bytes with `Bytes.find`, plans the body with `form.plan`, and
+# answers the plan's refusal, or the body its runs and the files' bytes make
+# in order (`form.build`), under the plan's Content-Type. `form.build` puts
+# the plan's runs and the files' `Bytes` together with bend-kit-bytes
+# (`Bytes.from_string`, `Bytes.concat`, trusted in src/wire.bend); packed
+# `Array<U32>` words are out of the laws' reach. Every decision (what is
+# refused, in which order, and the layout) is `form.plan`'s and is proved
+# (laws/FormRefusesBadRequests.bend to laws/FormNamesEscaped.bend).
 
 # whether a search found the delimiter, with the bytes handed back
 def form.found(r: Bytes.Bytes & Maybe<&2, U32>) -> Bytes.Bytes & Bool:
@@ -338,6 +349,6 @@ def form.built(+b: String, r: List<&2, Part> & List<&1, Bytes.Bytes>) -> Form:
   form.build(form.plan(b, ps), fs)
 
 # a multipart/form-data body with this boundary and these parts, or why not
-# (SPEC.md HTTP-FORM, HTTP-TRUST-8)
+# (laws/FormRefusesBadRequests.bend, trusted above)
 def form.body(+b: String, us: List<&1, Upload>) -> Form:
   form.built(b, form.split(Body.octets.chars(form.delim(b)), us))

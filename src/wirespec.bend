@@ -3,10 +3,10 @@
 # wire.bend (bend-kit-wire's effects) so the proof gate can import it.
 # wire.bend and client.bend act on what is decided here.
 #
-# A failed exchange's answer is a non-zero status on its first line, then the
-# reason (wire.fail); a successful one is the response's octets, which
-# wire.bend keeps packed and packed.bend reads. SPEC.md HTTP-CLI lists what is
-# guaranteed.
+# A failed exchange's answer is a non-zero status on its first line, then
+# the reason (wire.fail); a successful one is the response's octets, which
+# wire.bend keeps packed and packed.bend reads. What is guaranteed
+# is under laws/, such as laws/RequestLineAndHost.bend.
 import Base
 import ./http.bend as Http
 import ./url.bend as Url
@@ -33,8 +33,9 @@ def wire.ms.pick(ms: U32, zero: Bool) -> U32:
 def wire.ms.at(+ms: U32) -> U32:
   wire.ms.pick(ms, U32.is_eq(ms, 0))
 
-# the deadline every socket call of an exchange gets: the timeout it was made
-# with, or the default (SPEC.md HTTP-CLI-1, 2)
+# the deadline every socket call of an exchange gets: the timeout it was
+# made with, or the default (laws/DeadlineIsTimeout.bend,
+# laws/TimeoutZeroIsOneMs.bend)
 def wire.ms.of(m: Maybe<&2, U32>) -> U32:
   match m:
     case None{}:
@@ -117,7 +118,8 @@ def wire.exchange.octets(+method: String, l: Url.Loc,
         Http.request.head.at(method, secure, host, port, path, headers, n)}
 
 # a request with a body of this shape to a URL that came apart: text inside
-# the request text as UTF-8, octets after it (SPEC.md HTTP-CLI-10)
+# the request text as UTF-8, octets after it
+# (laws/OctetBodiesSentUnchanged.bend)
 def wire.exchange.body(method: String, l: Url.Loc,
   headers: List<&2, Http.Header>, b: Body.Shape) -> Exchange:
   match b:
@@ -216,7 +218,7 @@ def wire.read.got(h: Http.Hear, +text: String, closed: Bool) -> Read:
       wire.read.with(Http.hear.more(h, text))
 
 # what to do after a read brought this text, judged from where the response
-# stood (SPEC.md HTTP-CLI-6)
+# stood (laws/ReadsJudgedByCount.bend)
 def wire.read.next(h: Http.Hear, +text: String) -> Read:
   wire.read.got(h, text, String.is_empty(text))
 
@@ -238,7 +240,8 @@ def wire.read.count.at(+h: Http.Hear, +m: Nat, closed: Bool)
       wire.read.counted(h, m, Http.hear.counts(h, m))
 
 # what to do after a read of m octets, when their count alone decides it;
-# none when their text is needed (wire.read.next) (SPEC.md HTTP-CLI-6)
+# none when their text is needed (wire.read.next)
+# (laws/ReadsJudgedByCount.bend)
 def wire.read.count(+h: Http.Hear, +m: Nat) -> Maybe<&2, Read>:
   wire.read.count.at(h, m, Nat.is_eq(m, 0n))
 
@@ -251,8 +254,8 @@ def wire.failed(+raw: String) -> String:
   wire.why(wire.code(raw), wire.text(raw))
 
 # the response an exchange's answer holds, read by the request's method
-# (SPEC.md HTTP-CLI-9); a failed exchange is torn with the reason it is
-# reported with (wire.why)
+# (laws/InterimResponsesSkipped.bend); a failed exchange is torn with the
+# reason it is reported with (wire.why)
 def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
   match ok:
     case False{}:
@@ -260,8 +263,9 @@ def wire.heard.of(+method: String, +raw: String, ok: Bool) -> Http.Reply:
     case True{}:
       Http.parse.to(method, wire.text(raw))
 
-# the reason phrase of the response an exchange's answer holds (SPEC.md
-# HTTP-CLI-11); a failed exchange's is read from its reason and not used
+# the reason phrase of the response an exchange's answer holds
+# (laws/ReasonPhraseFromFinalHead.bend); a failed exchange's is read from
+# its reason and not used
 def wire.phrase(raw: String) -> String:
   Http.phrase.to(wire.text(raw))
 
@@ -269,7 +273,7 @@ def wire.phrase(raw: String) -> String:
 def wire.heard(+method: String, +raw: String) -> Http.Reply:
   wire.heard.of(method, raw, wire.ok(raw))
 
-# --- what goes on the wire (SPEC.md HTTP-CLI-10) ---
+# --- what goes on the wire (laws/OctetBodiesSentUnchanged.bend) ---
 
 # a request text's UTF-8 octets, one character each, onto the octets after it
 def wire.payload.text(s: String, rest: String) -> String:
@@ -284,7 +288,8 @@ def wire.payload.text(s: String, rest: String) -> String:
 def wire.payload(req: String) -> String:
   wire.payload.text(req, "")
 
-# --- what a failed socket call is reported as (SPEC.md HTTP-CLI-13, 14) ---
+# --- what a failed socket call is reported as ---
+# laws/FailuresReportedByPhase.bend, laws/ErrnoNamesAreLinux.bend
 
 # where in an exchange a call failed
 type Phase is Data:
@@ -323,7 +328,7 @@ def wire.errno.or(name: String) -> String:
     case SCon{h, t}:
       SCon{h, t}
 
-# an error number's name (SPEC.md HTTP-CLI-14)
+# an error number's name (laws/ErrnoNamesAreLinux.bend)
 def wire.errno.name(+n: U32) -> String:
   wire.errno.or(Http.reason.in(wire.errnos(), n))
 
@@ -385,7 +390,21 @@ def wire.fail.of(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
       wire.fail.other(p, host, port, n, why)
 
 # the exchange's answer when a call in this phase failed with error number n
-# and reason why, with deadline ms (SPEC.md HTTP-CLI-13)
+# and reason why, with deadline ms (laws/FailuresReportedByPhase.bend).
+#
+# Trusted, not proved: bend-kit-wire and bend-kit-dns report a failed call
+# as the platform's errno number and its `strerror` text, except that
+# `tls.connect` reports a failed handshake as EPROTO with OpenSSL's verify
+# reason (or `TLS handshake failed`), and `lookup.all` reports a name that
+# does not resolve as ENOENT, a temporary failure as EAGAIN, running out of
+# memory as ENOMEM and any other getaddrinfo failure as EIO; a call whose
+# deadline passes fails with ETIMEDOUT and no other call does. The names
+# laws/ErrnoNamesAreLinux.bend gives are Linux's numbering. It is foreign C
+# and JS reading errno, getaddrinfo and OpenSSL, which no law reaches. What
+# each number is named and what a failed exchange is reported as are proved
+# (laws/FailuresReportedByPhase.bend, laws/ErrnoNamesAreLinux.bend), and
+# that the reason reaches `Client.Err` unchanged
+# (laws/TimeoutsReadAsTimedOut.bend, laws/InterimResponsesSkipped.bend).
 def wire.fail(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
   why: String) -> String:
   wire.fail.of(p, host, port, ms, n, why, U32.is_eq(n, wire.etimedout()))
