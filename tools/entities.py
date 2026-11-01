@@ -36,12 +36,13 @@ def main(path):
               "#\n"
               "# Trusted, not proved: this is the HTML Standard's named character\n"
               "# references table: every name in it once, without its leading `&`, with the\n"
-              "# one or two code points it stands for. It is data transcribed from another\n"
-              "# document (the same table as Python's `html.entities.html5`) by\n"
-              "# tools/entities.py, which no law reaches: a law can say how the table is\n"
-              "# read (laws/NamedReferencesLongestMatch.bend), not that its rows are the\n"
-              "# standard's. The differential test against `html.unescape` reads every name\n"
-              "# with and without its `;`.\n")
+              "# one or two code points it stands for. tools/entities.py generates it from\n"
+              "# the standard's entities.json (https://html.spec.whatwg.org/entities.json,\n"
+              "# the same table as Python's `html.entities.html5`), checking that each\n"
+              "# entry's code points spell its characters; no law reaches that: a law can\n"
+              "# say how the table is read (laws/NamedReferencesLongestMatch.bend), not\n"
+              "# that its rows are the standard's. No test compares html_unescape against\n"
+              "# Python's `html.unescape`.\n")
     out.write("import Base\n\n")
     out.write("# one named character reference: its name (with its `;` when "
               "it has one)\n# and the one or two code points it stands for, "

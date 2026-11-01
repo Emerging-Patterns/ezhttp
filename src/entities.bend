@@ -4,12 +4,13 @@
 #
 # Trusted, not proved: this is the HTML Standard's named character
 # references table: every name in it once, without its leading `&`, with the
-# one or two code points it stands for. It is data transcribed from another
-# document (the same table as Python's `html.entities.html5`) by
-# tools/entities.py, which no law reaches: a law can say how the table is
-# read (laws/NamedReferencesLongestMatch.bend), not that its rows are the
-# standard's. The differential test against `html.unescape` reads every name
-# with and without its `;`.
+# one or two code points it stands for. tools/entities.py generates it from
+# the standard's entities.json (https://html.spec.whatwg.org/entities.json,
+# the same table as Python's `html.entities.html5`), checking that each
+# entry's code points spell its characters; no law reaches that: a law can
+# say how the table is read (laws/NamedReferencesLongestMatch.bend), not
+# that its rows are the standard's. No test compares html_unescape against
+# Python's `html.unescape`.
 import Base
 
 # one named character reference: its name (with its `;` when it has one)
