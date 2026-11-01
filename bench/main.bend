@@ -30,7 +30,7 @@ def wrote.close(file: File, ok: Unit) -> IO(Unit):
       File.close(file)
 
 # force a write Result, then close the file
-def wrote(pair: File & Result<&1, &1, U32 & String, Unit>) -> IO(Unit):  # noqa: L001 benchmark program
+def wrote(pair: File & Result<&1, &1, U32 & String, Unit>) -> IO(Unit):
   (file, result) = pair
   do IO<Unit>:
     ok : Unit <- IO.pass(Unit, result)
@@ -525,7 +525,7 @@ def handle.req(req: Msg.Request, text: String, raw: String, small: String, mediu
       handle.method(method, target, body, text, raw, small, medium)
 
 # pure handler: fixtures are closed literals, not captured runtime values
-def handle(req: Msg.Request) -> Msg.Reply:  # noqa: L001 benchmark program, no law's subject
+def handle(req: Msg.Request) -> Msg.Reply:
   handle.req(req, Fix.fix.text(), Fix.fix.bytes(), Fix.fix.small(), Fix.fix.medium())
 
 # listen; the handler is closed, so fixtures stay in the binary
@@ -608,7 +608,8 @@ def run.json(+cmd: String, +a1: String, +a2: String, a3: String) -> IO(Unit):
     _u => cmd.json.ok(a1, a2),
     _u => run.get(cmd, a1, a2, a3))
 
-# parse-diff: the packed reader against the text parse (SPEC.md HTTP-TRUST-9)
+# parse-diff: the packed reader against the text parse (trusted in
+# src/packed.bend)
 def run.parse(+cmd: String, a1: String, a2: String, a3: String) -> IO(Unit):
   on.io(String.eq(cmd, "parse-diff"),
     _u => IO.print(Parse.diff.report()),
@@ -635,7 +636,7 @@ def main.go(args: List<String>) -> IO(Unit):
       main.go.un(argv.w0(rest))
 
 # CLI entry
-def main() -> IO(Unit):  # noqa: L001 benchmark program, no law's subject
+def main() -> IO(Unit):
   do IO<Unit>:
     args : List<String> <- IO.args()
     main.go(args)

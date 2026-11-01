@@ -1,24 +1,59 @@
 # ezhttp/src/packed: a response read off its packed octets (bend-kit-bytes),
 # so its body is never turned into text. Only the heads and the chunk-size
 # lines are read as text, a few octets each; every decision is
-# src/http.bend's, the same one its text parse makes (SPEC.md HTTP-CLI-15):
-# which head is final and what its plan is (head.final), its reason phrase
-# (phrase.line), and what each chunk-size line says (chunk.size). This module
-# only finds those lines and copies the body's octets out (SPEC.md
-# HTTP-TRUST-9).
+# src/http.bend's, the same one its text parse makes
+# (laws/HeadPlannedBeforeBody.bend): which head is final and what its plan
+# is (head.final), its reason phrase (phrase.line), and what each chunk-size
+# line says (chunk.size). This module only finds those lines and copies the
+# body's octets out (trusted below).
+#
+# Trusted, not proved: `packed.reply` reads a response off its packed octets
+# as `Http.parse.to` reads the same octets as text
+# (laws/InterimResponsesSkipped.bend), acting on src/http.bend's decisions
+# in order. From offset 0 it finds each head's end, the first CRLF CRLF at
+# or after it (`Bytes.find.from`), at most as many heads as there are
+# octets, and reads that head's lines as text; none is torn with `the
+# response head has no blank line after it`. It skips the head when
+# `interim.skip.of` says so of its status and whether any octet follows its
+# blank line, and reads on from there; otherwise its plan is `head.final` of
+# the method and its lines, and its reason phrase `phrase.line` of its first
+# line (laws/ReasonPhraseFromFinalHead.bend,
+# laws/HeadPlannedBeforeBody.bend). An `Unplanned` head is torn with its
+# reason. A `Planned` one has its status and fields, and a body by its
+# framing: no octets when `Bare`; under `Sized{n}`, torn with `the response
+# body stopped before its Content-Length` when fewer than `n` octets follow
+# the head, else exactly the first `n` of them
+# (laws/ContentLengthFramesBody.bend); every octet after the head when
+# `Closed`; when `Chunked`, the chunks from the head's end, at most as many
+# as there are octets after it (else `the chunked body is truncated`): a
+# chunk-size line with no CRLF after it ends the body; otherwise
+# `chunk.size` of the line before its CRLF is acted on: `SizeBad` is torn
+# with its reason, `SizeLast` ends the body, and `SizeData{n}` is torn with
+# `chunk.short()` unless `n` octets and then CR LF follow the line's CRLF,
+# and is otherwise exactly those `n` octets, the body going on at the
+# chunk-size line after their CRLF (laws/ChunkDataUnchanged.bend). The body
+# is the chunks' octets in order (`Bytes.concat`). It finds lines and copies
+# octets out of packed `Array<U32>` words with bend-kit-bytes (trusted in
+# src/wire.bend), which no law reaches. Every decision it acts on is
+# src/http.bend's and is proved to be the text parse's: which head is final,
+# its plan, its reason phrase and each chunk-size line's step. Over a corpus
+# of responses (sized, short, to the close, chunked with extensions,
+# trailers, short and non-hex chunks, TE with CL, disagreeing CLs, interim
+# heads, 204, 304, no blank line, no status line) read by `GET` and `HEAD`,
+# it answers exactly what `Http.parse.to` answers (bench/parse.bend).
 import Base
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
 import ./http.bend as Http
 
 # a response read off its octets: torn, or its status, its header fields and
 # reason phrase as octet text, and its body's octets
-type Got is Type:  # noqa: L001 holds packed Bytes, which no law reaches (HTTP-TRUST-9)
+type Got is Type:  # noqa: L001 holds packed Bytes, which no law reaches (trusted above)
   Torn{why: String}
   Got{status: U32, headers: List<&2, Http.Header>, reason: String,
     body: Bytes.Bytes}
 
 # a chunked body's octets so far, newest first, or why it was torn
-type Parts is Type:  # noqa: L001 holds packed Bytes, which no law reaches (HTTP-TRUST-9)
+type Parts is Type:  # noqa: L001 holds packed Bytes, which no law reaches (trusted above)
   Bad{why: String}
   Parts{parts: List<&1, Bytes.Bytes>}
 
@@ -206,6 +241,7 @@ def packed.reply.of(+method: String, r: Bytes.Bytes & U32) -> Got:
   packed.heads(U32.to_nat(len), String.eq(method, "HEAD"), b, 0, len)
 
 # the response to a request with this method, read off its octets as
-# parse.to reads its text (SPEC.md HTTP-CLI-9, HTTP-CLI-15, HTTP-TRUST-9)
+# parse.to reads its text (laws/InterimResponsesSkipped.bend,
+# laws/HeadPlannedBeforeBody.bend, trusted above)
 def packed.reply(+method: String, b: Bytes.Bytes) -> Got:
   packed.reply.of(method, Bytes.length(b))

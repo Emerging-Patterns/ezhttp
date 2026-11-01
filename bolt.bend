@@ -37,7 +37,3 @@ def closed() -> String:
 # which bolt never grades
 def coverage() -> String:
   "error"
-
-# SPEC.md rows and law tags agree (HTTP-SRV)
-def trace() -> String:
-  "error"

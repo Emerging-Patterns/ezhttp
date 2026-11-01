@@ -10,8 +10,42 @@
 # (wire.ms.of), the octets sent (wire.payload), what a failed call is reported
 # as (wire.fail) and when the response is whole (wire.read.count, else
 # wire.read.next on a copy of the receive as text), so a server that keeps the
-# connection open after a complete response is not waited on (SPEC.md
-# HTTP-CLI-1, 6, 10, 13; HTTP-TRUST-3, 5).
+# connection open after a complete response is not waited on
+# (laws/DeadlineIsTimeout.bend, laws/ReadsJudgedByCount.bend,
+# laws/OctetBodiesSentUnchanged.bend, laws/FailuresReportedByPhase.bend;
+# the sequencing is trusted in src/client.bend).
+#
+# Trusted, not proved: bend-kit-wire@0.4.6.1 (`Wire.connect`,
+# `Wire.tls.connect`, `Wire.send.words.deadline`, `Wire.tls.send.words`,
+# `Wire.recv.words`, `Wire.tls.recv.words`, `Wire.tls.close`),
+# bend-kit-dns@0.6.0.2 (`Dns.resolve.literal.all`, `Dns.lookup.all`) and
+# bend-kit-bytes@0.3.2.0 (`Bytes.from_string`, `Bytes.to_string`,
+# `Bytes.length`, `Bytes.append`, `Bytes.concat`, `Bytes.find`,
+# `Bytes.find.from`, `Bytes.slice`, `Bytes.new`) do what their comments say:
+# `connect` connects to a numeric address within its deadline;
+# `tls.connect` checks the server's certificate chain and host name within
+# its deadline; `send.words.deadline` sends all `len` octets within its
+# deadline, and `tls.send.words` all of them with no deadline; `recv.words`
+# and `tls.recv.words` answer at least one octet that arrived within the
+# deadline, as many as are waiting up to `max`, and 0 octets once the server
+# has closed (over TLS, once it has sent close_notify); a deadline of 0 is
+# none; `from_string` packs one octet per character (its low 8 bits) and
+# `to_string` gives one character per octet; `length` answers the number of
+# octets, `append` and `concat` put octets together in order, `find`
+# answers where a run of octets first occurs (none when it does not) and
+# `find.from` where it first occurs at or after an offset, `slice` gives the
+# buffer back with a copy of up to `n` octets from an offset, and `new(0)`
+# is no octets; `lookup.all` asks the OS resolver and answers every address.
+# Name resolution is not bounded by the deadline. They are another
+# project's code (github.com/paymog/bend-kit, Apache-2.0), pinned by hash in
+# ez.toml and upgraded deliberately: foreign C and JS (`effs/wire.c`,
+# `wire.js`, `effs/dns.c`, `dns.js`) over sockets, getaddrinfo and OpenSSL,
+# and Bend over packed `Array<U32>` words that no law here reaches.
+# bend-kit-wire ships no LAWS file, so nothing proves its comments. What the
+# deadline is, what is sent, what a failure is reported as and when the
+# answer is complete are proved (laws/DeadlineIsTimeout.bend,
+# laws/OctetBodiesSentUnchanged.bend, laws/FailuresReportedByPhase.bend,
+# laws/ReadsJudgedByCount.bend); bend-kit decides none of them.
 import Base
 import bend-kit-wire@0.4.6.1/wire.bend as W
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
@@ -77,7 +111,7 @@ def wire.shake(secure: Bool, s: Socket, host: String, ms: U32)
 # an exchange's answer: the failure it was reported with (a status other than
 # 0 on its first line, then the reason, wirespec.bend wire.fail), or every
 # octet of the response, packed
-type Answer is Type:  # noqa: L001 holds packed Bytes, which no law reaches (HTTP-TRUST-5)
+type Answer is Type:  # noqa: L001 holds packed Bytes, which no law reaches (trusted in src/client.bend)
   Failed{answer: String}
   Received{octets: Bytes.Bytes}
 
@@ -111,7 +145,8 @@ def wire.loop.text(+secure: Bool, s: Socket, h: Http.Hear, piece: Bytes.Bytes,
   -> IO(Answer):
   wire.loop.copied(secure, s, h, Bytes.slice(piece, 0, 4294967295), acc, more)
 
-# a read judged by its count when that decides it (SPEC.md HTTP-CLI-6)
+# a read judged by its count when that decides it
+# (laws/ReadsJudgedByCount.bend)
 def wire.loop.judge(+secure: Bool, s: Socket, h: Http.Hear, piece: Bytes.Bytes,
   acc: Bytes.Bytes, counted: Maybe<&2, Spec.Read>,
   more: Socket -> Http.Hear -> Bytes.Bytes -> IO(Answer)) -> IO(Answer):

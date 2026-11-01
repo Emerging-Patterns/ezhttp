@@ -139,8 +139,9 @@ def utf8.len(s: String) -> Nat:
     case SCon{h, t}:
       Nat.add(utf8.width(Char.to_u32(h)), utf8.len(t))
 
-# What is received is octets, one character each (SPEC.md HTTP-BODY-1): the
-# octs.* walks below count a character as one octet.
+# What is received is octets, one character each
+# (laws/OneOctetPerChar.bend): the octs.* walks below count a character as
+# one octet.
 
 # octets one received character stands for: one
 def octs.width(+_u: U32) -> Nat:
@@ -513,7 +514,7 @@ def clen.line(+n: Nat, empty: Bool) -> String:
   headers.lines(clen.field(n, empty))
 
 # the fields a request names: the ones ezhttp writes a default for, the ones
-# it always computes, and every other (SPEC.md HTTP-CLI-8)
+# it always computes, and every other (laws/RequestHeaderFieldsOrdered.bend)
 type Field is Data:
   FHost{}
   FAgent{}
@@ -842,7 +843,7 @@ def parse.chunks(status: U32, headers: List<&2, Header>, +body: String) -> Reply
   parse.chunked(status, headers, body,
     chunks.scan(String.length(body), divide(body, "\r\n")))
 
-# --- a response planned from its head (SPEC.md HTTP-CLI-15) ---
+# --- a response planned from its head (laws/HeadPlannedBeforeBody.bend) ---
 
 # what a final head says of its response, before its body is touched: torn,
 # or its status, its fields and how its body is framed
@@ -997,7 +998,7 @@ def reason(+code: U32) -> String:
   reason.in(reasons(), code)
 
 # the head of a reply whose body is n octets, onto what follows it
-# (SPEC.md HTTP-SRV-6)
+# (laws/ReplyHeadFramesBody.bend)
 def respond.head.onto(+status: U32, headers: List<&2, Header>, +n: Nat,
   rest: String) -> String:
   "HTTP/1.1 " ++ U32.show(status) ++ " " ++ reason(status) ++ "\r\n"
@@ -1029,7 +1030,7 @@ def te.line(te: Bool) -> String:
       ""
 
 # the head of a streamed reply: chunked unless the status has no body
-# (RFC 9112 §6.1, §7.1; SPEC.md HTTP-SRV-7)
+# (RFC 9112 §6.1, §7.1; laws/StreamedRepliesAreChunked.bend)
 def respond.stream(+status: U32, headers: List<&2, Header>) -> String:
   "HTTP/1.1 " ++ U32.show(status) ++ " " ++ reason(status) ++ "\r\n"
     ++ "Connection: close\r\n"
@@ -1066,7 +1067,7 @@ def chunk.frame.of(+n: U32, empty: Bool) -> Chunk:
     case False{}:
       Chunk{chunk.line(n)}
 
-# the frame of a chunk of n octets (SPEC.md HTTP-SRV-7)
+# the frame of a chunk of n octets (laws/StreamedRepliesAreChunked.bend)
 def chunk.frame(+n: U32) -> Chunk:
   chunk.frame.of(n, U32.is_eq(n, 0))
 
@@ -1478,7 +1479,8 @@ def parse.to(+method: String, +raw: String) -> Reply:
   parse.to.go(String.length(raw), String.eq(method, "HEAD"),
     divide(raw, "\r\n\r\n"))
 
-# --- when a response has all arrived, judged read by read (SPEC.md HTTP-CLI-12) ---
+# --- when a response has all arrived, judged read by read ---
+# laws/ReadStateMatchesWholeText.bend
 #
 # The client judges the text it has received after every read. Judging the
 # whole text each time (whole) costs the whole text each time; the state
@@ -1724,8 +1726,9 @@ def walk.more.n(w: Walk, +m: Nat) -> Walk:
       Tail{fuel, left, rest}
 
 # whether a state can be advanced by a count of octets alone, without their
-# text: a whole response, a body framed by the close or by Content-Length, or
-# a chunk's data that still owes at least that many (SPEC.md HTTP-CLI-6)
+# text: a whole response, a body framed by the close or by Content-Length,
+# or a chunk's data that still owes at least that many
+# (laws/ReadsJudgedByCount.bend)
 def hear.counts(h: Hear, +m: Nat) -> Bool:
   match h:
     case Heads{fuel, asked, raw}:

@@ -1,6 +1,7 @@
 # ezhttp/src/redirect: where a GET goes after a response, pure. The client's
 # follow loop (client.bend) sends the next GET where this module says and
-# decides nothing itself. SPEC.md HTTP-REDIR lists what is guaranteed.
+# decides nothing itself. What is guaranteed is under laws/, such as
+# laws/RedirectsFollowLocation.bend.
 #
 # Policy: the client follows redirects for GET only, so every hop is a GET.
 # 301, 302, 303, 307 and 308 with a Location are followed; any other status

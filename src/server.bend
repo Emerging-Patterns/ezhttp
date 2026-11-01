@@ -5,8 +5,42 @@
 # A `_with` serve hands the handler a context value and the request as text
 # with its body's octets, and takes a reply as text, packed octets or a
 # stream of octet chunks; the plain serves are those with a text handler.
-# Every decision after an effect is step.bend's or http.bend's (SPEC.md
-# HTTP-SRV); this module runs the effects in order (HTTP-TRUST-2).
+# Every decision after an effect is step.bend's or http.bend's, proved under
+# laws/ (the server's guarantees, such as laws/BadRequestAnswers400.bend);
+# this module runs the effects in order (trusted below).
+#
+# Trusted, not proved: Base's TCP effects (listen, accept, send) and
+# bend-kit-wire's `recv` on an accepted socket report a failure as `Fail`
+# and never end the process themselves; `recv` answers the octets that
+# arrived, one character each, and no octets once the peer has closed. They
+# are foreign C in Bend's runtime (`effs/tcp_*.c`) and in bend-kit-wire
+# (`effs/wire.c`), which no law reaches.
+#
+# Trusted, not proved: this module acts on step.bend's answers in order. It
+# listens, then accepts with bend-kit-wire's `accept.deadline` one
+# connection at a time, and serves each accepted connection on its own fork
+# (`IO.spawn`); with a concurrency limit `max` other than 0 it takes a slot
+# before forking and gives it back when the connection is closed, so at most
+# `max` connections are served at once. On each connection it receives the
+# request until the octets `step.need` names have arrived (the head, its
+# blank line and its Content-Length), the peer closes, or 65536 receives
+# have been made, parses it, calls the handler only for a `Call`, with the
+# serve's context and the request `step.text` and `step.octets` give, writes
+# the reply `step.bare` shapes (a text reply as the UTF-8 of `respond`, a
+# packed octets reply as `respond.head` and its octets, a streamed one as
+# `respond.stream`, then each chunk the channel gives as `chunk.frame`
+# writes it until the channel is closed, then `chunk.end`) with
+# bend-kit-wire's `send.words`, and closes the socket; a lost connection's
+# line is written to stderr and the socket closed. `http.serve`,
+# `http.serve_with`, `http.serve_io` and `http.serve_io_with` stop accepting
+# after `limit` connections, a failed accept counting as one and an accept
+# whose deadline passed not counting, and return once every connection they
+# forked is closed; `http.serve_forever` and `http.serve_forever_with` do
+# not stop. It is IO sequencing over Base's and bend-kit-wire's effects and
+# the runtime's `IO.spawn` and channels: the checker cannot run an IO
+# program and no law can state what happens after an effect, or which fork
+# runs when. The serve_forever defs are also `@unsafe` recursion, outside
+# the termination check.
 import Base
 import bend-kit-wire@0.4.6.1/wire.bend as W
 import bend-kit-bytes@0.3.2.0/bytes.bend as Bytes
@@ -17,14 +51,15 @@ import ./wirespec.bend as Spec
 
 # what a `_with` handler gets: the request as text (step.text) and its
 # body's octets as they arrived (step.octets)
-type Req is Type:  # noqa: L001 it holds Bytes; step.text and step.octets fill it (HTTP-SRV-9)
+type Req is Type:  # noqa: L001 it holds Bytes; step.text and step.octets fill it
   Req{method: String, target: String, headers: List<&2, Http.Header>,
     body: String, bytes: Bytes.Bytes}
 
 # what a `_with` handler answers: a text body (written as UTF-8), packed
 # octets written unchanged, or a stream of octet chunks from a channel,
-# written chunked until the channel is closed (SPEC.md HTTP-SRV-6, 7)
-type Answer is Type:  # noqa: L001 it holds Bytes and a channel; HTTP-SRV-6 to 8 cover its writing
+# written chunked until the channel is closed
+# (laws/ReplyHeadFramesBody.bend, laws/StreamedRepliesAreChunked.bend)
+type Answer is Type:  # noqa: L001 it holds Bytes and a channel; the reply laws cover its writing
   TextReply{status: U32, headers: List<&2, Http.Header>, body: String}
   OctetsReply{status: U32, headers: List<&2, Http.Header>, bytes: Bytes.Bytes}
   StreamReply{status: U32, headers: List<&2, Http.Header>,
@@ -199,14 +234,16 @@ def server.then(r: Socket & Step.Got<Unit>, more: Socket -> IO(Unit))
     case Step.Kept{_u}:
       more(sock)
 
-# a text reply shaped for the request's method (HTTP-SRV-3), then close
+# a text reply shaped for the request's method
+# (laws/HeadAndNoContentHaveNoBody.bend), then close
 def server.answer(sock: Socket, method: String, reply: Http.Reply) -> IO(Unit):
   IO.bind(Socket & Step.Got<Unit>, Unit,
     server.send.text(sock, Http.respond.of(Http.reply.for(method, reply))),
     server.close)
 
-# an octets reply once its length is known: its head, then its octets
-# unless it is bare (HTTP-SRV-6, 8)
+# an octets reply once its length is known: its head, then its octets unless
+# it is bare (laws/ReplyHeadFramesBody.bend,
+# laws/BareRepliesWriteHeadOnly.bend)
 def server.octets.go(sock: Socket, +status: U32, headers: List<&2, Http.Header>,
   r: Bytes.Bytes & U32, bare: Bool) -> IO(Unit):
   (b, +n) = r
@@ -273,7 +310,9 @@ def server.stream.body(sock: Socket, +ch: Chan(Bytes.Bytes), bare: Bool)
     case False{}:
       server.stream.go(server.chunks(), sock, ch)
 
-# a handler's answer, shaped for the request's method (HTTP-SRV-3, 6 to 8)
+# a handler's answer, shaped for the request's method
+# (laws/HeadAndNoContentHaveNoBody.bend, laws/ReplyHeadFramesBody.bend,
+# laws/StreamedRepliesAreChunked.bend, laws/BareRepliesWriteHeadOnly.bend)
 def server.reply(sock: Socket, +method: String, a: Answer) -> IO(Unit):
   match a:
     case TextReply{status, headers, body}:
@@ -297,7 +336,9 @@ def server.req(req: Http.Request, +octets: String) -> Req:
     case Http.Request{method, target, headers, body}:
       Req{method, target, headers, body, Bytes.from_string(octets)}
 
-# answer now, or call the handler: step.bend decides which (HTTP-SRV-1, 2, 9)
+# answer now, or call the handler: step.bend decides which
+# (laws/BadRequestAnswers400.bend, laws/HandlerGetsRequestText.bend,
+# laws/WithServesGetOctetsAndContext.bend)
 def server.step(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
   sock: Socket, +method: String, +octets: String, step: Step.Step) -> IO(Unit):
   match step:
@@ -425,7 +466,7 @@ def server.slots(+max: U32) -> IO(Chan(Unit)):
 
 # listen and serve up to `limit` connections, each on its own fork, at most
 # `max` at once (0: no limit), with a context value for the handler; returns
-# once every fork is done (SPEC.md HTTP-TRUST-2)
+# once every fork is done (trusted above)
 def server.serve_io_with(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
   host: String, port: U32, limit: U32, +max: U32) -> IO(Unit):
   do IO<Unit>:

@@ -2,7 +2,8 @@
 # urllib.parse.quote does it. Unreserved characters (§2.3) are written as
 # themselves; the path form also keeps "/"; every other character is written
 # as the bytes of its UTF-8 encoding (RFC 3629 §3), each as "%" and two
-# upper-case hex digits. SPEC.md HTTP-URL lists what is guaranteed.
+# upper-case hex digits. What is guaranteed is under laws/, such as
+# laws/QuoteKeepsUnreserved.bend.
 import Base
 
 # RFC 3986 §2.3 unreserved: ALPHA / DIGIT / "-" / "." / "_" / "~"

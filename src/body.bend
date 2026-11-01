@@ -12,7 +12,7 @@ type Body is Type:
   Octets{bytes: Bytes.Bytes}
 
 # what the request text needs to know of a body: its text, or how many
-# octets follow it (SPEC.md HTTP-CLI-10)
+# octets follow it (laws/OctetBodiesSentUnchanged.bend)
 type Shape is Data:
   ShapeText{text: String}
   ShapeOctets{n: U32}

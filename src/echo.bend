@@ -2,7 +2,8 @@
 # Set-Cookie fields, reduced to names and values (RFC 6265 §5.2 parsing,
 # §5.3 step 11 replacement, §5.4 serialization). No attribute is read: no
 # Domain, Path, Expires, Max-Age, Secure or HttpOnly, so nothing expires and
-# every cookie goes back. Pure. SPEC.md HTTP-CK lists what is guaranteed.
+# every cookie goes back. Pure. What is guaranteed is under laws/, such as
+# laws/CookieHeaderEchoesStore.bend.
 import Base
 import ./http.bend as Http
 import ./qs.bend as Qs

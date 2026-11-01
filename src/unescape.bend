@@ -4,7 +4,8 @@
 # where the parser would report an error). Numeric references are decimal
 # (`&#38;`) or hexadecimal (`&#x26;`); named ones come from the HTML
 # Standard's table (src/entities.bend), the legacy names also without their
-# `;`. Pure. SPEC.md HTTP-REF lists what is guaranteed.
+# `;`. Pure. What is guaranteed is under laws/, such as
+# laws/UnescapeFindsReferences.bend.
 import Base
 import ./entities.bend as Ents
 
@@ -23,7 +24,7 @@ type Scan is Data:
 def fffd() -> String:
   SCon{Chr{65533}, ""}
 
-# --- numeric references (HTTP-REF-2) ---
+# --- numeric references (laws/NumericReferencesDecode.bend) ---
 
 # the value a number is held at once it is past U+10FFFF: any larger one
 # reads the same (U+FFFD)
@@ -124,7 +125,7 @@ def code.zero(+n: U32, zero: Bool) -> String:
 def code(+n: U32) -> String:
   code.zero(n, U32.is_eq(n, 0))
 
-# --- named references (HTTP-REF-3) ---
+# --- named references (laws/NamedReferencesLongestMatch.bend) ---
 
 # a name's length, or 0 for none yet
 def best.len(m: Maybe<&2, Ents.Ref>) -> Nat:
@@ -186,7 +187,7 @@ def named.of(m: Maybe<&2, Ents.Ref>, s: String) -> String:
 def named(+s: String) -> String:
   named.of(best(Ents.table(), s, None{}), s)
 
-# --- the scan (HTTP-REF-1) ---
+# --- the scan (laws/UnescapeFindsReferences.bend) ---
 
 # a character that may be in a name: anything but TAB, LF, FF, space, `<`,
 # `&`, `#` and `;`

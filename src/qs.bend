@@ -4,7 +4,7 @@
 # parse_qsl(keep_blank_values=True) do them. Decoded bytes are read as UTF-8
 # (RFC 3629 §4), each maximal subpart of an ill-formed sequence replaced by
 # one U+FFFD (Unicode §3.9), as Python's errors="replace" does. Pure.
-# SPEC.md HTTP-QS lists what is guaranteed.
+# What is guaranteed is under laws/, such as laws/UnquoteReadsEscapes.bend.
 import Base
 import ./pct.bend as Pct
 import ./http.bend as Http
@@ -14,7 +14,7 @@ import ./http.bend as Http
 def Kv() -> Data:
   Sigma<&2, &2, String, _ => String>
 
-# --- percent-decoding: text to bytes (HTTP-QS-1) ---
+# --- percent-decoding: text to bytes (laws/UnquoteReadsEscapes.bend) ---
 
 # one piece of a string being decoded: a byte of an ASCII run, or a
 # character outside ASCII, which is kept as it is and ends the run
@@ -108,7 +108,8 @@ def toks(s: String, +plus: Bool, st: Esc) -> List<&2, Tok>:
     case SCon{+c, t}:
       tok.step(plus, st, c, st2 => toks(t, plus, st2))
 
-# --- UTF-8 decoding with replacement (HTTP-QS-2) ---
+# --- UTF-8 decoding with replacement ---
+# laws/Utf8DecodesWithReplacement.bend
 
 # where the UTF-8 decoding stands: between characters, or inside a sequence
 # with code point bits `cp` so far, needing a byte in lo..hi and `left` more
@@ -285,7 +286,8 @@ def utf.dec(ts: List<&2, Tok>, st: Utf) -> String:
     case t <> rest:
       utf.step(st, t, st2 => utf.dec(rest, st2))
 
-# --- the decoders (HTTP-QS-1, 3) ---
+# --- the decoders ---
+# laws/UnquoteReadsEscapes.bend, laws/UnquotePlusReadsSpaces.bend
 
 # percent-decode a string, as urllib.parse.unquote
 def unquote(s: String) -> String:
@@ -295,7 +297,8 @@ def unquote(s: String) -> String:
 def unquote.plus(s: String) -> String:
   utf.dec(toks(s, True{}, Plain{}), Idle{})
 
-# --- quote_plus and urlencode (HTTP-QS-4, 5) ---
+# --- quote_plus and urlencode ---
+# laws/QuotePlusWritesSpaces.bend, laws/UrlencodeJoinsPairs.bend
 
 # one character: a space as `+`, any other as quote_component writes it
 def plus.one(+cp: U32, rest: String, space: Bool) -> String:
@@ -333,7 +336,8 @@ def urlencode(ps: List<&2, Kv()>) -> String:
     case (name, value) <> t:
       form.pair(name, value) ++ form.more(t)
 
-# --- parse_query and query_get (HTTP-QS-6, 7) ---
+# --- parse_query and query_get ---
+# laws/ParseQuerySplitsPairs.bend, laws/QueryGetLastWins.bend
 
 # one character put back in front of what the rest of the cut found
 def cut.push(+c: Char, m: Maybe<&2, Kv()>) -> Maybe<&2, Kv()>:
@@ -415,7 +419,7 @@ def get(ps: List<&2, Kv()>, +name: String) -> Maybe<&2, String>:
     case (key, value) <> t:
       get.pick(get(t, name), value, String.eq(key, name))
 
-# --- received octets as text (SPEC.md HTTP-BODY-4) ---
+# --- received octets as text (laws/OctetsDecodeAsUtf8.bend) ---
 
 # octets, one character each, as the pieces utf.dec reads
 def octets.toks(s: String) -> List<&2, Tok>:
@@ -426,7 +430,7 @@ def octets.toks(s: String) -> List<&2, Tok>:
       B{Char.to_u32(c)} <> octets.toks(t)
 
 # received octets as text: decoded as UTF-8, each ill-formed sequence's
-# maximal subpart one U+FFFD (HTTP-QS-2)
+# maximal subpart one U+FFFD (laws/Utf8DecodesWithReplacement.bend)
 def octets.text(o: String) -> String:
   utf.dec(octets.toks(o), Idle{})
 
