@@ -21,15 +21,14 @@
 # laws/UnescapeFindsReferences.bend (character references) and
 # laws/CookieHeaderEchoesStore.bend (cookies sent back).
 #
-# ezhttp's other laws are closed equalities for URL parsing (RFC 3986),
-# HTTP/1.1 message framing (RFC 9112), HTTP semantics (RFC 9110), TLS
-# selection (RFC 2818), Basic and Bearer credentials (RFC 7617, RFC 4648,
-# RFC 6750), the cookie jar in src/cookie.bend (RFC 6265), caching
-# directives (RFC 9111) and Fetch CORS. They are not inventoried as
-# guarantees yet: each is a file of its own holding one law, named for what
-# the law states and with no prose (laws/UrlPathIsAbsolute.bend,
-# laws/CacheReadsKnownDirectives.bend), and promises nothing beyond the
-# equality it states.
+# ezhttp's other laws hold internal behavior in place, each a closed equality
+# on one input, for URL parsing (RFC 3986), HTTP/1.1 message framing (RFC
+# 9112), HTTP semantics (RFC 9110), TLS selection (RFC 2818), Basic and Bearer
+# credentials (RFC 7617, RFC 4648, RFC 6750), the cookie jar in
+# src/cookie.bend (RFC 6265), caching directives (RFC 9111) and Fetch CORS.
+# Each is a file of its own holding one law, named for what the law states,
+# with no prose yet (laws/UrlPathIsAbsolute.bend,
+# laws/CacheReadsKnownDirectives.bend).
 #
 # Commits before these files name guarantees by the requirement IDs of
 # docs/SPEC.md, the table these files replaced.
