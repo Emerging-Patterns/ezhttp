@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.22.0...v0.23.0) (2026-11-07)
+
+
+### Bug Fixes
+
+* a lost connection's step is Dropped, so ezhttp checks on bend 2.0.40 ([#66](https://github.com/Emerging-Patterns/ezhttp/issues/66)) ([59fbccc](https://github.com/Emerging-Patterns/ezhttp/commit/59fbcccec4924d51b91b932a34cd0ad3f229eb73))
+
 ## [0.22.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.21.0...v0.22.0) (2026-10-25)
 
 
