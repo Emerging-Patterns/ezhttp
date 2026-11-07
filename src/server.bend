@@ -175,7 +175,7 @@ def server.read.got(+ps: List<&2, String>, +have: Nat, need: Maybe<&2, Nat>,
   match res:
     case Fail{(code, why)}:
       IO.pure(Socket & Step.Got<Http.Request>,
-        (sock, Step.Lost{Step.step.line("read", why)}))
+        (sock, Step.Dropped{Step.step.line("read", why)}))
     case Done{+text}:
       server.read.text(sock, ps, have, need, text, String.is_empty(text), rest)
 
@@ -219,7 +219,7 @@ def server.send.text(sock: Socket, text: String) -> IO(Socket & Step.Got<Unit>):
 def server.close(r: Socket & Step.Got<Unit>) -> IO(Unit):
   (sock, got) = r
   match got:
-    case Step.Lost{line}:
+    case Step.Dropped{line}:
       server.lose(sock, line)
     case Step.Kept{_u}:
       Socket.close(sock)
@@ -229,7 +229,7 @@ def server.then(r: Socket & Step.Got<Unit>, more: Socket -> IO(Unit))
   -> IO(Unit):
   (sock, got) = r
   match got:
-    case Step.Lost{line}:
+    case Step.Dropped{line}:
       server.lose(sock, line)
     case Step.Kept{_u}:
       more(sock)
@@ -353,7 +353,7 @@ def server.conn.got(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
   r: Socket & Step.Got<Http.Request>) -> IO(Unit):
   (sock, got) = r
   match got:
-    case Step.Lost{line}:
+    case Step.Dropped{line}:
       server.lose(sock, line)
     case Step.Kept{+raw}:
       +req = Step.step.text(raw)

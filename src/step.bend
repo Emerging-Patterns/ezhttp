@@ -14,7 +14,7 @@ type Step is Data:
 # a connection that is lost
 type Got<-A: Type> is Type:
   Kept{value: A}
-  Lost{line: String}
+  Dropped{line: String}
 
 # a request received as octets, as text: its method, target, header names
 # and values and body each decoded as UTF-8
@@ -48,7 +48,7 @@ def step.got(
 ) -> Got<A>:
   match res:
     case Fail{(code, why)}:
-      Lost{step.line(phase, why)}
+      Dropped{step.line(phase, why)}
     case Done{value}:
       Kept{value}
 
@@ -57,7 +57,7 @@ def step.sent(res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>)
   -> Got<Unit>:
   match res:
     case Fail{((code, why), left)}:
-      Lost{step.line("write", why)}
+      Dropped{step.line("write", why)}
     case Done{value}:
       Kept{value}
 
