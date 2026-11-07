@@ -14,7 +14,7 @@ law lost_failed:
   for code: U32
   for why: String
   {Step.step.got(A, phase, Fail{(code, why)})
-    == Step.Lost{"ezhttp: " ++ phase ++ ": " ++ why} : Step.Got<A>}
+    == Step.Dropped{"ezhttp: " ++ phase ++ ": " ++ why} : Step.Got<A>}
 
 # LAW: an accept or recv that succeeds hands on its value unchanged
 law lost_kept:
@@ -29,7 +29,7 @@ law lost_send:
   for why: String
   for left: List<&2, U32>
   {Step.step.sent(Fail{((code, why), left)})
-    == Step.Lost{"ezhttp: write: " ++ why} : Step.Got<Unit>}
+    == Step.Dropped{"ezhttp: write: " ++ why} : Step.Got<Unit>}
 
 # LAW: a send that succeeds keeps the connection
 law lost_sent:
