@@ -2,14 +2,6 @@
 name = "ezhttp"
 entry = "main.bend"
 [deps]
-[deps.ezjson]
-hash = "0xa81e161008ecc2f297c0a3065cb9b188"
-git = "https://github.com/Emerging-Patterns/ezjson"
-rev = "fbae34db74596ddca4ec29409825926246d22cec"
-tag = "v1.2.0"
-root = "."
-narHash = "sha256-bOtXnTBW1oDQOGlFpEKxNklcUY1WmPt5y8HWWQY8sK4="
-entry = "main.bend"
 [deps.bend-kit-wire]
 hash = "0x1afdf90dbe41c30b1df4594db039b02a"
 hub = "bend-kit-wire@0.4.6.1"
@@ -22,6 +14,10 @@ entry = "bytes.bend"
 hash = "0x9bf2c4100bf9328348d215e7ae1657de"
 hub = "bend-kit-dns@0.6.0.2"
 entry = "dns.bend"
+[deps.ezjson]
+hash = "0xa81e161008ecc2f297c0a3065cb9b188"
+hub = "ezjson@1.2.0.0"
+entry = "main.bend"
 [tools]
 [tools.bolt]
 git = "https://github.com/Emerging-Patterns/bolt"

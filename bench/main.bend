@@ -7,7 +7,7 @@ import ../src/http.bend as Msg
 import ../src/body.bend as Body
 import ../src/client.bend as Client
 import ../src/json.bend as Json
-import 0xa81e161008ecc2f297c0a3065cb9b188/src/value.bend as V
+import ezjson@1.2.0.0/src/value.bend as V
 import ./fix.bend as Fix
 import ./parse.bend as Parse
 
