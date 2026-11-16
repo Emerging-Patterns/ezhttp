@@ -2,5 +2,5 @@
 import Base
 import ../laws/UrlTrailingSlash.bend as Laws
 
-def Laws.url_trailing_slash():
+def Laws.path_rejoined(_authority, _segments):
   {==}

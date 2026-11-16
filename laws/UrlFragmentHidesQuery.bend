@@ -1,7 +1,14 @@
 import Base
 import ../src/url.bend as Url
 
-# LAW (RFC 3986 §3.5): a `?` inside the fragment is not a query
-law url_fragment_hides_query:
-  {Url.parse("http://example.com/a#b?c")
-    == Url.Loc{"http", "example.com", 80, "/a"} : Url.Loc}
+# For every text whose `#` split starts with `hier`, dropping the fragment
+# keeps exactly `hier`: everything from the first `#` on, a `?` in it
+# included, is gone before the query is looked for.
+
+# LAW (RFC 3986 §3.5): the fragment is everything after the first `#`
+law frag_first:
+  for s: String
+  for hier: String
+  for rest: List<&2, String>
+  for e: {hier <> rest == String.split(s, '#') : List<&2, String>}
+  {Url.frag.drop(s) == hier : String}

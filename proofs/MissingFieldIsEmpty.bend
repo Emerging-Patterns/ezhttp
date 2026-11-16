@@ -2,5 +2,5 @@
 import Base
 import ../laws/MissingFieldIsEmpty.bend as Laws
 
-def Laws.headers_find_missing():
+def Laws.headers_find_missing(_name):
   {==}

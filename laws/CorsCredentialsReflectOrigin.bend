@@ -1,9 +1,10 @@
 import Base
 import ../src/cors.bend as Cors
 
-# --- Fetch CORS (https://fetch.spec.whatwg.org/#cors-protocol) ---
-
-# LAW (Fetch CORS): credentials reflect the request origin, never `*`
+# LAW (Fetch CORS): with credentials, an allowed origin is reflected as ACAO,
+# never `*`, whether it is allowed by `*` or by name
 law cors_credentials_reflect_origin:
-  {Cors.cors.acao(["*"], True{}, "https://app.example")
-    == "https://app.example" : String}
+  for +os: List<&2, String>
+  for +origin: String
+  for e: {True{} == Cors.cors.allowed(os, origin) : Bool}
+  {Cors.cors.acao(os, True{}, origin) == origin : String}

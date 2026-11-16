@@ -2,5 +2,8 @@
 import Base
 import ../laws/UrlQueryKeepsQuestion.bend as Laws
 
-def Laws.url_query_keeps_question():
+def Laws.query_hier_first(_hier, _rest):
+  {==}
+
+def Laws.query_keeps_question(_hier, _rest):
   {==}

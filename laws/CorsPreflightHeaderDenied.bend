@@ -2,9 +2,21 @@ import Base
 import ../src/http.bend as Http
 import ../src/cors.bend as Cors
 
-# LAW (Fetch CORS): a requested header outside the allow-list fails preflight
+# LAW (Fetch CORS): a preflight from an allowed origin with an allowed method
+# that requests a header off the allow-list is 400
 law cors_preflight_header_denied:
-  {Cors.cors.preflight(Cors.Cfg{["https://app.example"], ["PUT"],
-      ["Content-Type"], False{}, "10", []},
-      "https://app.example", "PUT", "X-Nope")
+  for +origins: List<&2, String>
+  for +methods: List<&2, String>
+  for +headers: List<&2, String>
+  for +credentials: Bool
+  for max_age: String
+  for expose: List<&2, String>
+  for +origin: String
+  for +method: String
+  for +req_headers: String
+  for +e1: {False{} == String.is_empty(Cors.cors.acao(origins, credentials, origin)) : Bool}
+  for e2: {True{} == Cors.cors.hit(method, methods) : Bool}
+  for e3: {False{} == Cors.cors.headers_ok(req_headers, headers) : Bool}
+  {Cors.cors.preflight(Cors.Cfg{origins, methods, headers, credentials, max_age,
+      expose}, origin, method, req_headers)
     == Http.Reply{400, [], ""} : Http.Reply}

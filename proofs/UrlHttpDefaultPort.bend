@@ -2,5 +2,5 @@
 import Base
 import ../laws/UrlHttpDefaultPort.bend as Laws
 
-def Laws.url_http_default_port():
+def Laws.port_absent(_host, _scheme):
   {==}

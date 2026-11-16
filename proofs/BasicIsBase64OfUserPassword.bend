@@ -2,5 +2,5 @@
 import Base
 import ../laws/BasicIsBase64OfUserPassword.bend as Laws
 
-def Laws.basic_user_pass():
+def Laws.basic_user_pass(_user, _password):
   {==}

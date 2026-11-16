@@ -2,5 +2,9 @@
 import Base
 import ../laws/MethodTokensAreCaseSensitive.bend as Laws
 
-def Laws.method_tokens_are_case_sensitive():
-  {==}
+def Laws.method_tokens_are_case_sensitive(t):
+  match t:
+    case SNil{}:
+      {==}
+    case SCon{Chr{y}, tt}:
+      {==}

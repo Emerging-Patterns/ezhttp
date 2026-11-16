@@ -18,13 +18,10 @@ def style() -> String:
 def laws() -> String:
   "error"
 
-# bolt 1.8.0 closed: warn until the findings are fixed (see the tracking issue)
+# a law with no `for` or `exs` binder
 def closed() -> String:
-  "warn"
+  "error"
 
-# a def no quantified law reaches. main.bend's re-exports, the bench program
-# and src/client.bend's Response type (the wire effect keeps it out of every
-# law file) carry `# noqa: L001` with the reason; dotted defs are helpers,
-# which bolt never grades
+# a def no quantified law reaches
 def coverage() -> String:
   "error"
