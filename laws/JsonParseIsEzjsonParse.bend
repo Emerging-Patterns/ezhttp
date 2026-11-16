@@ -5,8 +5,8 @@
 # ezjson's guarantee (trusted here).
 import Base
 import ../src/json.bend as Json
-import ezjson@1.2.0.0/main.bend as Ezjson
-import ezjson@1.2.0.0/src/value.bend as Value
+import ezjson@1.5.0.0/main.bend as Ezjson
+import ezjson@1.5.0.0/src/value.bend as Value
 
 # LAW: text that is not JSON is none
 law json_parse_rejects:

@@ -4,8 +4,8 @@
 import Base
 import ../src/body.bend as Body
 import ../src/json.bend as Json
-import ezjson@1.2.0.0/main.bend as Ezjson
-import ezjson@1.2.0.0/src/value.bend as Value
+import ezjson@1.5.0.0/main.bend as Ezjson
+import ezjson@1.5.0.0/src/value.bend as Value
 
 # LAW: a JSON value is a text body of its compact encoding
 law json_string_is_text_body:
