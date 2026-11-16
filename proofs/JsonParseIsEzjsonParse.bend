@@ -1,8 +1,8 @@
 # proofs of laws/JsonParseIsEzjsonParse.bend
 import Base
 import ../src/json.bend as Json
-import ezjson@1.2.0.0/main.bend as Ezjson
-import ezjson@1.2.0.0/src/value.bend as Value
+import ezjson@1.5.0.0/main.bend as Ezjson
+import ezjson@1.5.0.0/src/value.bend as Value
 import ../laws/JsonParseIsEzjsonParse.bend as Laws
 
 def Laws.json_parse_rejects(s, e):

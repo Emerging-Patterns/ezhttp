@@ -15,8 +15,8 @@ hash = "0x9bf2c4100bf9328348d215e7ae1657de"
 hub = "bend-kit-dns@0.6.0.2"
 entry = "dns.bend"
 [deps.ezjson]
-hash = "0xa81e161008ecc2f297c0a3065cb9b188"
-hub = "ezjson@1.2.0.0"
+hash = "0x597f8af3f77d8983aacfa076df42d235"
+hub = "ezjson@1.5.0.0"
 entry = "main.bend"
 [tools]
 [tools.bolt]
