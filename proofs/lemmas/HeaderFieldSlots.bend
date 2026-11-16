@@ -4,8 +4,11 @@ import ../../src/http.bend as Http
 import ./BaseEqualities.bend as M1
 
 # two fields field.same calls the same are the same
-def hd.same_sound(+a: Http.Field, +b: Http.Field,
-  +e: {True{} == Http.field.same(a, b) : Bool}) -> {a == b : Http.Field}:
+def hd.same_sound(
+  +a: Http.Field,
+  +b: Http.Field,
+  +e: {True{} == Http.field.same(a, b) : Bool}
+) -> {a == b : Http.Field}:
   match a:
     case Http.FHost{}:
       match b:
@@ -122,17 +125,20 @@ def hd.same_sound(+a: Http.Field, +b: Http.Field,
         case Http.FOther{}:
           {==}
 
+# two header lists, one after the other
+def hd.cat(a: List<&2, Http.Header>, b: List<&2, Http.Header>) -> List<&2, Http.Header>:
+  List.append(&2, Http.Header, a, b)
+
 # one step of of_app: the head kept or not
-def hd.of_app.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
-  Http.Header>, +b: List<&2, Http.Header>,
-  +ih: {Http.fields.of(f, List.append(&2, Http.Header, t, b))
-    == List.append(&2, Http.Header, Http.fields.of(f, t),
-    Http.fields.of(f, b)) : List<&2, Http.Header>})
-  -> {Http.fields.put(k, h,
-    Http.fields.of(f, List.append(&2, Http.Header, t, b)))
-    == List.append(&2, Http.Header,
-      Http.fields.put(k, h, Http.fields.of(f, t)),
-      Http.fields.of(f, b)) : List<&2, Http.Header>}:
+def hd.of_app.put(
+  +f: Http.Field,
+  +k: Bool,
+  +h: Http.Header,
+  +t: List<&2, Http.Header>,
+  +b: List<&2, Http.Header>,
+  +ih: {Http.fields.of(f, hd.cat(t, b)) == hd.cat(Http.fields.of(f, t), Http.fields.of(f, b)) : List<&2, Http.Header>}
+) -> {Http.fields.put(k, h, Http.fields.of(f, hd.cat(t, b)))
+    == hd.cat(Http.fields.put(k, h, Http.fields.of(f, t)), Http.fields.of(f, b)) : List<&2, Http.Header>}:
   match k:
     case True{}:
       Equal.cong(List<&2, Http.Header>, List<&2, Http.Header>, x => h <> x,
@@ -143,10 +149,11 @@ def hd.of_app.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
       ih
 
 # the fields of a name in an append are the ones in each part
-def hd.of_app(+f: Http.Field, +a: List<&2, Http.Header>, +b: List<&2,
-  Http.Header>)
-  -> {Http.fields.of(f, List.append(&2, Http.Header, a, b))
-    == List.append(&2, Http.Header, Http.fields.of(f, a),
+def hd.of_app(
+  +f: Http.Field,
+  +a: List<&2, Http.Header>,
+  +b: List<&2, Http.Header>
+) -> {Http.fields.of(f, List.append(&2, Http.Header, a, b)) == List.append(&2, Http.Header, Http.fields.of(f, a),
     Http.fields.of(f, b)) : List<&2, Http.Header>}:
   match a:
     case []:
@@ -156,24 +163,28 @@ def hd.of_app(+f: Http.Field, +a: List<&2, Http.Header>, +b: List<&2,
         hd.of_app(f, t, b))
 
 # of_app, the other way round
-def hd.of_app.r(+f: Http.Field, +a: List<&2, Http.Header>, +b: List<&2,
-  Http.Header>)
-  -> {List.append(&2, Http.Header, Http.fields.of(f, a), Http.fields.of(f, b))
-    == Http.fields.of(f, List.append(&2, Http.Header, a, b)) : List<&2,
-    Http.Header>}:
+def hd.of_app.r(
+  +f: Http.Field,
+  +a: List<&2, Http.Header>,
+  +b: List<&2, Http.Header>
+) -> {List.append(&2, Http.Header, Http.fields.of(f, a), Http.fields.of(f, b)) == Http.fields.of(f, List.append(&2,
+    Http.Header, a, b)) : List<&2, Http.Header>}:
   Equal.sym(List<&2, Http.Header>,
     Http.fields.of(f, List.append(&2, Http.Header, a, b)),
     List.append(&2, Http.Header, Http.fields.of(f, a), Http.fields.of(f, b)),
     hd.of_app(f, a, b))
 
 # one step of disj
-def hd.disj.put(+f: Http.Field, +g: Http.Field,
-  +efg: {False{} == Http.field.same(f, g) : Bool}, +k: Bool, +h: Http.Header,
+def hd.disj.put(
+  +f: Http.Field,
+  +g: Http.Field,
+  +efg: {False{} == Http.field.same(f, g) : Bool},
+  +k: Bool,
+  +h: Http.Header,
   +t: List<&2, Http.Header>,
-    +ek: {k == Http.field.same(g, Http.header.field(h)) : Bool},
-  +ih: {Http.fields.of(f, Http.fields.of(g, t)) == [] : List<&2, Http.Header>})
-  -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(g, t)))
-    == [] : List<&2, Http.Header>}:
+  +ek: {k == Http.field.same(g, Http.header.field(h)) : Bool},
+  +ih: {Http.fields.of(f, Http.fields.of(g, t)) == [] : List<&2, Http.Header>}
+) -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(g, t))) == [] : List<&2, Http.Header>}:
   match k:
     case True{}:
       %Equal.trans(Bool, False{}, Http.field.same(f, g),
@@ -187,9 +198,12 @@ def hd.disj.put(+f: Http.Field, +g: Http.Field,
       ih
 
 # the fields of one name among the fields of another are none
-def hd.disj(+f: Http.Field, +g: Http.Field,
-  +efg: {False{} == Http.field.same(f, g) : Bool}, +hs: List<&2, Http.Header>)
-  -> {Http.fields.of(f, Http.fields.of(g, hs)) == [] : List<&2, Http.Header>}:
+def hd.disj(
+  +f: Http.Field,
+  +g: Http.Field,
+  +efg: {False{} == Http.field.same(f, g) : Bool},
+  +hs: List<&2, Http.Header>
+) -> {Http.fields.of(f, Http.fields.of(g, hs)) == [] : List<&2, Http.Header>}:
   match hs:
     case []:
       {==}
@@ -199,12 +213,13 @@ def hd.disj(+f: Http.Field, +g: Http.Field,
 
 # a slot holds none of a name when neither the caller's list nor the default
 # does
-def hd.or_gone(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
-  Http.Header>,
+def hd.or_gone(
+  +f: Http.Field,
+  +given: List<&2, Http.Header>,
+  +d: List<&2, Http.Header>,
   +eg: {Http.fields.of(f, given) == [] : List<&2, Http.Header>},
-    +ed: {Http.fields.of(f, d) == [] : List<&2, Http.Header>})
-  -> {[] == Http.fields.of(f, Http.fields.or(given, d)) : List<&2,
-    Http.Header>}:
+  +ed: {Http.fields.of(f, d) == [] : List<&2, Http.Header>}
+) -> {[] == Http.fields.of(f, Http.fields.or(given, d)) : List<&2, Http.Header>}:
   match given:
     case []:
       Equal.sym(List<&2, Http.Header>, Http.fields.of(f, d), [], ed)
@@ -212,10 +227,10 @@ def hd.or_gone(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
       Equal.sym(List<&2, Http.Header>, Http.fields.of(f, h <> t), [], eg)
 
 # a computed Content-Length is a Content-Length field
-def hd.clen_self(+n: Nat, +e: Bool)
-  -> {Http.clen.field(n, e)
-    == Http.fields.of(Http.FClen{}, Http.clen.field(n, e)) : List<&2,
-    Http.Header>}:
+def hd.clen_self(
+  +n: Nat,
+  +e: Bool
+) -> {Http.clen.field(n, e) == Http.fields.of(Http.FClen{}, Http.clen.field(n, e)) : List<&2, Http.Header>}:
   match e:
     case True{}:
       {==}
@@ -223,28 +238,28 @@ def hd.clen_self(+n: Nat, +e: Bool)
       {==}
 
 # the fields of a name in a request's fields, slot by slot
-def hd.of_fields(+f: Http.Field, +s1: List<&2, Http.Header>, +s2: List<&2,
-  Http.Header>, +s3: List<&2, Http.Header>, +o: List<&2, Http.Header>,
+def hd.of_fields(
+  +f: Http.Field,
+  +s1: List<&2, Http.Header>,
+  +s2: List<&2, Http.Header>,
+  +s3: List<&2, Http.Header>,
+  +o: List<&2, Http.Header>,
   +c: List<&2, Http.Header>,
-  +r1: List<&2, Http.Header>, +r2: List<&2, Http.Header>, +r3: List<&2,
-    Http.Header>, +ro: List<&2, Http.Header>, +rc: List<&2, Http.Header>,
+  +r1: List<&2, Http.Header>,
+  +r2: List<&2, Http.Header>,
+  +r3: List<&2, Http.Header>,
+  +ro: List<&2, Http.Header>,
+  +rc: List<&2, Http.Header>,
   +e1: {r1 == Http.fields.of(f, s1) : List<&2, Http.Header>},
-    +e2: {r2 == Http.fields.of(f, s2) : List<&2, Http.Header>},
+  +e2: {r2 == Http.fields.of(f, s2) : List<&2, Http.Header>},
   +e3: {r3 == Http.fields.of(f, s3) : List<&2, Http.Header>},
-    +eo: {ro == Http.fields.of(f, o) : List<&2, Http.Header>},
-  +ec: {rc == Http.fields.of(f, c) : List<&2, Http.Header>})
-  -> {Http.fields.of(f,
-    List.append(&2, Http.Header, s1,
-    List.append(&2, Http.Header, s2,
-    List.append(&2, Http.Header, s3, Http.H{"Connection", "close"}
-    <> List.append(&2, Http.Header, o, c)))))
-    == List.append(&2, Http.Header, r1,
-      List.append(&2, Http.Header, r2,
-      List.append(&2, Http.Header, r3,
-      Http.fields.put(Http.field.same(f,
-      Http.header.field(Http.H{"Connection", "close"})),
-      Http.H{"Connection", "close"},
-      List.append(&2, Http.Header, ro, rc))))) : List<&2, Http.Header>}:
+  +eo: {ro == Http.fields.of(f, o) : List<&2, Http.Header>},
+  +ec: {rc == Http.fields.of(f, c) : List<&2, Http.Header>}
+) -> {Http.fields.of(f, List.append(&2, Http.Header, s1, List.append(&2, Http.Header, s2, List.append(&2, Http.Header,
+    s3, Http.H{"Connection", "close"} <> List.append(&2, Http.Header, o, c))))) == List.append(&2, Http.Header, r1,
+    List.append(&2, Http.Header, r2, List.append(&2, Http.Header, r3, Http.fields.put(Http.field.same(f,
+    Http.header.field(Http.H{"Connection", "close"})), Http.H{"Connection", "close"}, List.append(&2, Http.Header, ro,
+    rc))))) : List<&2, Http.Header>}:
   %hd.of_app.r(f, s1,
     List.append(&2, Http.Header, s2,
     List.append(&2, Http.Header, s3, Http.H{"Connection", "close"}

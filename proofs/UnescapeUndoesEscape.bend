@@ -25,8 +25,11 @@ def eq.cmp.gt(e: {GT{} == EQ{} : Cmp}) -> Empty:
   %e : eq.cmp.emp(_)
   Unit{}
 
-def eq.bool_cmp_eq(a: Bool, b: Bool, e: {Bool.cmp(a, b) == EQ{} : Cmp})
-  -> {a == b : Bool}:
+def eq.bool_cmp_eq(
+  a: Bool,
+  b: Bool,
+  e: {Bool.cmp(a, b) == EQ{} : Cmp}
+) -> {a == b : Bool}:
   match a b:
     case False{} False{}:
       {==}
@@ -37,8 +40,12 @@ def eq.bool_cmp_eq(a: Bool, b: Bool, e: {Bool.cmp(a, b) == EQ{} : Cmp})
     case True{} True{}:
       {==}
 
-def eq.fin.t(ab: Bool, bb: Bool, t: Cmp,
-  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}) -> {t == EQ{} : Cmp}:
+def eq.fin.t(
+  ab: Bool,
+  bb: Bool,
+  t: Cmp,
+  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}
+) -> {t == EQ{} : Cmp}:
   match t:
     case LT{}:
       M1.eq.bit.gone(&2, {LT{} == EQ{} : Cmp}, eq.cmp.lt(e))
@@ -47,8 +54,12 @@ def eq.fin.t(ab: Bool, bb: Bool, t: Cmp,
     case GT{}:
       M1.eq.bit.gone(&2, {GT{} == EQ{} : Cmp}, eq.cmp.gt(e))
 
-def eq.fin.b(ab: Bool, bb: Bool, t: Cmp,
-  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}) -> {Bool.cmp(ab, bb) == EQ{} : Cmp}:
+def eq.fin.b(
+  ab: Bool,
+  bb: Bool,
+  t: Cmp,
+  e: {Word.cmp.fin(ab, bb, t) == EQ{} : Cmp}
+) -> {Bool.cmp(ab, bb) == EQ{} : Cmp}:
   match t:
     case LT{}:
       M1.eq.bit.gone(&2, {Bool.cmp(ab, bb) == EQ{} : Cmp}, eq.cmp.lt(e))
@@ -57,8 +68,12 @@ def eq.fin.b(ab: Bool, bb: Bool, t: Cmp,
     case GT{}:
       M1.eq.bit.gone(&2, {Bool.cmp(ab, bb) == EQ{} : Cmp}, eq.cmp.gt(e))
 
-def eq.word_cmp_eq(n: Nat, a: Word(n), b: Word(n),
-  +e: {Word.cmp(n, a, b) == EQ{} : Cmp}) -> {a == b : Word(n)}:
+def eq.word_cmp_eq(
+  n: Nat,
+  a: Word(n),
+  b: Word(n),
+  +e: {Word.cmp(n, a, b) == EQ{} : Cmp}
+) -> {a == b : Word(n)}:
   match n:
     case 0n:
       match a b:
@@ -73,8 +88,10 @@ def eq.word_cmp_eq(n: Nat, a: Word(n), b: Word(n),
           %we : {WCon{ab, at} == WCon{ab, _} : Word(1n+p)}
           {==}
 
-def eq.cmp_is_eq(t: Cmp, e: {Cmp.is_eq(t) == True{} : Bool})
-  -> {t == EQ{} : Cmp}:
+def eq.cmp_is_eq(
+  t: Cmp,
+  e: {Cmp.is_eq(t) == True{} : Bool}
+) -> {t == EQ{} : Cmp}:
   match t:
     case LT{}:
       M1.eq.bit.absurd(&2, {LT{} == EQ{} : Cmp}, e)
@@ -83,8 +100,11 @@ def eq.cmp_is_eq(t: Cmp, e: {Cmp.is_eq(t) == True{} : Bool})
     case GT{}:
       M1.eq.bit.absurd(&2, {GT{} == EQ{} : Cmp}, e)
 
-def eq.char_eq_true(c: Char, d: Char, e: {Char.is_eq(c, d) == True{} : Bool})
-  -> {c == d : Char}:
+def eq.char_eq_true(
+  c: Char,
+  d: Char,
+  e: {Char.is_eq(c, d) == True{} : Bool}
+) -> {c == d : Char}:
   match c d:
     case Chr{U32{+w}} Chr{U32{+v}}:
       we = eq.word_cmp_eq(32n, w, v, eq.cmp_is_eq(Word.cmp(32n, w, v), e))
@@ -92,17 +112,22 @@ def eq.char_eq_true(c: Char, d: Char, e: {Char.is_eq(c, d) == True{} : Bool})
       {==}
 
 # a character that is not `&`, `<`, `>`, `"` or `'` scans as itself
-def rt.other(+c: Char, x: String, e: {False{} == Char.is_eq(c, '&') : Bool})
-  -> {Ref.scan(SCon{c, x}, Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})}
-    : String}:
+def rt.other(
+  +c: Char,
+  x: String,
+  e: {False{} == Char.is_eq(c, '&') : Bool}
+) -> {Ref.scan(SCon{c, x}, Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   %e : {Ref.text.of(c, st2 => Ref.scan(x, st2), _)
     == SCon{c, Ref.scan(x, Ref.Txt{})} : String}
   {==}
 
-def rt.sq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
-  b: Bool, e: {Char.is_eq(c, '\'') == b : Bool})
-  -> {Ref.scan(Html.one.sq(c, x, b), Ref.Txt{})
-    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+def rt.sq(
+  +c: Char,
+  x: String,
+  ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool,
+  e: {Char.is_eq(c, '\'') == b : Bool}
+) -> {Ref.scan(Html.one.sq(c, x, b), Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   match b:
     case True{}:
       ce = Equal.sym(Char, c, '\'', eq.char_eq_true(c, '\'', e))
@@ -112,10 +137,13 @@ def rt.sq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
     case False{}:
       rt.other(c, x, ea)
 
-def rt.dq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
-  b: Bool, e: {Char.is_eq(c, '"') == b : Bool})
-  -> {Ref.scan(Html.one.dq(c, x, b), Ref.Txt{})
-    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+def rt.dq(
+  +c: Char,
+  x: String,
+  ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool,
+  e: {Char.is_eq(c, '"') == b : Bool}
+) -> {Ref.scan(Html.one.dq(c, x, b), Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   match b:
     case True{}:
       ce = Equal.sym(Char, c, '"', eq.char_eq_true(c, '"', e))
@@ -125,10 +153,13 @@ def rt.dq(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
     case False{}:
       rt.sq(c, x, ea, Char.is_eq(c, '\''), {==})
 
-def rt.gt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
-  b: Bool, e: {Char.is_eq(c, '>') == b : Bool})
-  -> {Ref.scan(Html.one.gt(c, x, b), Ref.Txt{})
-    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+def rt.gt(
+  +c: Char,
+  x: String,
+  ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool,
+  e: {Char.is_eq(c, '>') == b : Bool}
+) -> {Ref.scan(Html.one.gt(c, x, b), Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   match b:
     case True{}:
       ce = Equal.sym(Char, c, '>', eq.char_eq_true(c, '>', e))
@@ -138,10 +169,13 @@ def rt.gt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
     case False{}:
       rt.dq(c, x, ea, Char.is_eq(c, '"'), {==})
 
-def rt.lt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
-  b: Bool, e: {Char.is_eq(c, '<') == b : Bool})
-  -> {Ref.scan(Html.one.lt(c, x, b), Ref.Txt{})
-    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+def rt.lt(
+  +c: Char,
+  x: String,
+  ea: {False{} == Char.is_eq(c, '&') : Bool},
+  b: Bool,
+  e: {Char.is_eq(c, '<') == b : Bool}
+) -> {Ref.scan(Html.one.lt(c, x, b), Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   match b:
     case True{}:
       ce = Equal.sym(Char, c, '<', eq.char_eq_true(c, '<', e))
@@ -151,9 +185,12 @@ def rt.lt(+c: Char, x: String, ea: {False{} == Char.is_eq(c, '&') : Bool},
     case False{}:
       rt.gt(c, x, ea, Char.is_eq(c, '>'), {==})
 
-def rt.amp(+c: Char, x: String, b: Bool, e: {Char.is_eq(c, '&') == b : Bool})
-  -> {Ref.scan(Html.one.amp(c, x, b), Ref.Txt{})
-    == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
+def rt.amp(
+  +c: Char,
+  x: String,
+  b: Bool,
+  e: {Char.is_eq(c, '&') == b : Bool}
+) -> {Ref.scan(Html.one.amp(c, x, b), Ref.Txt{}) == SCon{c, Ref.scan(x, Ref.Txt{})} : String}:
   match b:
     case True{}:
       ce = Equal.sym(Char, c, '&', eq.char_eq_true(c, '&', e))
@@ -164,8 +201,9 @@ def rt.amp(+c: Char, x: String, b: Bool, e: {Char.is_eq(c, '&') == b : Bool})
       rt.lt(c, x, Equal.sym(Bool, Char.is_eq(c, '&'), False{}, e),
         Char.is_eq(c, '<'), {==})
 
-def rt.go(s: String)
-  -> {Ref.scan(Html.escape.onto(s, ""), Ref.Txt{}) == s : String}:
+def rt.go(
+  s: String
+) -> {Ref.scan(Html.escape.onto(s, ""), Ref.Txt{}) == s : String}:
   match s:
     case SNil{}:
       {==}

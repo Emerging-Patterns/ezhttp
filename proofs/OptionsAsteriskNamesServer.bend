@@ -2,5 +2,5 @@
 import Base
 import ../laws/OptionsAsteriskNamesServer.bend as Laws
 
-def Laws.ask_options_asterisk():
+def Laws.ask_options_asterisk(_ls, _body):
   {==}

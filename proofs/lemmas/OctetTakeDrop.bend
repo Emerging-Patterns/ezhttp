@@ -6,8 +6,10 @@ import ../../laws/OneOctetPerChar.bend as L1
 # --- octets after a prefix ---
 
 # the first |b| characters of b ++ r are b
-def take_prefix(b: String, r: String)
-  -> {String.take(String.append(b, r), String.length(b)) == b : String}:
+def take_prefix(
+  b: String,
+  r: String
+) -> {String.take(String.append(b, r), String.length(b)) == b : String}:
   match b:
     case SNil{}:
       match r:

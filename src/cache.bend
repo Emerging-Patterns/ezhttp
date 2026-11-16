@@ -140,7 +140,7 @@ def cache.note(value: String, expires: String) -> Cc:
 def cache.max_age(c: Cc) -> Bool:
   match c:
     case Cc{no_store, no_cache, public, private, max_age, expires}:
-      Bool.not(String.eq(max_age, ""))
+      Bool.not(String.is_empty(max_age))
 
 # freshness from max-age. no-store and no-cache are not fresh.
 def cache.fresh.go(age: Nat, m: Maybe<&2, Nat>) -> Bool:
@@ -159,8 +159,12 @@ def cache.fresh.cache(age: Nat, max_age: String, no_cache: Bool) -> Bool:
       cache.fresh.go(age, Http.digits.read(max_age))
 
 # no-store is not reused
-def cache.fresh.store(age: Nat, no_cache: Bool, max_age: String, no_store: Bool)
-  -> Bool:
+def cache.fresh.store(
+  age: Nat,
+  no_cache: Bool,
+  max_age: String,
+  no_store: Bool
+) -> Bool:
   match no_store:
     case True{}:
       False{}

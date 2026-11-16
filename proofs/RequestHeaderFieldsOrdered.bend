@@ -40,9 +40,9 @@ def Laws.request_text(_method, _host, _path, _hs, _body):
   {==}
 
 # a list's tail after an empty append is the list
-def hd.app_nil(+xs: List<&2,
-  Http.Header>) -> {List.append(&2, Http.Header, xs, []) == xs : List<&2,
-  Http.Header>}:
+def hd.app_nil(
+  +xs: List<&2, Http.Header>
+) -> {List.append(&2, Http.Header, xs, []) == xs : List<&2, Http.Header>}:
   match xs:
     case []:
       {==}
@@ -52,13 +52,15 @@ def hd.app_nil(+xs: List<&2,
         hd.app_nil(t))
 
 # one step of idem
-def hd.idem.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
-  Http.Header>,
+def hd.idem.put(
+  +f: Http.Field,
+  +k: Bool,
+  +h: Http.Header,
+  +t: List<&2, Http.Header>,
   +ek: {k == Http.field.same(f, Http.header.field(h)) : Bool},
-  +ih: {Http.fields.of(f, Http.fields.of(f, t))
-    == Http.fields.of(f, t) : List<&2, Http.Header>})
-  -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(f, t)))
-    == Http.fields.put(k, h, Http.fields.of(f, t)) : List<&2, Http.Header>}:
+  +ih: {Http.fields.of(f, Http.fields.of(f, t)) == Http.fields.of(f, t) : List<&2, Http.Header>}
+) -> {Http.fields.of(f, Http.fields.put(k, h, Http.fields.of(f, t))) == Http.fields.put(k, h, Http.fields.of(f,
+    t)) : List<&2, Http.Header>}:
   match k:
     case True{}:
       %ek : {Http.fields.put(_, h, Http.fields.of(f, Http.fields.of(f, t)))
@@ -70,9 +72,10 @@ def hd.idem.put(+f: Http.Field, +k: Bool, +h: Http.Header, +t: List<&2,
       ih
 
 # the fields of a name among the fields of that name are all of them
-def hd.idem(+f: Http.Field, +hs: List<&2, Http.Header>)
-  -> {Http.fields.of(f, Http.fields.of(f, hs))
-    == Http.fields.of(f, hs) : List<&2, Http.Header>}:
+def hd.idem(
+  +f: Http.Field,
+  +hs: List<&2, Http.Header>
+) -> {Http.fields.of(f, Http.fields.of(f, hs)) == Http.fields.of(f, hs) : List<&2, Http.Header>}:
   match hs:
     case []:
       {==}
@@ -82,12 +85,13 @@ def hd.idem(+f: Http.Field, +hs: List<&2, Http.Header>)
 
 # a slot holds itself when the caller's list and the default are all of a
 # name
-def hd.or_keep(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
-  Http.Header>,
+def hd.or_keep(
+  +f: Http.Field,
+  +given: List<&2, Http.Header>,
+  +d: List<&2, Http.Header>,
   +eg: {Http.fields.of(f, given) == given : List<&2, Http.Header>},
-    +ed: {Http.fields.of(f, d) == d : List<&2, Http.Header>})
-  -> {Http.fields.or(given, d)
-    == Http.fields.of(f, Http.fields.or(given, d)) : List<&2, Http.Header>}:
+  +ed: {Http.fields.of(f, d) == d : List<&2, Http.Header>}
+) -> {Http.fields.or(given, d) == Http.fields.of(f, Http.fields.or(given, d)) : List<&2, Http.Header>}:
   match given:
     case []:
       Equal.sym(List<&2, Http.Header>, Http.fields.of(f, d), d, ed)
@@ -95,10 +99,12 @@ def hd.or_keep(+f: Http.Field, +given: List<&2, Http.Header>, +d: List<&2,
       Equal.sym(List<&2, Http.Header>, Http.fields.of(f, h <> t), h <> t, eg)
 
 # a computed Content-Length is no other field
-def hd.clen_gone(+f: Http.Field,
-  +efc: {False{} == Http.field.same(f, Http.FClen{}) : Bool}, +n: Nat,
-  +e: Bool) -> {[] == Http.fields.of(f, Http.clen.field(n, e)) : List<&2,
-    Http.Header>}:
+def hd.clen_gone(
+  +f: Http.Field,
+  +efc: {False{} == Http.field.same(f, Http.FClen{}) : Bool},
+  +n: Nat,
+  +e: Bool
+) -> {[] == Http.fields.of(f, Http.clen.field(n, e)) : List<&2, Http.Header>}:
   match e:
     case True{}:
       {==}
@@ -413,9 +419,11 @@ def Laws.fields_other(host, hs, body):
     hd.app_nil(Http.fields.of(Http.FOther{}, hs)))
 
 # string append is associative
-def eq.app_assoc(+a: String, +b: String, +c: String)
-  -> {String.append(String.append(a, b), c)
-    == String.append(a, String.append(b, c)) : String}:
+def eq.app_assoc(
+  +a: String,
+  +b: String,
+  +c: String
+) -> {String.append(String.append(a, b), c) == String.append(a, String.append(b, c)) : String}:
   match a:
     case SNil{}:
       {==}
@@ -425,9 +433,11 @@ def eq.app_assoc(+a: String, +b: String, +c: String)
         String.append(t, String.append(b, c)), eq.app_assoc(t, b, c))
 
 # the lines of an append are the lines of each part
-def hd.lines_app(+a: List<&2, Http.Header>, +b: List<&2, Http.Header>)
-  -> {Http.headers.lines(List.append(&2, Http.Header, a, b))
-    == String.append(Http.headers.lines(a), Http.headers.lines(b)) : String}:
+def hd.lines_app(
+  +a: List<&2, Http.Header>,
+  +b: List<&2, Http.Header>
+) -> {Http.headers.lines(List.append(&2, Http.Header, a, b)) == String.append(Http.headers.lines(a),
+    Http.headers.lines(b)) : String}:
   match a:
     case []:
       {==}
@@ -453,16 +463,16 @@ def hd.lines_app(+a: List<&2, Http.Header>, +b: List<&2, Http.Header>)
 
 # with none of Host, User-Agent, Accept from the caller and only other
 # fields, the request's fields are the defaults, the caller's, Content-Length
-def hd.plain_fields(+host: String, +hs: List<&2, Http.Header>, +body: String,
+def hd.plain_fields(
+  +host: String,
+  +hs: List<&2, Http.Header>,
+  +body: String,
   +eh: {Http.fields.of(Http.FHost{}, hs) == [] : List<&2, Http.Header>},
   +ea: {Http.fields.of(Http.FAgent{}, hs) == [] : List<&2, Http.Header>},
   +ec: {Http.fields.of(Http.FAccept{}, hs) == [] : List<&2, Http.Header>},
-  +eo: {Http.fields.of(Http.FOther{}, hs) == hs : List<&2, Http.Header>})
-  -> {Http.request.fields(host, hs, body) == Http.H{"Host", host}
-    <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept", "*/*"}
-    <> Http.H{"Connection", "close"}
-    <> List.append(&2, Http.Header, hs,
-    Http.clen.field(Http.utf8.len(body),
+  +eo: {Http.fields.of(Http.FOther{}, hs) == hs : List<&2, Http.Header>}
+) -> {Http.request.fields(host, hs, body) == Http.H{"Host", host} <> Http.H{"User-Agent", "ezhttp"} <> Http.H{"Accept",
+    "*/*"} <> Http.H{"Connection", "close"} <> List.append(&2, Http.Header, hs, Http.clen.field(Http.utf8.len(body),
     Nat.is_eq(Http.utf8.len(body), 0n))) : List<&2, Http.Header>}:
   %Equal.sym(List<&2, Http.Header>, Http.fields.of(Http.FHost{}, hs), [], eh)
     : {List.append(&2, Http.Header, Http.fields.or(_, [Http.H{"Host", host}]),
@@ -528,17 +538,15 @@ def hd.plain_fields(+host: String, +hs: List<&2, Http.Header>, +body: String,
   {==}
 
 # the plain request's text after `Host: `
-def hd.plain_tail(+host: String, +hs: List<&2, Http.Header>, +body: String)
-  -> {String.append(String.append(String.append(host, "\r\n"),
-    Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
-    <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"}
-    <> List.append(&2, Http.Header, hs,
-    Http.clen.field(Http.utf8.len(body),
-    Nat.is_eq(Http.utf8.len(body), 0n))))), "\r\n" ++ body)
-    == String.append(host, "\r\n" ++ "User-Agent: ezhttp\r\n"
-    ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
-    ++ String.append(Http.headers.lines(hs),
-    String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
+def hd.plain_tail(
+  +host: String,
+  +hs: List<&2, Http.Header>,
+  +body: String
+) -> {String.append(String.append(String.append(host, "\r\n"), Http.headers.lines(Http.H{"User-Agent", "ezhttp"}
+    <> Http.H{"Accept", "*/*"} <> Http.H{"Connection", "close"} <> List.append(&2, Http.Header, hs,
+    Http.clen.field(Http.utf8.len(body), Nat.is_eq(Http.utf8.len(body), 0n))))), "\r\n" ++ body) == String.append(host,
+    "\r\n" ++ "User-Agent: ezhttp\r\n" ++ "Accept: */*\r\n" ++ "Connection: close\r\n"
+    ++ String.append(Http.headers.lines(hs), String.append(Http.headers.lines(Http.clen.field(Http.utf8.len(body),
     Nat.is_eq(Http.utf8.len(body), 0n))), "\r\n" ++ body))) : String}:
   Equal.trans(String,
     String.append(String.append(String.append(host, "\r\n"),

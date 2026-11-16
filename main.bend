@@ -94,8 +94,11 @@ def parse_request(raw: String) -> Http.Request:  # noqa: L001 re-export of Http.
   Http.ask(raw)
 
 # format a response message (server outbound)
-def format_response(status: U32, headers: List<&2, Http.Header>, body: String)  # noqa: L001 re-export of Http.respond
-  -> String:
+def format_response(  # noqa: L001 re-export of Http.respond
+  status: U32,
+  headers: List<&2, Http.Header>,
+  body: String
+) -> String:
   Http.respond(status, headers, body)
 
 # empty request body
@@ -120,8 +123,12 @@ def form_field(name: String, value: String) -> Form.Upload:  # noqa: L001 re-exp
 
 # a multipart/form-data file part: field name, filename, content type and the
 # file's bytes (packed Bytes, sent unchanged)
-def form_file(name: String, filename: String, ctype: String,  # noqa: L001 re-export of Form.form.file
-  bytes: Bytes.Bytes) -> Form.Upload:
+def form_file(  # noqa: L001 re-export of Form.form.file
+  name: String,
+  filename: String,
+  ctype: String,
+  bytes: Bytes.Bytes
+) -> Form.Upload:
   Form.form.file(name, filename, ctype, bytes)
 
 # a multipart/form-data body (RFC 7578) with this boundary: the Content-Type
@@ -207,8 +214,10 @@ def http.get(url: String) -> IO(Client.Response):
   Client.client.get(url, [])
 
 # GET with headers
-def http.get_with(url: String, headers: List<&2, Http.Header>)
-  -> IO(Client.Response):
+def http.get_with(
+  url: String,
+  headers: List<&2, Http.Header>
+) -> IO(Client.Response):
   Client.client.get(url, headers)
 
 # GET with headers and a timeout in milliseconds that bounds connecting,
@@ -280,8 +289,10 @@ def http.head(url: String) -> IO(Client.Response):
   Client.client.head(url, [])
 
 # HEAD with headers
-def http.head_with(url: String, headers: List<&2, Http.Header>)
-  -> IO(Client.Response):
+def http.head_with(
+  url: String,
+  headers: List<&2, Http.Header>
+) -> IO(Client.Response):
   Client.client.head(url, headers)
 
 # POST with a body and no extra headers
@@ -301,8 +312,11 @@ def http.put(url: String, body: Body.Body) -> IO(Client.Response):
   Client.client.put(url, [], body)
 
 # PUT with headers and a body
-def http.put_with(url: String, headers: List<&2, Http.Header>, body: Body.Body)
-  -> IO(Client.Response):
+def http.put_with(
+  url: String,
+  headers: List<&2, Http.Header>,
+  body: Body.Body
+) -> IO(Client.Response):
   Client.client.put(url, headers, body)
 
 # DELETE with a body and no extra headers
@@ -322,8 +336,10 @@ def http.options(url: String) -> IO(Client.Response):
   Client.client.options(url, [])
 
 # OPTIONS with headers
-def http.options_with(url: String, headers: List<&2, Http.Header>)
-  -> IO(Client.Response):
+def http.options_with(
+  url: String,
+  headers: List<&2, Http.Header>
+) -> IO(Client.Response):
   Client.client.options(url, headers)
 
 # listen on host:port and serve up to `limit` connections
@@ -394,20 +410,27 @@ def http.serve_io_with(
 
 # a reply with a text body, written as UTF-8
 def text_reply(  # noqa: L001 constructor of Server.Answer, which holds Bytes
-  status: U32, headers: List<&2, Http.Header>, body: String) -> Server.Answer:
+  status: U32,
+  headers: List<&2, Http.Header>,
+  body: String
+) -> Server.Answer:
   Server.TextReply{status, headers, body}
 
 # a reply whose body is packed octets, written unchanged
 def octets_reply(  # noqa: L001 constructor of Server.Answer, which holds Bytes
-  status: U32, headers: List<&2, Http.Header>, bytes: Bytes.Bytes)
-  -> Server.Answer:
+  status: U32,
+  headers: List<&2, Http.Header>,
+  bytes: Bytes.Bytes
+) -> Server.Answer:
   Server.OctetsReply{status, headers, bytes}
 
 # a reply streamed chunked: each chunk the channel gives is written as it
 # comes, and the body ends when the channel is closed
 def stream_reply(  # noqa: L001 constructor of Server.Answer, which holds a channel
-  status: U32, headers: List<&2, Http.Header>, chunks: Chan(Bytes.Bytes))
-  -> Server.Answer:
+  status: U32,
+  headers: List<&2, Http.Header>,
+  chunks: Chan(Bytes.Bytes)
+) -> Server.Answer:
   Server.StreamReply{status, headers, chunks}
 
 # listen on host:port, serve one connection, then stop

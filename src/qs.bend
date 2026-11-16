@@ -38,8 +38,12 @@ def tok.byte(plus: Bool, +c: Char) -> U32:
   Bool.pick(U32, Bool.and(plus, Char.is_eq(c, '+')), 32, Char.to_u32(c))
 
 # a plain ASCII character: `%` opens an escape, any other is its byte
-def tok.ascii(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>, pct: Bool)
-  -> List<&2, Tok>:
+def tok.ascii(
+  plus: Bool,
+  +c: Char,
+  k: Esc -> List<&2, Tok>,
+  pct: Bool
+) -> List<&2, Tok>:
   match pct:
     case True{}:
       k(Pct{})
@@ -47,8 +51,12 @@ def tok.ascii(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>, pct: Bool)
       B{tok.byte(plus, c)} <> k(Plain{})
 
 # a plain character once it is known whether it is outside ASCII
-def tok.wide(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>, wide: Bool)
-  -> List<&2, Tok>:
+def tok.wide(
+  plus: Bool,
+  +c: Char,
+  k: Esc -> List<&2, Tok>,
+  wide: Bool
+) -> List<&2, Tok>:
   match wide:
     case True{}:
       W{c} <> k(Plain{})
@@ -61,8 +69,12 @@ def tok.plain(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>) -> List<&2, Tok>:
 
 # a character after `%`: a hex digit is kept, anything else leaves the `%`
 # as written
-def tok.pct(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>, hex: Bool)
-  -> List<&2, Tok>:
+def tok.pct(
+  plus: Bool,
+  +c: Char,
+  k: Esc -> List<&2, Tok>,
+  hex: Bool
+) -> List<&2, Tok>:
   match hex:
     case True{}:
       k(Pct1{c})
@@ -71,8 +83,13 @@ def tok.pct(plus: Bool, +c: Char, k: Esc -> List<&2, Tok>, hex: Bool)
 
 # a character after `%` and a hex digit: a second hex digit makes the byte
 # they name, anything else leaves `%` and the digit as written
-def tok.pct1(plus: Bool, +d: Char, +c: Char, k: Esc -> List<&2, Tok>,
-  hex: Bool) -> List<&2, Tok>:
+def tok.pct1(
+  plus: Bool,
+  +d: Char,
+  +c: Char,
+  k: Esc -> List<&2, Tok>,
+  hex: Bool
+) -> List<&2, Tok>:
   match hex:
     case True{}:
       B{U32.add(U32.mul(Http.hex.val(d), 16), Http.hex.val(c))} <> k(Plain{})
@@ -80,8 +97,12 @@ def tok.pct1(plus: Bool, +d: Char, +c: Char, k: Esc -> List<&2, Tok>,
       B{37} <> (B{Char.to_u32(d)} <> tok.plain(plus, c, k))
 
 # one character where the decoding stands
-def tok.step(plus: Bool, st: Esc, +c: Char, k: Esc -> List<&2, Tok>)
-  -> List<&2, Tok>:
+def tok.step(
+  plus: Bool,
+  st: Esc,
+  +c: Char,
+  k: Esc -> List<&2, Tok>
+) -> List<&2, Tok>:
   match st:
     case Plain{}:
       tok.plain(plus, c, k)
@@ -245,8 +266,13 @@ def utf.more(+cp: U32, left: Nat, +b: U32, k: Utf -> String) -> String:
 
 # a byte inside a sequence: it continues it when it fits, else the sequence
 # so far is one U+FFFD and the byte is read again between characters
-def utf.byte(+cp: U32, left: Nat, +b: U32, k: Utf -> String, fits: Bool)
-  -> String:
+def utf.byte(
+  +cp: U32,
+  left: Nat,
+  +b: U32,
+  k: Utf -> String,
+  fits: Bool
+) -> String:
   match fits:
     case True{}:
       utf.more(cp, left, b, k)
@@ -254,8 +280,14 @@ def utf.byte(+cp: U32, left: Nat, +b: U32, k: Utf -> String, fits: Bool)
       SCon{fffd(), utf.lead(b, k, lead(b))}
 
 # a piece inside a sequence: a wide character ends it unfinished
-def utf.need(+cp: U32, left: Nat, +lo: U32, +hi: U32, t: Tok,
-  k: Utf -> String) -> String:
+def utf.need(
+  +cp: U32,
+  left: Nat,
+  +lo: U32,
+  +hi: U32,
+  t: Tok,
+  k: Utf -> String
+) -> String:
   match t:
     case W{c}:
       SCon{fffd(), SCon{c, k(Idle{})}}
@@ -348,8 +380,12 @@ def cut.push(+c: Char, m: Maybe<&2, Kv()>) -> Maybe<&2, Kv()>:
       Some{(SCon{c, before}, after)}
 
 # one character of the cut: the first `=` ends the text before it
-def cut.at(+c: Char, t: String, eq: Bool, rest: Unit -> Maybe<&2, Kv()>)
-  -> Maybe<&2, Kv()>:
+def cut.at(
+  +c: Char,
+  t: String,
+  eq: Bool,
+  rest: Unit -> Maybe<&2, Kv()>
+) -> Maybe<&2, Kv()>:
   match eq:
     case True{}:
       Some{("", t)}
@@ -379,8 +415,11 @@ def field(+piece: String) -> Kv():
   field.of(cut(piece), piece)
 
 # one piece in front of the rest's fields, skipped when empty
-def fields.put(+piece: String, rest: List<&2, Kv()>, empty: Bool)
-  -> List<&2, Kv()>:
+def fields.put(
+  +piece: String,
+  rest: List<&2, Kv()>,
+  empty: Bool
+) -> List<&2, Kv()>:
   match empty:
     case True{}:
       rest
@@ -401,8 +440,11 @@ def parse(text: String) -> List<&2, Kv()>:
   fields(String.split(text, '&'))
 
 # the value a later pair gives, else this pair's when it is named
-def get.pick(later: Maybe<&2, String>, value: String, hit: Bool)
-  -> Maybe<&2, String>:
+def get.pick(
+  later: Maybe<&2, String>,
+  value: String,
+  hit: Bool
+) -> Maybe<&2, String>:
   match later hit:
     case Some{x} _:
       Some{x}

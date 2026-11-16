@@ -45,8 +45,12 @@ def form.field(name: String, value: String) -> Upload:
   UField{name, value}
 
 # a file part: its field name, its filename, its content type and its bytes
-def form.file(name: String, filename: String, ctype: String,
-  bytes: Bytes.Bytes) -> Upload:
+def form.file(
+  name: String,
+  filename: String,
+  ctype: String,
+  bytes: Bytes.Bytes
+) -> Upload:
   UFile{name, filename, ctype, bytes}
 
 # --- octets ---
@@ -291,24 +295,32 @@ def form.found(r: Bytes.Bytes & Maybe<&2, U32>) -> Bytes.Bytes & Bool:
 
 # a file part once its bytes are searched: the part the plan sees, onto the
 # rest, and its bytes kept in order
-def form.split.file(name: String, filename: String, ctype: String,
-  r: Bytes.Bytes & Bool, rest: List<&2, Part> & List<&1, Bytes.Bytes>)
-  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+def form.split.file(
+  name: String,
+  filename: String,
+  ctype: String,
+  r: Bytes.Bytes & Bool,
+  rest: List<&2, Part> & List<&1, Bytes.Bytes>
+) -> List<&2, Part> & List<&1, Bytes.Bytes>:
   (bs, hit) = r
   (ps, fs) = rest
   (File{name, filename, ctype, hit} <> ps, bs <> fs)
 
 # a field part onto the rest
-def form.split.field(name: String, value: String,
-  rest: List<&2, Part> & List<&1, Bytes.Bytes>)
-  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+def form.split.field(
+  name: String,
+  value: String,
+  rest: List<&2, Part> & List<&1, Bytes.Bytes>
+) -> List<&2, Part> & List<&1, Bytes.Bytes>:
   (ps, fs) = rest
   (Field{name, value} <> ps, fs)
 
 # the parts as the plan sees them, and the files' bytes in order; `d` is
 # the delimiter's octets, one character each
-def form.split(+d: String, us: List<&1, Upload>)
-  -> List<&2, Part> & List<&1, Bytes.Bytes>:
+def form.split(
+  +d: String,
+  us: List<&1, Upload>
+) -> List<&2, Part> & List<&1, Bytes.Bytes>:
   match us:
     case []:
       ([], [])
@@ -321,8 +333,10 @@ def form.split(+d: String, us: List<&1, Upload>)
             form.found(Bytes.find(bytes, d)), form.split(d, t))
 
 # the body's runs as packed octets, each file's bytes in its place
-def form.runs(segs: List<&2, Seg>, fs: List<&1, Bytes.Bytes>)
-  -> List<&1, Bytes.Bytes>:
+def form.runs(
+  segs: List<&2, Seg>,
+  fs: List<&1, Bytes.Bytes>
+) -> List<&1, Bytes.Bytes>:
   match segs:
     case []:
       []

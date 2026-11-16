@@ -14,8 +14,12 @@ def wsp(+c: Char) -> Bool:
 
 # one character of the leading strip: dropped, and the strip goes on, when
 # it is WSP
-def wsp.lead.if(t: String, +h: Char, space: Bool, rest: Unit -> String)
-  -> String:
+def wsp.lead.if(
+  t: String,
+  +h: Char,
+  space: Bool,
+  rest: Unit -> String
+) -> String:
   match space:
     case True{}:
       rest(Unit{})
@@ -61,8 +65,14 @@ def pair(line: String) -> Maybe<&2, Qs.Kv()>:
 # one stored cookie, once it is known whether it has the new one's name:
 # that one takes the new value in its place, any other is kept and the rest
 # of the store looked at
-def put.at(key: String, old: String, value: String, t: List<&2, Qs.Kv()>,
-  hit: Bool, rest: Unit -> List<&2, Qs.Kv()>) -> List<&2, Qs.Kv()>:
+def put.at(
+  key: String,
+  old: String,
+  value: String,
+  t: List<&2, Qs.Kv()>,
+  hit: Bool,
+  rest: Unit -> List<&2, Qs.Kv()>
+) -> List<&2, Qs.Kv()>:
   match hit:
     case True{}:
       (key, value) <> t
@@ -72,8 +82,11 @@ def put.at(key: String, old: String, value: String, t: List<&2, Qs.Kv()>,
 # a cookie put in a store: a stored one of the same name (compared exactly)
 # keeps its place and takes the new value (§5.3 step 11.3 keeps its
 # creation-time, which orders it, §5.4 step 2), else it goes after the others
-def put(jar: List<&2, Qs.Kv()>, +name: String, +value: String)
-  -> List<&2, Qs.Kv()>:
+def put(
+  jar: List<&2, Qs.Kv()>,
+  +name: String,
+  +value: String
+) -> List<&2, Qs.Kv()>:
   match jar:
     case []:
       [(name, value)]
@@ -90,8 +103,10 @@ def add(jar: List<&2, Qs.Kv()>, m: Maybe<&2, Qs.Kv()>) -> List<&2, Qs.Kv()>:
       put(jar, name, value)
 
 # a store after Set-Cookie field values, in the order they came
-def store(lines: List<&2, String>, jar: List<&2, Qs.Kv()>)
-  -> List<&2, Qs.Kv()>:
+def store(
+  lines: List<&2, String>,
+  jar: List<&2, Qs.Kv()>
+) -> List<&2, Qs.Kv()>:
   match lines:
     case []:
       jar
@@ -123,8 +138,11 @@ def echo(lines: List<&2, String>) -> String:
   line(store(lines, []))
 
 # one header field: its value in front of the rest when it is Set-Cookie
-def values.put(value: String, rest: List<&2, String>, hit: Bool)
-  -> List<&2, String>:
+def values.put(
+  value: String,
+  rest: List<&2, String>,
+  hit: Bool
+) -> List<&2, String>:
   match hit:
     case True{}:
       value <> rest

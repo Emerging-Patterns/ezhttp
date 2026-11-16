@@ -2,5 +2,5 @@
 import Base
 import ../laws/CorsReadsOriginHeader.bend as Laws
 
-def Laws.cors_origin_header():
+def Laws.cors_origin_header(_origin):
   {==}

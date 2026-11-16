@@ -55,8 +55,13 @@ def redirect.dots.end(last: Bool, out: List<&2, String>) -> List<&2, String>:
       out
 
 # a segment that is not `.`: `..` drops the last kept, any other is kept
-def redirect.dots.up(up: Bool, last: Bool, s: String, out: List<&2, String>,
-  rest: List<&2, String> -> List<&2, String>) -> List<&2, String>:
+def redirect.dots.up(
+  up: Bool,
+  last: Bool,
+  s: String,
+  out: List<&2, String>,
+  rest: List<&2, String> -> List<&2, String>
+) -> List<&2, String>:
   match up:
     case True{}:
       rest(redirect.dots.end(last, redirect.pop(out)))
@@ -64,9 +69,14 @@ def redirect.dots.up(up: Bool, last: Bool, s: String, out: List<&2, String>,
       rest(s <> out)
 
 # one segment: `.` is dropped, `..` drops the last kept, any other is kept
-def redirect.dots.one(dot: Bool, up: Bool, last: Bool, s: String,
-  out: List<&2, String>, rest: List<&2, String> -> List<&2, String>)
-  -> List<&2, String>:
+def redirect.dots.one(
+  dot: Bool,
+  up: Bool,
+  last: Bool,
+  s: String,
+  out: List<&2, String>,
+  rest: List<&2, String> -> List<&2, String>
+) -> List<&2, String>:
   match dot:
     case True{}:
       rest(redirect.dots.end(last, out))
@@ -75,8 +85,10 @@ def redirect.dots.one(dot: Bool, up: Bool, last: Bool, s: String,
 
 # a path's segments with dot segments removed, `out` holding those kept so
 # far, last first
-def redirect.dots(ss: List<&2, String>, out: List<&2, String>)
-  -> List<&2, String>:
+def redirect.dots(
+  ss: List<&2, String>,
+  out: List<&2, String>
+) -> List<&2, String>:
   match ss:
     case []:
       List.reverse(&2, String, out)
@@ -229,8 +241,14 @@ def redirect.sort(+loc: String) -> Sort:
 # --- the target ---
 
 # a Location of a known sort against the current URL's parts
-def redirect.against(scheme: String, host: String, port: U32, path: String,
-  +loc: String, k: Sort) -> Maybe<&2, String>:
+def redirect.against(
+  scheme: String,
+  host: String,
+  port: U32,
+  path: String,
+  +loc: String,
+  k: Sort
+) -> Maybe<&2, String>:
   match k:
     case Net{}:
       Some{scheme ++ ":" ++ loc}
@@ -255,8 +273,11 @@ def redirect.at(l: Url.Loc, +loc: String) -> Maybe<&2, String>:
       redirect.against(scheme, host, port, path, loc, redirect.sort(loc))
 
 # a Location once it is known whether it is an absolute URL
-def redirect.target.of(url: String, +loc: String, absolute: Bool)
-  -> Maybe<&2, String>:
+def redirect.target.of(
+  url: String,
+  +loc: String,
+  absolute: Bool
+) -> Maybe<&2, String>:
   match absolute:
     case True{}:
       Some{loc}
@@ -294,8 +315,12 @@ def redirect.next(left: Nat, url: String, +status: U32, +loc: String) -> Hop:
       redirect.on(url, loc, redirect.is(status))
 
 # the next hop after a response's status and headers
-def redirect.plan(left: Nat, url: String, +status: U32,
-  headers: List<&2, Http.Header>) -> Hop:
+def redirect.plan(
+  left: Nat,
+  url: String,
+  +status: U32,
+  headers: List<&2, Http.Header>
+) -> Hop:
   redirect.next(left, url, status, Http.headers.find(headers, "location"))
 
 # whether a request with this method follows redirects when asked to: only a

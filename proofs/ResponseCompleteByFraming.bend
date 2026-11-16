@@ -3,6 +3,7 @@ import Base
 import ../src/http.bend as Http
 import ../laws/ResponseCompleteByFraming.bend as Laws
 import ./lemmas/BaseEqualities.bend as M1
+import ./lemmas/NatOrder.bend as M2
 
 def Laws.whole_open(_f, _asked):
   {==}
@@ -124,7 +125,7 @@ law has_len:
 def has_len(s, n):
   match s:
     case SNil{}:
-      {==}
+      M2.ge_not_lt(0n, n)
     case SCon{+h, +t}:
       +w = Http.octs.width(Char.to_u32(h))
       has_len.arm(n, w, Http.octs.len(t), Http.octs.has(t, Nat.sub(n, w)),
@@ -133,8 +134,8 @@ def has_len(s, n):
 def Laws.whole_bare(_body):
   {==}
 
-def Laws.whole_sized(_n, _body):
-  {==}
+def Laws.whole_sized(n, body):
+  M2.ge_not_lt(Http.octs.len(body), n)
 
 def Laws.whole_chunked(_body):
   {==}

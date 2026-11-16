@@ -113,7 +113,7 @@ def path.target.of(path: String, query: String, empty: Bool) -> String:
 
 # absolute-path ["?" query] (RFC 3986 §3.4, RFC 9112 §3.2.1)
 def path.target(path: String, +query: String) -> String:
-  path.target.of(path, query, String.eq(query, ""))
+  path.target.of(path, query, String.is_empty(query))
 
 # a url whose authority is now split on its colon
 def parse.auth(+scheme: String, +au: List<&2, String>, path: String) -> Loc:

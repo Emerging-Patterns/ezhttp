@@ -1,6 +1,9 @@
+# For every field name, looking it up in a header list with no fields gives
+# the empty value: a field the message did not send reads as "".
 import Base
 import ../src/http.bend as Http
 
-# LAW (RFC 9110 §5.1): a missing field looks up as empty
+# LAW: an absent field reads as empty
 law headers_find_missing:
-  {Http.headers.find([], "host") == "" : String}
+  for +name: String
+  {Http.headers.find([], name) == "" : String}

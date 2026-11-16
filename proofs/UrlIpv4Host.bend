@@ -2,5 +2,5 @@
 import Base
 import ../laws/UrlIpv4Host.bend as Laws
 
-def Laws.url_ipv4_host():
+def Laws.host_before_colon(_host, _rest):
   {==}

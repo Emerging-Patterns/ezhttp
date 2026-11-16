@@ -789,11 +789,11 @@ def divide_app(s, p, b, e):
       divide_app.arm(h, t, p, b, String.starts_with(SCon{h, t}, p), {==}, e,
         e2 => divide_app(t, p, b, e2))
 
-law lt0_add2:
+law ge0_add2:
   for o: Nat
-  {Nat.is_lt(0n, Nat.add(o, 2n)) == True{} : Bool}
+  {Nat.is_ge(0n, Nat.add(o, 2n)) == False{} : Bool}
 
-def lt0_add2(o):
+def ge0_add2(o):
   match o:
     case 0n:
       {==}
@@ -845,9 +845,7 @@ def walk_done.data.arm(g, after, n, sk, eh, et, ed, ih):
   match sk:
     case Http.Short{+o}:
       +hf = Equal.trans(Bool, Http.octs.has(after, Nat.add(n, 2n)),
-        Bool.not(Nat.is_lt(0n, Nat.add(o, 2n))), False{}, eh,
-        Equal.cong(Bool, Bool, x => Bool.not(x), Nat.is_lt(0n, Nat.add(o, 2n)),
-          True{}, lt0_add2(o)))
+        Nat.is_ge(0n, Nat.add(o, 2n)), False{}, eh, ge0_add2(o))
       %Equal.sym(Bool, Http.octs.has(after, Nat.add(n, 2n)), False{}, hf)
         : {False{} == Http.chunks.ended.data(after, n,
           Bool.and(_, String.starts_with(Http.octs.drop(after, n), "\r\n")),

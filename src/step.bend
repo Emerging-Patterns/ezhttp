@@ -53,8 +53,9 @@ def step.got(
       Kept{value}
 
 # a failed send loses the connection too; the bytes it did not send are dropped
-def step.sent(res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>)
-  -> Got<Unit>:
+def step.sent(
+  res: Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>
+) -> Got<Unit>:
   match res:
     case Fail{((code, why), left)}:
       Dropped{step.line("write", why)}
@@ -86,6 +87,32 @@ type Accept<-A: Type> is Type:
   Idle{}
   Missed{line: String}
 
+# what the accept loops hand each fork: the slots a concurrency limit
+# allows and whether there is one (`limited`), and the channel a fork says
+# it is done on and whether a loop waits for it (`tracked`)
+type Pool is Data:
+  Pool{slots: Chan(Unit), limited: Bool, done: Chan(Unit), tracked: Bool}
+
+# the pool of a serve of at most `max` connections at once: limited unless
+# `max` is 0, its forks joined on `done` (laws/MaxZeroIsNoLimit.bend)
+def step.pool(
+  slots: Chan(Unit),
+  +max: U32,
+  done: Chan(Unit),
+  tracked: Bool
+) -> Pool:
+  Pool{slots, U32.is_ne(max, 0), done, tracked}
+
+# whether a pool's forks take a slot
+def step.pool.limited(pool: Pool) -> Bool:
+  Pool{slots, limited, done, tracked} = pool
+  limited
+
+# the channel a pool's forks say they are done on
+def step.pool.done(pool: Pool) -> Chan(Unit):
+  Pool{slots, limited, done, tracked} = pool
+  done
+
 # a failed accept once it is known whether its deadline passed
 def step.missed(-A: Type, +why: String, late: Bool) -> Accept<A>:
   match late:
@@ -95,8 +122,10 @@ def step.missed(-A: Type, +why: String, late: Bool) -> Accept<A>:
       Missed{step.line("accept", why)}
 
 # an accept's outcome: ETIMEDOUT (110) is a deadline that passed
-def step.accepted(-A: Type, res: Result<&1, &1, U32 & String, A>)
-  -> Accept<A>:
+def step.accepted(
+  -A: Type,
+  res: Result<&1, &1, U32 & String, A>
+) -> Accept<A>:
   match res:
     case Fail{(+code, why)}:
       step.missed(A, why, U32.is_eq(code, 110))

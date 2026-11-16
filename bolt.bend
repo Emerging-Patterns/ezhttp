@@ -1,6 +1,5 @@
 # bolt.bend: how bolt lints this repo. See bolt/config.bend for groups and
-# levels. `param` and `wrap` are warn: this port keeps ez net's short framing
-# parameters and compact multi-line headers.
+# levels.
 import Base
 
 # what will fail or blow up
@@ -15,25 +14,14 @@ def suspicious() -> String:
 def style() -> String:
   "error"
 
-# single-letter parameters (ez net idiom)
-def param() -> String:
-  "warn"
-
-# multi-line headers without one-param-per-line (ez net idiom)
-def wrap() -> String:
-  "warn"
-
 # a pure def named by no law
 def laws() -> String:
   "error"
 
-# bolt 1.8.0 closed: warn until the findings are fixed (see the tracking issue)
+# a law with no `for` or `exs` binder
 def closed() -> String:
-  "warn"
+  "error"
 
-# a def no quantified law reaches. main.bend's re-exports, the bench program
-# and src/client.bend's Response type (the wire effect keeps it out of every
-# law file) carry `# noqa: L001` with the reason; dotted defs are helpers,
-# which bolt never grades
+# a def no quantified law reaches
 def coverage() -> String:
   "error"

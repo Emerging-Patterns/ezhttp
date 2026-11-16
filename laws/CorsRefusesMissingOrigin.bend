@@ -1,7 +1,10 @@
 import Base
 import ../src/cors.bend as Cors
 
-# LAW (Fetch CORS): a missing origin is refused
+# LAW (Fetch CORS): an origin the allow-list does not allow gets an empty ACAO
 law cors_refused_origin:
-  {Cors.cors.acao(["https://ok.example"], False{}, "https://no.example")
-    == "" : String}
+  for +os: List<&2, String>
+  for credentials: Bool
+  for +origin: String
+  for e: {False{} == Cors.cors.allowed(os, origin) : Bool}
+  {Cors.cors.acao(os, credentials, origin) == "" : String}

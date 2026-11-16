@@ -90,8 +90,9 @@ def server.listen(host: String, port: U32) -> IO(Listener):
   IO.try(Listener, TCP.listen(host, port))
 
 # accept one connection, waiting at most server.wait() ms
-def server.accept.un(r: Listener & Result<&1, &1, U32 & String, Socket>)
-  -> IO(Listener & Step.Accept<Socket>):
+def server.accept.un(
+  r: Listener & Result<&1, &1, U32 & String, Socket>
+) -> IO(Listener & Step.Accept<Socket>):
   (lst, res) = r
   IO.pure(Listener & Step.Accept<Socket>, (lst, Step.step.accepted(Socket, res)))
 
@@ -108,14 +109,18 @@ def server.lose(sock: Socket, line: String) -> IO(Unit):
 
 # the request once it has all arrived (or the peer closed, or the receives
 # ran out): its pieces put together and parsed
-def server.read.done(sock: Socket, ps: List<&2, String>)
-  -> IO(Socket & Step.Got<Http.Request>):
+def server.read.done(
+  sock: Socket,
+  ps: List<&2, String>
+) -> IO(Socket & Step.Got<Http.Request>):
   IO.pure(Socket & Step.Got<Http.Request>,
     (sock, Step.Kept{Http.ask(Spec.wire.join(ps))}))
 
 # what the request needs, kept once its head has ended
-def server.read.needs(m: Maybe<&2, Nat>, ps: List<&2, String>)
-  -> Maybe<&2, Nat>:
+def server.read.needs(
+  m: Maybe<&2, Nat>,
+  ps: List<&2, String>
+) -> Maybe<&2, Nat>:
   match m:
     case None{}:
       Step.step.need(Spec.wire.join(ps))
@@ -128,14 +133,17 @@ def server.read.whole(m: Maybe<&2, Nat>, +have: Nat) -> Bool:
     case None{}:
       False{}
     case Some{n}:
-      Bool.not(Nat.is_lt(have, n))
+      Nat.is_ge(have, n)
 
 # octets that arrived: stop when the request is whole, else read again
-def server.read.more(sock: Socket, +ps: List<&2, String>, +have: Nat,
-  +need: Maybe<&2, Nat>, whole: Bool,
-  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat>
-    -> IO(Socket & Step.Got<Http.Request>))
-  -> IO(Socket & Step.Got<Http.Request>):
+def server.read.more(
+  sock: Socket,
+  +ps: List<&2, String>,
+  +have: Nat,
+  +need: Maybe<&2, Nat>,
+  whole: Bool,
+  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat> -> IO(Socket & Step.Got<Http.Request>)
+) -> IO(Socket & Step.Got<Http.Request>):
   match whole:
     case True{}:
       server.read.done(sock, ps)
@@ -143,20 +151,26 @@ def server.read.more(sock: Socket, +ps: List<&2, String>, +have: Nat,
       rest(sock)(ps)(have)(need)
 
 # octets added to the pieces: is the request now whole?
-def server.read.add(sock: Socket, +ps: List<&2, String>, +have: Nat,
+def server.read.add(
+  sock: Socket,
+  +ps: List<&2, String>,
+  +have: Nat,
   need: Maybe<&2, Nat>,
-  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat>
-    -> IO(Socket & Step.Got<Http.Request>))
-  -> IO(Socket & Step.Got<Http.Request>):
+  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat> -> IO(Socket & Step.Got<Http.Request>)
+) -> IO(Socket & Step.Got<Http.Request>):
   +need2 = server.read.needs(need, ps)
   server.read.more(sock, ps, have, need2, server.read.whole(need2, have), rest)
 
 # octets that arrived, or none once the peer has closed
-def server.read.text(sock: Socket, +ps: List<&2, String>, +have: Nat,
-  need: Maybe<&2, Nat>, +text: String, closed: Bool,
-  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat>
-    -> IO(Socket & Step.Got<Http.Request>))
-  -> IO(Socket & Step.Got<Http.Request>):
+def server.read.text(
+  sock: Socket,
+  +ps: List<&2, String>,
+  +have: Nat,
+  need: Maybe<&2, Nat>,
+  +text: String,
+  closed: Bool,
+  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat> -> IO(Socket & Step.Got<Http.Request>)
+) -> IO(Socket & Step.Got<Http.Request>):
   match closed:
     case True{}:
       server.read.done(sock, ps)
@@ -166,11 +180,13 @@ def server.read.text(sock: Socket, +ps: List<&2, String>, +have: Nat,
 
 # a receive's answer: a failure loses the connection, no octets is the peer
 # closing, octets go onto the pieces
-def server.read.got(+ps: List<&2, String>, +have: Nat, need: Maybe<&2, Nat>,
+def server.read.got(
+  +ps: List<&2, String>,
+  +have: Nat,
+  need: Maybe<&2, Nat>,
   r: Socket & Result<&1, &1, U32 & String, String>,
-  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat>
-    -> IO(Socket & Step.Got<Http.Request>))
-  -> IO(Socket & Step.Got<Http.Request>):
+  rest: Socket -> List<&2, String> -> Nat -> Maybe<&2, Nat> -> IO(Socket & Step.Got<Http.Request>)
+) -> IO(Socket & Step.Got<Http.Request>):
   (sock, res) = r
   match res:
     case Fail{(code, why)}:
@@ -181,8 +197,13 @@ def server.read.got(+ps: List<&2, String>, +have: Nat, need: Maybe<&2, Nat>,
 
 # receive until the head has ended and its Content-Length has arrived, the
 # peer closes, or the receives run out
-def server.read.go(fuel: Nat, sock: Socket, +ps: List<&2, String>, +have: Nat,
-  +need: Maybe<&2, Nat>) -> IO(Socket & Step.Got<Http.Request>):
+def server.read.go(
+  fuel: Nat,
+  sock: Socket,
+  +ps: List<&2, String>,
+  +have: Nat,
+  +need: Maybe<&2, Nat>
+) -> IO(Socket & Step.Got<Http.Request>):
   match fuel:
     case 0n:
       server.read.done(sock, ps)
@@ -200,8 +221,9 @@ def server.read(sock: Socket) -> IO(Socket & Step.Got<Http.Request>):
 # --- writing a reply ---
 
 # after a send: the socket, or the line of a lost connection
-def server.sent.un(r: Socket & Result<&1, &1, U32 & String, Unit>)
-  -> IO(Socket & Step.Got<Unit>):
+def server.sent.un(
+  r: Socket & Result<&1, &1, U32 & String, Unit>
+) -> IO(Socket & Step.Got<Unit>):
   (sock, res) = r
   IO.pure(Socket & Step.Got<Unit>, (sock, Step.step.got(Unit, "write", res)))
 
@@ -225,8 +247,10 @@ def server.close(r: Socket & Step.Got<Unit>) -> IO(Unit):
       Socket.close(sock)
 
 # after a send in the middle: go on, or lose the connection
-def server.then(r: Socket & Step.Got<Unit>, more: Socket -> IO(Unit))
-  -> IO(Unit):
+def server.then(
+  r: Socket & Step.Got<Unit>,
+  more: Socket -> IO(Unit)
+) -> IO(Unit):
   (sock, got) = r
   match got:
     case Step.Dropped{line}:
@@ -244,8 +268,13 @@ def server.answer(sock: Socket, method: String, reply: Http.Reply) -> IO(Unit):
 # an octets reply once its length is known: its head, then its octets unless
 # it is bare (laws/ReplyHeadFramesBody.bend,
 # laws/BareRepliesWriteHeadOnly.bend)
-def server.octets.go(sock: Socket, +status: U32, headers: List<&2, Http.Header>,
-  r: Bytes.Bytes & U32, bare: Bool) -> IO(Unit):
+def server.octets.go(
+  sock: Socket,
+  +status: U32,
+  headers: List<&2, Http.Header>,
+  r: Bytes.Bytes & U32,
+  bare: Bool
+) -> IO(Unit):
   (b, +n) = r
   match bare:
     case True{}:
@@ -260,11 +289,15 @@ def server.octets.go(sock: Socket, +status: U32, headers: List<&2, Http.Header>,
 
 # the most chunks one streamed reply writes
 def server.chunks() -> Nat:
-  U32.to_nat(4294967295)
+  4294967295n
 
 # one chunk the channel gave: framed and sent, or skipped when empty
-def server.chunk.put(sock: Socket, c: Http.Chunk, b: Bytes.Bytes,
-  more: Socket -> IO(Unit)) -> IO(Unit):
+def server.chunk.put(
+  sock: Socket,
+  c: Http.Chunk,
+  b: Bytes.Bytes,
+  more: Socket -> IO(Unit)
+) -> IO(Unit):
   match c:
     case Http.NoChunk{}:
       more(sock)
@@ -275,14 +308,20 @@ def server.chunk.put(sock: Socket, c: Http.Chunk, b: Bytes.Bytes,
         r => server.then(r, more))
 
 # a chunk with its length known
-def server.chunk.sized(sock: Socket, r: Bytes.Bytes & U32,
-  more: Socket -> IO(Unit)) -> IO(Unit):
+def server.chunk.sized(
+  sock: Socket,
+  r: Bytes.Bytes & U32,
+  more: Socket -> IO(Unit)
+) -> IO(Unit):
   (b, +n) = r
   server.chunk.put(sock, Http.chunk.frame(n), b, more)
 
 # what the channel gave: a chunk, or its close, which ends the body
-def server.chunk.got(sock: Socket, m: Maybe<&1, Bytes.Bytes>,
-  more: Socket -> IO(Unit)) -> IO(Unit):
+def server.chunk.got(
+  sock: Socket,
+  m: Maybe<&1, Bytes.Bytes>,
+  more: Socket -> IO(Unit)
+) -> IO(Unit):
   match m:
     case None{}:
       IO.bind(Socket & Step.Got<Unit>, Unit,
@@ -291,8 +330,11 @@ def server.chunk.got(sock: Socket, m: Maybe<&1, Bytes.Bytes>,
       server.chunk.sized(sock, Bytes.length(b), more)
 
 # every chunk the channel gives, until it is closed
-def server.stream.go(fuel: Nat, sock: Socket, +ch: Chan(Bytes.Bytes))
-  -> IO(Unit):
+def server.stream.go(
+  fuel: Nat,
+  sock: Socket,
+  +ch: Chan(Bytes.Bytes)
+) -> IO(Unit):
   match fuel:
     case 0n:
       IO.bind(Socket & Step.Got<Unit>, Unit,
@@ -302,8 +344,11 @@ def server.stream.go(fuel: Nat, sock: Socket, +ch: Chan(Bytes.Bytes))
         m => server.chunk.got(sock, m, s => server.stream.go(f, s, ch)))
 
 # a streamed reply after its head: its chunks, or nothing when it is bare
-def server.stream.body(sock: Socket, +ch: Chan(Bytes.Bytes), bare: Bool)
-  -> IO(Unit):
+def server.stream.body(
+  sock: Socket,
+  +ch: Chan(Bytes.Bytes),
+  bare: Bool
+) -> IO(Unit):
   match bare:
     case True{}:
       IO.bind(Unit, Unit, Chan.close(Bytes.Bytes, ch), _u => Socket.close(sock))
@@ -339,8 +384,15 @@ def server.req(req: Http.Request, +octets: String) -> Req:
 # answer now, or call the handler: step.bend decides which
 # (laws/BadRequestAnswers400.bend, laws/HandlerGetsRequestText.bend,
 # laws/WithServesGetOctetsAndContext.bend)
-def server.step(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  sock: Socket, +method: String, +octets: String, step: Step.Step) -> IO(Unit):
+def server.step(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  sock: Socket,
+  +method: String,
+  +octets: String,
+  step: Step.Step
+) -> IO(Unit):
   match step:
     case Step.Answer{reply}:
       server.answer(sock, method, reply)
@@ -349,8 +401,12 @@ def server.step(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
         a => server.reply(sock, method, a))
 
 # after the read: a lost connection, or a request to step
-def server.conn.got(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  r: Socket & Step.Got<Http.Request>) -> IO(Unit):
+def server.conn.got(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  r: Socket & Step.Got<Http.Request>
+) -> IO(Unit):
   (sock, got) = r
   match got:
     case Step.Dropped{line}:
@@ -361,8 +417,12 @@ def server.conn.got(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
         Step.step.octets(raw), Step.step.of(req))
 
 # one connection: read, decide, maybe handle, write, close
-def server.conn(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  sock: Socket) -> IO(Unit):
+def server.conn(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  sock: Socket
+) -> IO(Unit):
   IO.bind(Socket & Step.Got<Http.Request>, Unit, server.read(sock),
     r => server.conn.got(~C, handle, ctx, r))
 
@@ -396,20 +456,29 @@ def server.done(+done: Chan(Unit), tracked: Bool) -> IO(Unit):
       IO.pure(Unit, Unit{})
 
 # a connection's fork: serve it, give its slot back, and say it is done
-def server.fork.body(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  sock: Socket, +slots: Chan(Unit), +limited: Bool, +done: Chan(Unit),
-  +tracked: Bool) -> IO(Unit):
+def server.fork.body(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  sock: Socket,
+  +pool: Step.Pool
+) -> IO(Unit):
+  Step.Pool{slots, limited, done, tracked} = pool
   IO.bind(Unit, Unit, server.conn(~C, handle, ctx, sock),
     _u => IO.bind(Unit, Unit, server.slot.give(slots, limited),
       _v => server.done(done, tracked)))
 
 # serve an accepted connection on its own fork, a slot taken first
-def server.fork(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  sock: Socket, +slots: Chan(Unit), +limited: Bool, +done: Chan(Unit),
-  +tracked: Bool) -> IO(Unit):
+def server.fork(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  sock: Socket,
+  +pool: Step.Pool
+) -> IO(Unit):
+  Step.Pool{slots, limited, done, tracked} = pool
   IO.bind(Unit, Unit, server.slot.take(slots, limited),
-    _u => IO.spawn(Unit,
-      server.fork.body(~C, handle, ctx, sock, slots, limited, done, tracked)))
+    _u => IO.spawn(Unit, server.fork.body(~C, handle, ctx, sock, pool)))
 
 # wait for n forks to say they are done
 def server.join(n: Nat, +done: Chan(Unit)) -> IO(Unit):
@@ -423,15 +492,20 @@ def server.join(n: Nat, +done: Chan(Unit)) -> IO(Unit):
 # what an accept brought, for the loop: `took` serves a connection and goes
 # on with one connection fewer, `idle` accepts again, `missed` logs, pauses
 # and goes on with one fewer (a failed accept counts toward the limit)
-def server.loop.got(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  +slots: Chan(Unit), +limited: Bool, +done: Chan(Unit), +tracked: Bool,
-  r: Listener & Step.Accept<Socket>, took: Listener -> IO(Unit),
-  idle: Listener -> IO(Unit), missed: Listener -> IO(Unit)) -> IO(Unit):
+def server.loop.got(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  +pool: Step.Pool,
+  r: Listener & Step.Accept<Socket>,
+  took: Listener -> IO(Unit),
+  idle: Listener -> IO(Unit),
+  missed: Listener -> IO(Unit)
+) -> IO(Unit):
   (lst, got) = r
   match got:
     case Step.Took{sock}:
-      IO.bind(Unit, Unit,
-        server.fork(~C, handle, ctx, sock, slots, limited, done, tracked),
+      IO.bind(Unit, Unit, server.fork(~C, handle, ctx, sock, pool),
         _u => took(lst))
     case Step.Idle{}:
       idle(lst)
@@ -440,25 +514,34 @@ def server.loop.got(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
         IO.bind(Unit, Unit, IO.sleep(server.pause()), _v => missed(lst)))
 
 # the limited accept loop: `fuel` connections left, `idles` idle accepts in
-# a row left, `forks` forked so far
-def server.loop.go(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  fuel: Nat, idles: Nat, +forks: Nat, +slots: Chan(Unit), +limited: Bool,
-  +done: Chan(Unit), listener: Listener) -> IO(Unit):
+# a row left, `forks` forked so far; its pool is tracked, so the loop joins
+# its forks on `done` before it returns
+def server.loop.go(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  fuel: Nat,
+  idles: Nat,
+  +forks: Nat,
+  +pool: Step.Pool,
+  listener: Listener
+) -> IO(Unit):
   match fuel idles:
     case 0n _:
-      IO.bind(Unit, Unit, Listener.close(listener), _u => server.join(forks, done))
+      IO.bind(Unit, Unit, Listener.close(listener),
+        _u => server.join(forks, Step.step.pool.done(pool)))
     case 1n+_f 0n:
-      IO.bind(Unit, Unit, Listener.close(listener), _u => server.join(forks, done))
+      IO.bind(Unit, Unit, Listener.close(listener),
+        _u => server.join(forks, Step.step.pool.done(pool)))
     case 1n+f0 1n+i:
       +f = f0
       IO.bind(Listener & Step.Accept<Socket>, Unit, server.accept(listener),
-        r => server.loop.got(~C, handle, ctx, slots, limited, done, True{}, r,
-          l => server.loop.go(~C, handle, ctx, f, server.idles(), 1n+forks, slots,
-            limited, done, l),
-          l => server.loop.go(~C, handle, ctx, 1n+f, i, forks, slots, limited,
-            done, l),
-          l => server.loop.go(~C, handle, ctx, f, server.idles(), forks, slots,
-            limited, done, l)))
+        r => server.loop.got(~C, handle, ctx, pool, r,
+          l => server.loop.go(~C, handle, ctx, f, server.idles(), 1n+forks,
+            pool, l),
+          l => server.loop.go(~C, handle, ctx, 1n+f, i, forks, pool, l),
+          l => server.loop.go(~C, handle, ctx, f, server.idles(), forks, pool,
+            l)))
 
 # the slots a concurrency limit allows (max 0: no limit)
 def server.slots(+max: U32) -> IO(Chan(Unit)):
@@ -467,47 +550,75 @@ def server.slots(+max: U32) -> IO(Chan(Unit)):
 # listen and serve up to `limit` connections, each on its own fork, at most
 # `max` at once (0: no limit), with a context value for the handler; returns
 # once every fork is done (trusted above)
-def server.serve_io_with(~C: Data, ~handle: C -> Req -> IO(Answer), +ctx: C,
-  host: String, port: U32, limit: U32, +max: U32) -> IO(Unit):
+def server.serve_io_with(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  host: String,
+  port: U32,
+  limit: U32,
+  +max: U32
+) -> IO(Unit):
   do IO<Unit>:
     lst : Listener <- server.listen(host, port)
     +slots : Chan(Unit) <- server.slots(max)
     +done : Chan(Unit) <- Chan.new(Unit, 1024)
-    server.loop.go(~C, handle, ctx, U32.to_nat(limit), server.idles(), 0n, slots,
-      Bool.not(U32.is_eq(max, 0)), done, lst)
+    server.loop.go(~C, handle, ctx, U32.to_nat(limit), server.idles(), 0n,
+      Step.step.pool(slots, max, done, True{}), lst)
 
 # a pure handler as an IO one
-def server.lift.with(~C: Data, ~handle: C -> Req -> Answer, +ctx: C, req: Req)
-  -> IO(Answer):
+def server.lift.with(
+  ~C: Data,
+  ~handle: C -> Req -> Answer,
+  +ctx: C,
+  req: Req
+) -> IO(Answer):
   IO.pure(Answer, handle(ctx)(req))
 
 # listen and serve with a pure handler and a context value
-def server.serve_with(~C: Data, ~handle: C -> Req -> Answer, +ctx: C,
-  host: String, port: U32, limit: U32, max: U32) -> IO(Unit):
+def server.serve_with(
+  ~C: Data,
+  ~handle: C -> Req -> Answer,
+  +ctx: C,
+  host: String,
+  port: U32,
+  limit: U32,
+  max: U32
+) -> IO(Unit):
   server.serve_io_with(~C, ~(c => r => server.lift.with(~C, handle, c, r)), ctx,
     host, port, limit, max)
 
-# the accept loop with no limit: it runs until the process is stopped
-@unsafe def server.forever.go(~C: Data, ~handle: C -> Req -> IO(Answer),
-  +ctx: C, +slots: Chan(Unit), +limited: Bool, +done: Chan(Unit),
-  listener: Listener) -> IO(Unit):
+# the accept loop with no limit: it runs until the process is stopped; its
+# pool is untracked, so its forks never say they are done
+@unsafe def server.forever.go(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  +pool: Step.Pool,
+  listener: Listener
+) -> IO(Unit):
   IO.bind(Listener & Step.Accept<Socket>, Unit, server.accept(listener),
-    r => server.loop.got(~C, handle, ctx, slots, limited, done, False{}, r,
-      l => server.forever.go(~C, handle, ctx, slots, limited, done, l),
-      l => server.forever.go(~C, handle, ctx, slots, limited, done, l),
-      l => server.forever.go(~C, handle, ctx, slots, limited, done, l)))
+    r => server.loop.got(~C, handle, ctx, pool, r,
+      l => server.forever.go(~C, handle, ctx, pool, l),
+      l => server.forever.go(~C, handle, ctx, pool, l),
+      l => server.forever.go(~C, handle, ctx, pool, l)))
 
 # listen and serve with an IO handler and a context value until the process
 # is stopped, at most `max` connections at once (0: no limit)
-@unsafe def server.serve_forever_with(~C: Data,
-  ~handle: C -> Req -> IO(Answer), +ctx: C, host: String, port: U32, +max: U32)
-  -> IO(Unit):
+@unsafe def server.serve_forever_with(
+  ~C: Data,
+  ~handle: C -> Req -> IO(Answer),
+  +ctx: C,
+  host: String,
+  port: U32,
+  +max: U32
+) -> IO(Unit):
   do IO<Unit>:
     lst : Listener <- server.listen(host, port)
     +slots : Chan(Unit) <- server.slots(max)
     +done : Chan(Unit) <- Chan.new(Unit, 1)
-    server.forever.go(~C, handle, ctx, slots, Bool.not(U32.is_eq(max, 0)), done,
-      lst)
+    server.forever.go(~C, handle, ctx,
+      Step.step.pool(slots, max, done, False{}), lst)
 
 # --- the text handlers (no context) ---
 
@@ -525,42 +636,62 @@ def server.text(reply: Http.Reply) -> IO(Answer):
       IO.pure(Answer, TextReply{status, headers, body})
 
 # a plain IO handler as a `_with` one
-def server.wrap.io(~handle: Http.Request -> IO(Http.Reply), r: Req)
-  -> IO(Answer):
+def server.wrap.io(
+  ~handle: Http.Request -> IO(Http.Reply),
+  r: Req
+) -> IO(Answer):
   IO.bind(Http.Reply, Answer, handle(server.plain(r)), server.text)
 
 # listen and serve up to `limit` connections with an IO handler
-def server.serve_io(~handle: Http.Request -> IO(Http.Reply), host: String,
-  port: U32, limit: U32) -> IO(Unit):
+def server.serve_io(
+  ~handle: Http.Request -> IO(Http.Reply),
+  host: String,
+  port: U32,
+  limit: U32
+) -> IO(Unit):
   server.serve_io_with(~Unit, ~(_u => r => server.wrap.io(handle, r)), Unit{},
     host, port, limit, 0)
 
 # a pure handler as an IO one
-def server.lift(~handle: Http.Request -> Http.Reply, req: Http.Request)
-  -> IO(Http.Reply):
+def server.lift(
+  ~handle: Http.Request -> Http.Reply,
+  req: Http.Request
+) -> IO(Http.Reply):
   IO.pure(Http.Reply, handle(req))
 
 # listen and serve up to `limit` connections
-def server.serve(~handle: Http.Request -> Http.Reply, host: String, port: U32,
-  limit: U32) -> IO(Unit):
+def server.serve(
+  ~handle: Http.Request -> Http.Reply,
+  host: String,
+  port: U32,
+  limit: U32
+) -> IO(Unit):
   server.serve_io(~(req => server.lift(handle, req)), host, port, limit)
 
 # serve exactly one connection then stop
-def server.once(~handle: Http.Request -> Http.Reply, host: String, port: U32)
-  -> IO(Unit):
+def server.once(
+  ~handle: Http.Request -> Http.Reply,
+  host: String,
+  port: U32
+) -> IO(Unit):
   server.serve(handle, host, port, 1)
 
 # listen and serve with an IO handler until the process is stopped
-@unsafe def server.serve_forever(~handle: Http.Request -> IO(Http.Reply),
-  host: String, port: U32) -> IO(Unit):
+@unsafe def server.serve_forever(
+  ~handle: Http.Request -> IO(Http.Reply),
+  host: String,
+  port: U32
+) -> IO(Unit):
   server.serve_forever_with(~Unit, ~(_u => r => server.wrap.io(handle, r)), Unit{},
     host, port, 0)
 
 # --- CORS (cors.bend), for pure handlers ---
 
 # turn a bad request into 400; otherwise call the handler
-def server.dispatch(~handle: Http.Request -> Http.Reply, req: Http.Request)
-  -> Http.Reply:
+def server.dispatch(
+  ~handle: Http.Request -> Http.Reply,
+  req: Http.Request
+) -> Http.Reply:
   match req:
     case Http.Bad{why}:
       Http.Reply{400, [], why}
@@ -568,13 +699,18 @@ def server.dispatch(~handle: Http.Request -> Http.Reply, req: Http.Request)
       handle(Http.Request{method, target, headers, body})
 
 # apply HEAD body stripping once the method token is known
-def server.reply.built(~handle: Http.Request -> Http.Reply, method: String,
-  req: Http.Request) -> Http.Reply:
+def server.reply.built(
+  ~handle: Http.Request -> Http.Reply,
+  method: String,
+  req: Http.Request
+) -> Http.Reply:
   Http.reply.for(method, server.dispatch(handle, req))
 
 # HEAD responses are written with an empty body (RFC 9110 §9.3.2)
-def server.reply.text(~handle: Http.Request -> Http.Reply, req: Http.Request)
-  -> Http.Reply:
+def server.reply.text(
+  ~handle: Http.Request -> Http.Reply,
+  req: Http.Request
+) -> Http.Reply:
   match req:
     case Http.Bad{why}:
       server.dispatch(handle, Http.Bad{why})
@@ -589,4 +725,3 @@ def server.cors_reply(
   +req: Http.Request
 ) -> Http.Reply:
   Cors.cors.on(cfg, req, server.reply.text(handle, req))
-

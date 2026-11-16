@@ -136,8 +136,11 @@ def best.len(m: Maybe<&2, Ents.Ref>) -> Nat:
       String.length(name)
 
 # the better of the best so far and a name the text starts with: the longer
-def best.take(best: Maybe<&2, Ents.Ref>, +r: Ents.Ref, longer: Bool)
-  -> Maybe<&2, Ents.Ref>:
+def best.take(
+  best: Maybe<&2, Ents.Ref>,
+  +r: Ents.Ref,
+  longer: Bool
+) -> Maybe<&2, Ents.Ref>:
   match longer:
     case True{}:
       Some{r}
@@ -145,8 +148,12 @@ def best.take(best: Maybe<&2, Ents.Ref>, +r: Ents.Ref, longer: Bool)
       best
 
 # a name the text starts with or not
-def best.hit(+best: Maybe<&2, Ents.Ref>, +r: Ents.Ref, +name: String,
-  hit: Bool) -> Maybe<&2, Ents.Ref>:
+def best.hit(
+  +best: Maybe<&2, Ents.Ref>,
+  +r: Ents.Ref,
+  +name: String,
+  hit: Bool
+) -> Maybe<&2, Ents.Ref>:
   match hit:
     case True{}:
       best.take(best, r, Nat.is_lt(best.len(best), String.length(name)))
@@ -154,15 +161,21 @@ def best.hit(+best: Maybe<&2, Ents.Ref>, +r: Ents.Ref, +name: String,
       best
 
 # one table row against the best so far
-def best.step(+best: Maybe<&2, Ents.Ref>, +r: Ents.Ref, +s: String)
-  -> Maybe<&2, Ents.Ref>:
+def best.step(
+  +best: Maybe<&2, Ents.Ref>,
+  +r: Ents.Ref,
+  +s: String
+) -> Maybe<&2, Ents.Ref>:
   match r:
     case Ents.Ref{+name, first, second}:
       best.hit(best, r, name, String.starts_with(s, name))
 
 # the longest name in the rows that the text starts with
-def best(rs: List<&2, Ents.Ref>, +s: String, +sofar: Maybe<&2, Ents.Ref>)
-  -> Maybe<&2, Ents.Ref>:
+def best(
+  rs: List<&2, Ents.Ref>,
+  +s: String,
+  +sofar: Maybe<&2, Ents.Ref>
+) -> Maybe<&2, Ents.Ref>:
   match rs:
     case []:
       sofar
@@ -246,8 +259,13 @@ def hash(+c: Char, k: Scan -> String, +d: U32) -> String:
   hash.dec(c, k, d, U32.is_lt(d, 16))
 
 # after `&#x`, once it is known whether the character is a hex digit
-def hash.hex.of(+x: Char, +c: Char, k: Scan -> String, +d: U32, digit: Bool)
-  -> String:
+def hash.hex.of(
+  +x: Char,
+  +c: Char,
+  k: Scan -> String,
+  +d: U32,
+  digit: Bool
+) -> String:
   match digit:
     case True{}:
       k(Num{True{}, d})
@@ -268,8 +286,14 @@ def num.end(+n: U32, +c: Char, k: Scan -> String, semi: Bool) -> String:
       code(n) ++ text(c, k)
 
 # inside a number: a digit grows it
-def num(+hex: Bool, +n: U32, +c: Char, k: Scan -> String, +d: U32,
-  digit: Bool) -> String:
+def num(
+  +hex: Bool,
+  +n: U32,
+  +c: Char,
+  k: Scan -> String,
+  +d: U32,
+  digit: Bool
+) -> String:
   match digit:
     case True{}:
       k(Num{hex, grow(hex, n, d)})
@@ -282,8 +306,13 @@ def name.end(+s: String, +c: Char, k: Scan -> String) -> String:
 
 # inside a name, a character that is not `;`: a name character joins it
 # while it has fewer than 32
-def name.more(+s: String, len: Nat, +c: Char, k: Scan -> String, join: Bool)
-  -> String:
+def name.more(
+  +s: String,
+  len: Nat,
+  +c: Char,
+  k: Scan -> String,
+  join: Bool
+) -> String:
   match join:
     case True{}:
       k(Name{s ++ SCon{c, ""}, 1n+len})
@@ -291,8 +320,13 @@ def name.more(+s: String, len: Nat, +c: Char, k: Scan -> String, join: Bool)
       name.end(s, c, k)
 
 # inside a name: `;` ends the reference with it
-def name(+s: String, +len: Nat, +c: Char, k: Scan -> String, semi: Bool)
-  -> String:
+def name(
+  +s: String,
+  +len: Nat,
+  +c: Char,
+  k: Scan -> String,
+  semi: Bool
+) -> String:
   match semi:
     case True{}:
       named(s ++ ";") ++ k(Txt{})

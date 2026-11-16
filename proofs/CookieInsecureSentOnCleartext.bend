@@ -2,5 +2,5 @@
 import Base
 import ../laws/CookieInsecureSentOnCleartext.bend as Laws
 
-def Laws.cookie_insecure_on_tcp():
+def Laws.cookie_insecure_any(_tls):
   {==}
