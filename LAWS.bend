@@ -147,6 +147,7 @@ import ./laws/ErrnoNamesAreLinux.bend as ErrnoNamesAreLinux
 import ./laws/ExactContentLengthBodyKept.bend as ExactContentLengthBodyKept
 import ./laws/ExchangeCarriesMethod.bend as ExchangeCarriesMethod
 import ./laws/FailedEffectsLoseConnection.bend as FailedEffectsLoseConnection
+import ./laws/MaxZeroIsNoLimit.bend as MaxZeroIsNoLimit
 import ./laws/FailuresReportedByPhase.bend as FailuresReportedByPhase
 import ./laws/FieldLookupFindsFirst.bend as FieldLookupFindsFirst
 import ./laws/FieldLookupIgnoresCase.bend as FieldLookupIgnoresCase

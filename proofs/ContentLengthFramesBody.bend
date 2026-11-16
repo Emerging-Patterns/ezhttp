@@ -13,9 +13,10 @@ def Laws.clen_short(st, hs, n, body, e):
   {==}
 
 # b ++ r is never shorter than b
-def lt_prefix(b: String, r: String)
-  -> {Nat.is_lt(String.length(String.append(b, r)), String.length(b))
-    == False{} : Bool}:
+def lt_prefix(
+  b: String,
+  r: String
+) -> {Nat.is_lt(String.length(String.append(b, r)), String.length(b)) == False{} : Bool}:
   match b:
     case SNil{}:
       match r:

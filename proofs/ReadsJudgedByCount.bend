@@ -64,7 +64,10 @@ def Laws.hear_count(h, b, e):
           +f = Nat.add(g, String.length(b))
           +lt = Equal.sym(Bool, Nat.is_lt(owed, String.length(b)), False{},
             M1.eq.not.true(Nat.is_lt(owed, String.length(b)), Equal.sym(Bool, True{},
-              Bool.not(Nat.is_lt(owed, String.length(b))), e)))
+              Bool.not(Nat.is_lt(owed, String.length(b))),
+              Equal.trans(Bool, True{}, Nat.is_ge(owed, String.length(b)),
+                Bool.not(Nat.is_lt(owed, String.length(b))), e,
+                M2.ge_not_lt(owed, String.length(b))))))
           Equal.cong(Http.Skip, Http.Hear,
             x => Http.Walking{Http.walk.data(f, x, s => Http.walk(f, s))},
             Http.Short{Nat.sub(owed, String.length(b))}, Http.octs.skip(b, owed),

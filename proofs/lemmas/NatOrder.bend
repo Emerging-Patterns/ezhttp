@@ -95,3 +95,24 @@ def take_all(s):
             sub_add(Http.octs.width(Char.to_u32(h)), Http.octs.len(t))),
           Equal.cong(String, String, x => SCon{h, x},
             Http.octs.take(t, Http.octs.len(t)), t, take_all(t))))
+
+law cmp_ge_not_lt:
+  for c: Cmp
+  {Cmp.is_ge(c) == Bool.not(Cmp.is_lt(c)) : Bool}
+
+def cmp_ge_not_lt(c):
+  match c:
+    case LT{}:
+      {==}
+    case EQ{}:
+      {==}
+    case GT{}:
+      {==}
+
+law ge_not_lt:
+  for a: Nat
+  for b: Nat
+  {Nat.is_ge(a, b) == Bool.not(Nat.is_lt(a, b)) : Bool}
+
+def ge_not_lt(a, b):
+  cmp_ge_not_lt(Nat.cmp(a, b))

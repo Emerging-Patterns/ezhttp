@@ -12,7 +12,6 @@ import ./http.bend as Http
 import ./url.bend as Url
 import ./body.bend as Body
 import ./pct.bend as Pct
-import ./qs.bend as Qs
 
 # --- the deadline ---
 
@@ -81,9 +80,15 @@ type Exchange is Data:
   Exchange{secure: Bool, host: String, port: U32, method: String, req: String}
 
 # the exchange once it is known whether the scheme wants TLS
-def wire.exchange.at(+method: String, +secure: Bool, +host: String,
-  +port: U32, path: String, headers: List<&2, Http.Header>, body: String)
-  -> Exchange:
+def wire.exchange.at(
+  +method: String,
+  +secure: Bool,
+  +host: String,
+  +port: U32,
+  path: String,
+  headers: List<&2, Http.Header>,
+  body: String
+) -> Exchange:
   Exchange{secure, host, port, method,
     Http.request.at(method, secure, host, port, path, headers, body)}
 
@@ -96,8 +101,12 @@ def wire.exchange.method(ex: Exchange) -> Maybe<&2, String>:
       Some{method}
 
 # a request with this method, headers and body to a URL that came apart
-def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
-  body: String) -> Exchange:
+def wire.exchange(
+  method: String,
+  l: Url.Loc,
+  headers: List<&2, Http.Header>,
+  body: String
+) -> Exchange:
   match l:
     case Url.Bad{why}:
       NoUrl{why}
@@ -107,8 +116,12 @@ def wire.exchange(method: String, l: Url.Loc, headers: List<&2, Http.Header>,
 
 # a request with n octets of body to a URL that came apart: the request text
 # ends at the blank line, and the octets go after it
-def wire.exchange.octets(+method: String, l: Url.Loc,
-  headers: List<&2, Http.Header>, n: Nat) -> Exchange:
+def wire.exchange.octets(
+  +method: String,
+  l: Url.Loc,
+  headers: List<&2, Http.Header>,
+  n: Nat
+) -> Exchange:
   match l:
     case Url.Bad{why}:
       NoUrl{why}
@@ -120,8 +133,12 @@ def wire.exchange.octets(+method: String, l: Url.Loc,
 # a request with a body of this shape to a URL that came apart: text inside
 # the request text as UTF-8, octets after it
 # (laws/OctetBodiesSentUnchanged.bend)
-def wire.exchange.body(method: String, l: Url.Loc,
-  headers: List<&2, Http.Header>, b: Body.Shape) -> Exchange:
+def wire.exchange.body(
+  method: String,
+  l: Url.Loc,
+  headers: List<&2, Http.Header>,
+  b: Body.Shape
+) -> Exchange:
   match b:
     case Body.ShapeText{text}:
       wire.exchange(method, l, headers, text)
@@ -231,8 +248,11 @@ def wire.read.counted(+h: Http.Hear, +m: Nat, counts: Bool) -> Maybe<&2, Read>:
       None{}
 
 # a read of m octets: none is the close
-def wire.read.count.at(+h: Http.Hear, +m: Nat, closed: Bool)
-  -> Maybe<&2, Read>:
+def wire.read.count.at(
+  +h: Http.Hear,
+  +m: Nat,
+  closed: Bool
+) -> Maybe<&2, Read>:
   match closed:
     case True{}:
       Some{Heard{}}
@@ -346,8 +366,13 @@ def wire.fail.resolve(host: String, +n: U32, none: Bool) -> String:
       "6\ncould not resolve " ++ host ++ ": " ++ wire.cause(n)
 
 # a call that ran out of time, by its phase
-def wire.fail.late(p: Phase, host: String, +port: U32, +ms: U32, +n: U32)
-  -> String:
+def wire.fail.late(
+  p: Phase,
+  host: String,
+  +port: U32,
+  +ms: U32,
+  +n: U32
+) -> String:
   match p:
     case Resolve{}:
       wire.fail.resolve(host, n, U32.is_eq(n, 2))
@@ -364,8 +389,13 @@ def wire.fail.late(p: Phase, host: String, +port: U32, +ms: U32, +n: U32)
       "28\n" ++ host ++ " sent nothing for " ++ U32.show(ms) ++ " ms"
 
 # a call that failed for another reason, by its phase
-def wire.fail.other(p: Phase, host: String, +port: U32, +n: U32, why: String)
-  -> String:
+def wire.fail.other(
+  p: Phase,
+  host: String,
+  +port: U32,
+  +n: U32,
+  why: String
+) -> String:
   match p:
     case Resolve{}:
       wire.fail.resolve(host, n, U32.is_eq(n, 2))
@@ -381,8 +411,15 @@ def wire.fail.other(p: Phase, host: String, +port: U32, +n: U32, why: String)
       "56\nthe answer from " ++ host ++ " was cut short: " ++ wire.cause(n)
 
 # a failure once it is known whether it ran out of time
-def wire.fail.of(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
-  why: String, late: Bool) -> String:
+def wire.fail.of(
+  p: Phase,
+  host: String,
+  +port: U32,
+  +ms: U32,
+  +n: U32,
+  why: String,
+  late: Bool
+) -> String:
   match late:
     case True{}:
       wire.fail.late(p, host, port, ms, n)
@@ -405,6 +442,12 @@ def wire.fail.of(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
 # (laws/FailuresReportedByPhase.bend, laws/ErrnoNamesAreLinux.bend), and
 # that the reason reaches `Client.Err` unchanged
 # (laws/TimeoutsReadAsTimedOut.bend, laws/InterimResponsesSkipped.bend).
-def wire.fail(p: Phase, host: String, +port: U32, +ms: U32, +n: U32,
-  why: String) -> String:
+def wire.fail(
+  p: Phase,
+  host: String,
+  +port: U32,
+  +ms: U32,
+  +n: U32,
+  why: String
+) -> String:
   wire.fail.of(p, host, port, ms, n, why, U32.is_eq(n, wire.etimedout()))

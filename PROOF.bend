@@ -116,6 +116,7 @@ import ./proofs/ErrnoNamesAreLinux.bend as PErrnoNamesAreLinux
 import ./proofs/ExactContentLengthBodyKept.bend as PExactContentLengthBodyKept
 import ./proofs/ExchangeCarriesMethod.bend as PExchangeCarriesMethod
 import ./proofs/FailedEffectsLoseConnection.bend as PFailedEffectsLoseConnection
+import ./proofs/MaxZeroIsNoLimit.bend as PMaxZeroIsNoLimit
 import ./proofs/FailuresReportedByPhase.bend as PFailuresReportedByPhase
 import ./proofs/FieldLookupFindsFirst.bend as PFieldLookupFindsFirst
 import ./proofs/FieldLookupIgnoresCase.bend as PFieldLookupIgnoresCase

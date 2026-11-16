@@ -7,9 +7,11 @@ import ./lemmas/BaseEqualities.bend as M1
 # --- the request's header fields ---
 
 # a string prefix both sides share does not change starts_with
-def eq.starts_cancel(+a: String, +x: String, +y: String)
-  -> {String.starts_with.go(String.append(a, y), String.append(a, x))
-    == String.starts_with.go(y, x) : Bool}:
+def eq.starts_cancel(
+  +a: String,
+  +x: String,
+  +y: String
+) -> {String.starts_with.go(String.append(a, y), String.append(a, x)) == String.starts_with.go(y, x) : Bool}:
   match a:
     case SNil{}:
       {==}

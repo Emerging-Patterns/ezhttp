@@ -7,9 +7,11 @@ import ./lemmas/DropNothing.bend as M1
 import ./lemmas/OctetTakeDrop.bend as M2
 
 # what follows |b| + k characters of b ++ r is what follows k of r
-def drop_prefix(b: String, r: String, k: Nat)
-  -> {String.drop(String.append(b, r), Nat.add(String.length(b), k))
-    == String.drop(r, k) : String}:
+def drop_prefix(
+  b: String,
+  r: String,
+  k: Nat
+) -> {String.drop(String.append(b, r), Nat.add(String.length(b), k)) == String.drop(r, k) : String}:
   match b:
     case SNil{}:
       {==}

@@ -55,24 +55,32 @@ def eq.bit.gone(a, -A: Kind(a), e: Empty) -> A:
 def eq.bit.absurd(a, -A: Kind(a), e: {False{} == True{} : Bool}) -> A:
   eq.bit.gone(a, A, eq.bit.clash(e))
 
-def eq.and.left(u: Bool, v: Bool, e: {Bool.and(u, v) == True{} : Bool})
-  -> {u == True{} : Bool}:
+def eq.and.left(
+  u: Bool,
+  v: Bool,
+  e: {Bool.and(u, v) == True{} : Bool}
+) -> {u == True{} : Bool}:
   match u:
     case True{}:
       {==}
     case False{}:
       e
 
-def eq.and.right(u: Bool, v: Bool, e: {Bool.and(u, v) == True{} : Bool})
-  -> {v == True{} : Bool}:
+def eq.and.right(
+  u: Bool,
+  v: Bool,
+  e: {Bool.and(u, v) == True{} : Bool}
+) -> {v == True{} : Bool}:
   match u:
     case True{}:
       e
     case False{}:
       eq.bit.absurd(&2, {v == True{} : Bool}, e)
 
-def eq.not.true(u: Bool, e: {Bool.not(u) == True{} : Bool})
-  -> {u == False{} : Bool}:
+def eq.not.true(
+  u: Bool,
+  e: {Bool.not(u) == True{} : Bool}
+) -> {u == False{} : Bool}:
   match u:
     case True{}:
       eq.bit.absurd(&2, {True{} == False{} : Bool}, e)
@@ -86,8 +94,10 @@ def eq.starts_nil(s: String) -> {String.starts_with(s, "") == True{} : Bool}:
     case SCon{h, t}:
       {==}
 
-def eq.starts_append(a: String, b: String)
-  -> {String.starts_with(String.append(a, b), a) == True{} : Bool}:
+def eq.starts_append(
+  a: String,
+  b: String
+) -> {String.starts_with(String.append(a, b), a) == True{} : Bool}:
   match a:
     case SNil{}:
       eq.starts_nil(b)

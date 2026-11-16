@@ -63,6 +63,9 @@ def body.encode(~A: Data, ~to_text: A -> String, value: A) -> Body:
   Plain{to_text(value)}
 
 # BYO decode: body text to a value via the caller's decoder
-def body.decode(~A: Data, ~from_text: String -> Maybe<&2, A>, s: String)
-  -> Maybe<&2, A>:
+def body.decode(
+  ~A: Data,
+  ~from_text: String -> Maybe<&2, A>,
+  s: String
+) -> Maybe<&2, A>:
   from_text(s)

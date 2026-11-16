@@ -138,8 +138,12 @@ def cookie.flag(c: Cookie, +name: String) -> Cookie:
   cookie.flag.secure(c, name, String.eq(name, "secure"))
 
 # SameSite, or an unrecognized attribute
-def cookie.named.site(c: Cookie, _name: String, value: String, hit: Bool)
-  -> Cookie:
+def cookie.named.site(
+  c: Cookie,
+  _name: String,
+  value: String,
+  hit: Bool
+) -> Cookie:
   match hit:
     case True{}:
       cookie.site_set(c, cookie.site(value))
@@ -147,8 +151,12 @@ def cookie.named.site(c: Cookie, _name: String, value: String, hit: Bool)
       c
 
 # Path
-def cookie.named.path(c: Cookie, +name: String, +value: String, hit: Bool)
-  -> Cookie:
+def cookie.named.path(
+  c: Cookie,
+  +name: String,
+  +value: String,
+  hit: Bool
+) -> Cookie:
   match hit:
     case True{}:
       cookie.dir(c, value)
@@ -156,8 +164,12 @@ def cookie.named.path(c: Cookie, +name: String, +value: String, hit: Bool)
       cookie.named.site(c, name, value, String.eq(name, "samesite"))
 
 # Domain, stored lowercase
-def cookie.named.domain(c: Cookie, +name: String, +value: String, hit: Bool)
-  -> Cookie:
+def cookie.named.domain(
+  c: Cookie,
+  +name: String,
+  +value: String,
+  hit: Bool
+) -> Cookie:
   match hit:
     case True{}:
       cookie.domain(c, String.to_lower(value))
@@ -165,8 +177,12 @@ def cookie.named.domain(c: Cookie, +name: String, +value: String, hit: Bool)
       cookie.named.path(c, name, value, String.eq(name, "path"))
 
 # Max-Age
-def cookie.named.age(c: Cookie, +name: String, +value: String, hit: Bool)
-  -> Cookie:
+def cookie.named.age(
+  c: Cookie,
+  +name: String,
+  +value: String,
+  hit: Bool
+) -> Cookie:
   match hit:
     case True{}:
       cookie.age_ok(c, value, Http.digits.read(value))
@@ -174,8 +190,12 @@ def cookie.named.age(c: Cookie, +name: String, +value: String, hit: Bool)
       cookie.named.domain(c, name, value, String.eq(name, "domain"))
 
 # Expires, stored as the HTTP-date text
-def cookie.named.expires(c: Cookie, +name: String, +value: String, hit: Bool)
-  -> Cookie:
+def cookie.named.expires(
+  c: Cookie,
+  +name: String,
+  +value: String,
+  hit: Bool
+) -> Cookie:
   match hit:
     case True{}:
       cookie.expires(c, value)
@@ -207,8 +227,12 @@ def cookie.fold(ps: List<&2, String>, c: Cookie) -> Cookie:
       cookie.fold(t, cookie.apply(c, String.trim(h)))
 
 # reject an empty name (RFC 6265 §4.1.1)
-def cookie.from.name(+name: String, value: String, attrs: List<&2, String>,
-  empty: Bool) -> Maybe<&2, Cookie>:
+def cookie.from.name(
+  +name: String,
+  value: String,
+  attrs: List<&2, String>,
+  empty: Bool
+) -> Maybe<&2, Cookie>:
   match empty:
     case True{}:
       None{}
@@ -216,14 +240,17 @@ def cookie.from.name(+name: String, value: String, attrs: List<&2, String>,
       Some{cookie.fold(attrs, cookie.new(name, value))}
 
 # the name=value pair, then the attribute list
-def cookie.from(_pair: String, attrs: List<&2, String>, cut: Http.Cut)
-  -> Maybe<&2, Cookie>:
+def cookie.from(
+  _pair: String,
+  attrs: List<&2, String>,
+  cut: Http.Cut
+) -> Maybe<&2, Cookie>:
   match cut:
     case Http.NoCut{}:
       None{}
     case Http.Cut{before, after}:
       +name = String.trim(before)
-      cookie.from.name(name, String.trim(after), attrs, String.eq(name, ""))
+      cookie.from.name(name, String.trim(after), attrs, String.is_empty(name))
 
 # Set-Cookie split on `;`
 def cookie.parse.parts(ps: List<&2, String>) -> Maybe<&2, Cookie>:
@@ -248,7 +275,7 @@ def cookie.opt.of(prefix: String, value: String, empty: Bool) -> String:
 
 # an optional attribute clause
 def cookie.opt(prefix: String, +value: String) -> String:
-  cookie.opt.of(prefix, value, String.eq(value, ""))
+  cookie.opt.of(prefix, value, String.is_empty(value))
 
 # `; Domain=…` only when a Domain attribute was set
 def cookie.domain_text(domain: String, host_only: Bool) -> String:
@@ -285,8 +312,12 @@ def cookie.set(c: Cookie) -> Http.Header:
   Http.H{"Set-Cookie", cookie.line(c)}
 
 # keep name=value when the name is not empty
-def cookie.pairs.keep(name: String, value: String, empty: Bool,
-  rest: Unit -> List<&2, String>) -> List<&2, String>:
+def cookie.pairs.keep(
+  name: String,
+  value: String,
+  empty: Bool,
+  rest: Unit -> List<&2, String>
+) -> List<&2, String>:
   match empty:
     case True{}:
       rest(Unit{})
@@ -294,12 +325,14 @@ def cookie.pairs.keep(name: String, value: String, empty: Bool,
       (name ++ "=" ++ value) <> rest(Unit{})
 
 # one cookie as a request pair, dropped when the name is empty
-def cookie.pairs.one(c: Cookie, rest: Unit -> List<&2, String>)
-  -> List<&2, String>:
+def cookie.pairs.one(
+  c: Cookie,
+  rest: Unit -> List<&2, String>
+) -> List<&2, String>:
   match c:
     case Cookie{+name, value, expires, max_age, domain, path, secure, http_only,
       same_site, host_only}:
-      cookie.pairs.keep(name, value, String.eq(name, ""), rest)
+      cookie.pairs.keep(name, value, String.is_empty(name), rest)
 
 # name=value pieces, empty names removed
 def cookie.pairs(cs: List<&2, Cookie>) -> List<&2, String>:
@@ -383,7 +416,7 @@ def cookie.fill_path.of(path: String, req: String, empty: Bool) -> String:
 
 # an absent Path becomes default-path
 def cookie.fill_path(+path: String, req: String) -> String:
-  cookie.fill_path.of(path, req, String.eq(path, ""))
+  cookie.fill_path.of(path, req, String.is_empty(path))
 
 # store the response host on a host-only cookie and fill default-path
 def cookie.receive(host: String, req_path: String, c: Cookie) -> Cookie:
@@ -396,8 +429,12 @@ def cookie.receive(host: String, req_path: String, c: Cookie) -> Cookie:
         host_only}
 
 # a dot continues the scan, a digit keeps it, anything else stops
-def cookie.ipv4.step(dot: Bool, digit: Bool, if_dot: Unit -> Bool,
-  if_digit: Unit -> Bool) -> Bool:
+def cookie.ipv4.step(
+  dot: Bool,
+  digit: Bool,
+  if_dot: Unit -> Bool,
+  if_digit: Unit -> Bool
+) -> Bool:
   match dot digit:
     case True{} _:
       if_dot(Unit{})
@@ -494,8 +531,13 @@ def cookie.send.path(tls: Bool, secure: Bool, ok: Bool) -> Bool:
       cookie.send.secure(tls, secure)
 
 # domain-match, then path-match
-def cookie.send.domain(req: String, tls: Bool, secure: Bool, cpath: String,
-  ok: Bool) -> Bool:
+def cookie.send.domain(
+  req: String,
+  tls: Bool,
+  secure: Bool,
+  cpath: String,
+  ok: Bool
+) -> Bool:
   match ok:
     case False{}:
       False{}
@@ -523,8 +565,11 @@ def cookie.alive(max_age: String, age: Nat) -> Bool:
   cookie.alive.of(age, Http.digits.read(max_age))
 
 # cons when the cookie matches the request
-def cookie.select.cons(ok: Bool, c: Cookie, rest: Unit -> List<&2, Cookie>)
-  -> List<&2, Cookie>:
+def cookie.select.cons(
+  ok: Bool,
+  c: Cookie,
+  rest: Unit -> List<&2, Cookie>
+) -> List<&2, Cookie>:
   match ok:
     case False{}:
       rest(Unit{})
@@ -532,8 +577,12 @@ def cookie.select.cons(ok: Bool, c: Cookie, rest: Unit -> List<&2, Cookie>)
       c <> rest(Unit{})
 
 # cookies that would be sent (domain, path, secure)
-def cookie.select(cs: List<&2, Cookie>, +host: String, +req_path: String,
-  +tls: Bool) -> List<&2, Cookie>:
+def cookie.select(
+  cs: List<&2, Cookie>,
+  +host: String,
+  +req_path: String,
+  +tls: Bool
+) -> List<&2, Cookie>:
   match cs:
     case []:
       []

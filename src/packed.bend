@@ -73,16 +73,24 @@ def packed.copy(b: Bytes.Bytes, +at: U32, +n: U32) -> Bytes.Bytes:
 # --- a chunked body (RFC 9112 §7.1), as chunk.size decides ---
 
 # a chunk's octets copied out, then on to the chunk-size line after its CRLF
-def packed.chunk.take(r: Bytes.Bytes & Bytes.Bytes, +next: U32,
+def packed.chunk.take(
+  r: Bytes.Bytes & Bytes.Bytes,
+  +next: U32,
   acc: List<&1, Bytes.Bytes>,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   (b, part) = r
   go(b)(next)(part <> acc)
 
 # a chunk of k octets from d, ready when its CRLF follows them
-def packed.chunk.ready.is(b: Bytes.Bytes, +d: U32, +k: U32,
-  acc: List<&1, Bytes.Bytes>, ready: Bool,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+def packed.chunk.ready.is(
+  b: Bytes.Bytes,
+  +d: U32,
+  +k: U32,
+  acc: List<&1, Bytes.Bytes>,
+  ready: Bool,
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   match ready:
     case False{}:
       Bad{Http.chunk.short()}
@@ -90,17 +98,26 @@ def packed.chunk.ready.is(b: Bytes.Bytes, +d: U32, +k: U32,
       packed.chunk.take(Bytes.slice(b, d, k), (d + k + 2 : U32), acc, go)
 
 # a chunk of k octets from d whose CRLF has been looked for (chunks.ready)
-def packed.chunk.ready(r: Bytes.Bytes & String, +d: U32, +k: U32,
+def packed.chunk.ready(
+  r: Bytes.Bytes & String,
+  +d: U32,
+  +k: U32,
   acc: List<&1, Bytes.Bytes>,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   (b, crlf) = r
   packed.chunk.ready.is(b, d, k, acc, String.eq(crlf, "\r\n"), go)
 
 # a chunk of n octets from d: its octets must all be there, and a CRLF after
 # them
-def packed.chunk.data(b: Bytes.Bytes, +d: U32, +n: Nat,
-  acc: List<&1, Bytes.Bytes>, fits: Bool,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+def packed.chunk.data(
+  b: Bytes.Bytes,
+  +d: U32,
+  +n: Nat,
+  acc: List<&1, Bytes.Bytes>,
+  fits: Bool,
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   match fits:
     case False{}:
       Bad{Http.chunk.short()}
@@ -109,9 +126,14 @@ def packed.chunk.data(b: Bytes.Bytes, +d: U32, +n: Nat,
       packed.chunk.ready(packed.text(b, (d + k : U32), 2), d, k, acc, go)
 
 # what a chunk-size line says, acted on with the octets after it
-def packed.chunk.size(b: Bytes.Bytes, +d: U32, +len: U32,
-  acc: List<&1, Bytes.Bytes>, z: Http.Size,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+def packed.chunk.size(
+  b: Bytes.Bytes,
+  +d: U32,
+  +len: U32,
+  acc: List<&1, Bytes.Bytes>,
+  z: Http.Size,
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   match z:
     case Http.SizeBad{why}:
       Bad{why}
@@ -119,19 +141,27 @@ def packed.chunk.size(b: Bytes.Bytes, +d: U32, +len: U32,
       Parts{acc}
     case Http.SizeData{+n}:
       packed.chunk.data(b, d, n, acc,
-        Bool.not(Nat.is_lt(U32.to_nat((len - d : U32)), Nat.add(n, 2n))), go)
+        Nat.is_ge(U32.to_nat((len - d : U32)), Nat.add(n, 2n)), go)
 
 # a chunk-size line read, its octets after its CRLF
-def packed.chunk.line(r: Bytes.Bytes & String, +d: U32, +len: U32,
+def packed.chunk.line(
+  r: Bytes.Bytes & String,
+  +d: U32,
+  +len: U32,
   acc: List<&1, Bytes.Bytes>,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   (b, line) = r
   packed.chunk.size(b, d, len, acc, Http.chunk.size(line), go)
 
 # a chunk-size line that ends at i, or none ends: the body ends there
-def packed.chunk.at(r: Bytes.Bytes & Maybe<&2, U32>, +p: U32,
-  +len: U32, acc: List<&1, Bytes.Bytes>,
-  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts) -> Parts:
+def packed.chunk.at(
+  r: Bytes.Bytes & Maybe<&2, U32>,
+  +p: U32,
+  +len: U32,
+  acc: List<&1, Bytes.Bytes>,
+  go: Bytes.Bytes -> U32 -> List<&1, Bytes.Bytes> -> Parts
+) -> Parts:
   (b, at) = r
   match at:
     case None{}:
@@ -141,8 +171,13 @@ def packed.chunk.at(r: Bytes.Bytes & Maybe<&2, U32>, +p: U32,
         len, acc, go)
 
 # the chunks from the chunk-size line at p, at most `fuel` of them
-def packed.chunks(fuel: Nat, b: Bytes.Bytes, +p: U32, +len: U32,
-  acc: List<&1, Bytes.Bytes>) -> Parts:
+def packed.chunks(
+  fuel: Nat,
+  b: Bytes.Bytes,
+  +p: U32,
+  +len: U32,
+  acc: List<&1, Bytes.Bytes>
+) -> Parts:
   match fuel:
     case 0n:
       Bad{"the chunked body is truncated"}
@@ -151,8 +186,12 @@ def packed.chunks(fuel: Nat, b: Bytes.Bytes, +p: U32, +len: U32,
         b2 => q => a2 => packed.chunks(f, b2, q, len, a2))
 
 # a chunked body's octets in order, or why it was torn
-def packed.chunked(st: U32, hs: List<&2, Http.Header>, reason: String,
-  r: Parts) -> Got:
+def packed.chunked(
+  st: U32,
+  hs: List<&2, Http.Header>,
+  reason: String,
+  r: Parts
+) -> Got:
   match r:
     case Bad{why}:
       Torn{why}
@@ -162,8 +201,15 @@ def packed.chunked(st: U32, hs: List<&2, Http.Header>, reason: String,
 # --- the body under its framing (RFC 9112 §6.3) ---
 
 # a body framed by Content-Length: torn when fewer octets arrived
-def packed.sized(st: U32, hs: List<&2, Http.Header>, reason: String,
-  b: Bytes.Bytes, +q: U32, +n: Nat, short: Bool) -> Got:
+def packed.sized(
+  st: U32,
+  hs: List<&2, Http.Header>,
+  reason: String,
+  b: Bytes.Bytes,
+  +q: U32,
+  +n: Nat,
+  short: Bool
+) -> Got:
   match short:
     case True{}:
       Torn{"the response body stopped before its Content-Length"}
@@ -171,8 +217,15 @@ def packed.sized(st: U32, hs: List<&2, Http.Header>, reason: String,
       Got{st, hs, reason, packed.copy(b, q, U32.from_nat(n))}
 
 # the octets after the final head, as its framing says
-def packed.body(st: U32, hs: List<&2, Http.Header>, reason: String,
-  f: Http.Frame, b: Bytes.Bytes, +q: U32, +len: U32) -> Got:
+def packed.body(
+  st: U32,
+  hs: List<&2, Http.Header>,
+  reason: String,
+  f: Http.Frame,
+  b: Bytes.Bytes,
+  +q: U32,
+  +len: U32
+) -> Got:
   match f:
     case Http.Bare{}:
       Got{st, hs, reason, Bytes.new(0)}
@@ -186,8 +239,13 @@ def packed.body(st: U32, hs: List<&2, Http.Header>, reason: String,
       Got{st, hs, reason, packed.copy(b, q, (len - q : U32))}
 
 # the final head's plan carried out on the octets after it
-def packed.final(p: Http.Plan, reason: String, b: Bytes.Bytes, +q: U32,
-  +len: U32) -> Got:
+def packed.final(
+  p: Http.Plan,
+  reason: String,
+  b: Bytes.Bytes,
+  +q: U32,
+  +len: U32
+) -> Got:
   match p:
     case Http.Unplanned{why}:
       Torn{why}
@@ -197,8 +255,15 @@ def packed.final(p: Http.Plan, reason: String, b: Bytes.Bytes, +q: U32,
 # --- the heads (RFC 9112 §2.1, RFC 9110 §15.2) ---
 
 # an interim head is skipped, any other is the final one
-def packed.step(+asked: Bool, b: Bytes.Bytes, +q: U32, +len: U32,
-  +ls: List<&2, String>, skip: Bool, rest: Bytes.Bytes -> U32 -> Got) -> Got:
+def packed.step(
+  +asked: Bool,
+  b: Bytes.Bytes,
+  +q: U32,
+  +len: U32,
+  +ls: List<&2, String>,
+  skip: Bool,
+  rest: Bytes.Bytes -> U32 -> Got
+) -> Got:
   match skip:
     case True{}:
       rest(b)(q)
@@ -207,16 +272,26 @@ def packed.step(+asked: Bool, b: Bytes.Bytes, +q: U32, +len: U32,
         b, q, len)
 
 # a head read as text, and the octets after its blank line from q
-def packed.head.text(+asked: Bool, r: Bytes.Bytes & String, +q: U32,
-  +len: U32, rest: Bytes.Bytes -> U32 -> Got) -> Got:
+def packed.head.text(
+  +asked: Bool,
+  r: Bytes.Bytes & String,
+  +q: U32,
+  +len: U32,
+  rest: Bytes.Bytes -> U32 -> Got
+) -> Got:
   (b, before) = r
   +ls = String.lines(before)
   packed.step(asked, b, q, len, ls,
     Http.interim.skip.of(Http.status.of(ls), U32.is_lt(q, len)), rest)
 
 # a head that ends at i, or none ends
-def packed.head(+asked: Bool, r: Bytes.Bytes & Maybe<&2, U32>, +p: U32,
-  +len: U32, rest: Bytes.Bytes -> U32 -> Got) -> Got:
+def packed.head(
+  +asked: Bool,
+  r: Bytes.Bytes & Maybe<&2, U32>,
+  +p: U32,
+  +len: U32,
+  rest: Bytes.Bytes -> U32 -> Got
+) -> Got:
   (b, at) = r
   match at:
     case None{}:
@@ -226,8 +301,13 @@ def packed.head(+asked: Bool, r: Bytes.Bytes & Maybe<&2, U32>, +p: U32,
         len, rest)
 
 # the heads in turn from p, at most `fuel` of them
-def packed.heads(fuel: Nat, +asked: Bool, b: Bytes.Bytes, +p: U32, +len: U32)
-  -> Got:
+def packed.heads(
+  fuel: Nat,
+  +asked: Bool,
+  b: Bytes.Bytes,
+  +p: U32,
+  +len: U32
+) -> Got:
   match fuel:
     case 0n:
       Torn{"the response head has no blank line after it"}
