@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.24.0...v0.25.0) (2026-11-16)
+
+
+### Bug Fixes
+
+* **lint:** ez 1.16.0, bolt 1.66.0; clear bolt findings ([#71](https://github.com/Emerging-Patterns/ezhttp/issues/71)) ([51cc94e](https://github.com/Emerging-Patterns/ezhttp/commit/51cc94e533ec8b8d05569c9e0a1728d7c02f9749))
+
 ## [0.24.0](https://github.com/Emerging-Patterns/ezhttp/compare/v0.23.0...v0.24.0) (2026-11-09)
 
 
